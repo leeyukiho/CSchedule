@@ -25,4 +25,8 @@
 | `CORS_ORIGIN` | 允许访问后端的前端地址 |
 | `ADMIN_API_KEY` | 管理接口密钥，生产环境必须改成强随机值 |
 
+微信开发者工具：
+
+执行 `cd frontend && pnpm dev:weapp` 后，导入 `frontend/dist` 目录。
+
 运行、构建和部署请查看 [`docs/运行构建部署.md`](docs/运行构建部署.md)。
