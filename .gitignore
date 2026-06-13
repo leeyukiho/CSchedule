@@ -12,6 +12,9 @@
 **/.prisma/
 **/prisma/dev.db
 
+# Local mini-program prototype directory
+wxapp/
+
 # Local environment and machine-specific files
 **/.env
 **/.env.*
