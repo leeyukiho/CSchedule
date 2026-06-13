@@ -1,0 +1,8 @@
+﻿node_modules/
+cloudfunctions/**/node_modules/
+.env
+*.local
+*.log
+dist/
+coverage/
+project.private.config.json

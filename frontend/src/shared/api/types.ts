@@ -126,6 +126,27 @@ export interface FeatureCacheResponse<TData = unknown> {
   session: BindingSessionSummary
 }
 
+export interface ProfileData {
+  name?: string
+  studentId?: string
+  maskedStudentId?: string
+  major?: string
+  grade?: string
+  level?: string
+  className?: string
+  gender?: string
+  birthDate?: string
+  politicalStatus?: string
+  phone?: string
+  email?: string
+  nativePlace?: string
+  enrollmentDate?: string
+  studentStatus?: string
+  dormitory?: string
+  counselor?: string
+  avatarUrl?: string
+}
+
 export interface BindingSummary {
   id: string
   userId: string

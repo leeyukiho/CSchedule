@@ -1,6 +1,14 @@
-import type { UserConfigExport } from "@tarojs/cli"
+import type { UserConfigExport } from "@tarojs/cli";
+
+// 默认生产后端地址，配置云数据库和生产服务后把下面的本地地址替换为它。
+// const DEFAULT_PRODUCTION_API_BASE_URL = 'https://your-production-domain.com/api/v1'
+const API_BASE_URL =
+  process.env.TARO_APP_API_BASE_URL || "http://localhost:3000/api/v1";
 
 export default {
+  defineConstants: {
+    "process.env.TARO_APP_API_BASE_URL": JSON.stringify(API_BASE_URL),
+  },
   mini: {},
   h5: {
     /**
@@ -29,5 +37,5 @@ export default {
     //       postProcess: (context) => ({ ...context, outputPath: path.join(staticDir, 'index.html') })
     //     }))
     // }
-  }
-} satisfies UserConfigExport<'webpack5'>
+  },
+} satisfies UserConfigExport<"webpack5">;

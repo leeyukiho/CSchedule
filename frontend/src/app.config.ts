@@ -28,18 +28,26 @@ export default defineAppConfig({
       {
         pagePath: 'pages/index/index',
         text: '首页',
+        iconPath: 'assets/tabbar/home.png',
+        selectedIconPath: 'assets/tabbar/home-active.png',
       },
       {
         pagePath: 'pages/schedule/index',
         text: '课表',
+        iconPath: 'assets/tabbar/schedule.png',
+        selectedIconPath: 'assets/tabbar/schedule-active.png',
       },
       {
         pagePath: 'pages/grades/index',
         text: '成绩',
+        iconPath: 'assets/tabbar/grades.png',
+        selectedIconPath: 'assets/tabbar/grades-active.png',
       },
       {
         pagePath: 'pages/profile/index',
         text: '个人',
+        iconPath: 'assets/tabbar/profile.png',
+        selectedIconPath: 'assets/tabbar/profile-active.png',
       },
     ],
   },

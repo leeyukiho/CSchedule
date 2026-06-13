@@ -1,27 +1,81 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Taro from '@tarojs/taro'
-import { Button, Input, Text, View } from '@tarojs/components'
+import { Button, Image, Input, ScrollView, Text, View } from '@tarojs/components'
 
 import { getBinding, unbind } from '../../shared/api/bindings'
+import { getProfile, saveProfile } from '../../shared/api/features'
 import { createManualSync } from '../../shared/api/sync'
-import { BindingSummary } from '../../shared/api/types'
+import { BindingSummary, ProfileData } from '../../shared/api/types'
 import { formatTime } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
 import { clearStoredBindingId, getStoredBindingId } from '../../shared/storage'
+
+type EditField = {
+  key: keyof ProfileData
+  label: string
+}
+
+type EditRow = EditField & {
+  value: string
+}
+
+const EDIT_FIELDS: EditField[] = [
+  { key: 'name', label: '姓名' },
+  { key: 'major', label: '专业' },
+  { key: 'grade', label: '年级' },
+  { key: 'level', label: '层次' },
+  { key: 'className', label: '班级' },
+  { key: 'gender', label: '性别' },
+  { key: 'birthDate', label: '出生年月' },
+  { key: 'politicalStatus', label: '政治面貌' },
+  { key: 'phone', label: '手机号' },
+  { key: 'email', label: '邮箱' },
+  { key: 'nativePlace', label: '籍贯' },
+  { key: 'enrollmentDate', label: '入学时间' },
+  { key: 'studentStatus', label: '学生状态' },
+  { key: 'dormitory', label: '宿舍信息' },
+  { key: 'counselor', label: '辅导员' },
+]
 
 function formatBindingStatus(status?: BindingSummary['status']) {
   if (status === 'unbound' || status === 'disabled') {
     return '未绑定'
   }
 
-  return status ? '已绑定' : 'unknown'
+  return status ? '已绑定' : '未知'
+}
+
+function getText(value: unknown, fallback = '暂无') {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim()
+  }
+
+  return fallback
+}
+
+function buildEditRows(profile: ProfileData): EditRow[] {
+  return EDIT_FIELDS.map((field) => ({
+    ...field,
+    value: typeof profile[field.key] === 'string' ? String(profile[field.key]) : '',
+  }))
+}
+
+function rowsToProfile(rows: EditRow[]): ProfileData {
+  return rows.reduce<ProfileData>((profile, row) => {
+    profile[row.key] = row.value.trim()
+    return profile
+  }, {})
 }
 
 export default function ProfilePage() {
   const [binding, setBinding] = useState<BindingSummary | null>(null)
+  const [profile, setProfile] = useState<ProfileData>({})
   const [syncUsername, setSyncUsername] = useState('')
   const [syncPassword, setSyncPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [editVisible, setEditVisible] = useState(false)
+  const [editRows, setEditRows] = useState<EditRow[]>([])
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
 
@@ -36,13 +90,90 @@ export default function ProfilePage() {
     void loadBinding(bindingId)
   }, [])
 
+  const bindingDisplayName = binding ? binding.displayName : undefined
+
+  const student = useMemo(
+    () => ({
+      name: getText(profile.name || bindingDisplayName, '课程表用户'),
+      number: getText(profile.studentId || profile.maskedStudentId, '暂无学号'),
+      major: getText(profile.major, '暂无专业信息'),
+      className: getText(profile.className, ''),
+      level: getText(profile.level || profile.grade, '暂无层次信息'),
+      avatarUrl: getText(profile.avatarUrl, ''),
+    }),
+    [bindingDisplayName, profile],
+  )
+
+  const baseInfo = useMemo(
+    () => [
+      { label: '绑定状态', value: formatBindingStatus(binding ? binding.status : undefined) },
+      { label: '学校', value: (binding && binding.school && binding.school.name) || '未绑定' },
+      { label: '学号', value: student.number },
+      { label: '年级', value: getText(profile.grade) },
+      { label: '性别', value: getText(profile.gender) },
+      { label: '手机', value: getText(profile.phone) },
+      { label: '邮箱', value: getText(profile.email) },
+      { label: '课表缓存', value: formatTime(binding ? binding.lastCachedAt : undefined) },
+    ],
+    [binding, profile, student.number],
+  )
+
   async function loadBinding(bindingId: string) {
     setErrorText('')
 
     try {
-      setBinding(await getBinding(bindingId))
+      const bindingData = await getBinding(bindingId)
+      setBinding(bindingData)
+
+      const profileData = await getProfile(bindingId)
+      setProfile(profileData.data || {})
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '账号信息读取失败')
+    }
+  }
+
+  function openProfileEditor() {
+    if (!(binding && binding.id)) {
+      Taro.navigateTo({ url: '/pages/bind/index' })
+      return
+    }
+
+    setEditRows(buildEditRows(profile))
+    setEditVisible(true)
+  }
+
+  function closeProfileEditor() {
+    if (!savingProfile) {
+      setEditVisible(false)
+    }
+  }
+
+  function updateEditRow(index: number, value: string) {
+    setEditRows((rows) =>
+      rows.map((row, rowIndex) => (rowIndex === index ? { ...row, value } : row)),
+    )
+  }
+
+  async function handleSaveProfile() {
+    if (!(binding && binding.id) || savingProfile) {
+      return
+    }
+
+    setSavingProfile(true)
+    setMessage('')
+    setErrorText('')
+
+    try {
+      const response = await saveProfile(binding.id, rowsToProfile(editRows))
+      setProfile(response.data || {})
+      setEditVisible(false)
+      setMessage('个人信息已保存')
+      Taro.showToast({ title: '已保存', icon: 'success' })
+      await loadBinding(binding.id)
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : '保存失败')
+    } finally {
+      setSavingProfile(false)
     }
   }
 
@@ -96,35 +227,35 @@ export default function ProfilePage() {
       {message && <View className='status'>{message}</View>}
       {errorText && <View className='status status-error'>{errorText}</View>}
 
-      <View className='profile-card'>
+      <View className='profile-card' onClick={openProfileEditor}>
         <View className='avatar-button'>
-          <View className='avatar' />
+          {student.avatarUrl ? (
+            <Image className='avatar-image' src={student.avatarUrl} mode='aspectFill' />
+          ) : (
+            <View className='avatar' />
+          )}
         </View>
         <View>
-          <View className='profile-name'>{binding && binding.displayName ? binding.displayName : '课程表用户'}</View>
-          <View className='profile-line'>学校：{(binding && binding.school && binding.school.name) || '未绑定学校'}</View>
+          <View className='profile-name'>{student.name}</View>
+          <View className='profile-line'>学号：{student.number}</View>
           <View className='profile-meta-row'>
-            <Text className='profile-meta'>状态：{formatBindingStatus(binding ? binding.status : undefined)}</Text>
+            <Text className='profile-meta'>{student.major}</Text>
+            {student.className && <Text className='profile-meta'>{student.className}</Text>}
           </View>
-          <View className='profile-line'>上次获取：{formatTime(binding ? binding.lastCachedAt : undefined)}</View>
+          <View className='profile-line'>{student.level}</View>
         </View>
         <View className='profile-arrow' />
       </View>
+      <View className='edit-hint'>点击卡片补充或修改个人信息</View>
 
       <View className='soft-card info-panel'>
         <View className='panel-title'>基本信息</View>
-        <View className='info-row'>
-          <Text>绑定状态</Text>
-          <Text className='info-value'>{formatBindingStatus(binding ? binding.status : undefined)}</Text>
-        </View>
-        <View className='info-row'>
-          <Text>学校</Text>
-          <Text className='info-value'>{(binding && binding.school && binding.school.name) || '未绑定'}</Text>
-        </View>
-        <View className='info-row'>
-          <Text>课表缓存</Text>
-          <Text className='info-value'>{formatTime(binding ? binding.lastCachedAt : undefined)}</Text>
-        </View>
+        {baseInfo.map((item) => (
+          <View className='info-row' key={item.label}>
+            <Text>{item.label}</Text>
+            <Text className='info-value'>{item.value}</Text>
+          </View>
+        ))}
       </View>
 
       {binding && binding.id && (
@@ -182,6 +313,42 @@ export default function ProfilePage() {
           </Button>
         )}
       </View>
+
+      {editVisible && (
+        <View className='edit-mask' onClick={closeProfileEditor}>
+          <View className='edit-panel' onClick={(event) => event.stopPropagation()}>
+            <View className='edit-head'>
+              <View className='edit-title'>编辑个人信息</View>
+              <View className='edit-close' onClick={closeProfileEditor} />
+            </View>
+            <View className='edit-subtitle'>补充常用资料，方便在个人页集中查看。</View>
+            <ScrollView scrollY className='edit-scroll'>
+              <View className='edit-field-list'>
+                {editRows.map((row, index) => (
+                  <View className='edit-field' key={row.key}>
+                    <Text className='edit-label'>{row.label}</Text>
+                    <Input
+                      className='edit-input'
+                      value={row.value}
+                      placeholder='点击填写'
+                      placeholderClass='edit-placeholder'
+                      onInput={(event) => updateEditRow(index, event.detail.value)}
+                    />
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+            <Button
+              className='edit-save'
+              loading={savingProfile}
+              disabled={savingProfile}
+              onClick={handleSaveProfile}
+            >
+              保存
+            </Button>
+          </View>
+        </View>
+      )}
     </PageShell>
   )
 }

@@ -26,4 +26,8 @@ if (rootValue !== './' && rootValue !== '') {
   fail(`dist/project.config.json must use miniprogramRoot "./" or "", got ${JSON.stringify(rootValue)}.`)
 }
 
+if (projectConfig.setting?.es6 !== true) {
+  fail('dist/project.config.json must enable setting.es6 for WeChat DevTools ES6-to-ES5 transpilation.')
+}
+
 console.log('[verify-weapp-build] dist/app.json found and project config is valid.')

@@ -1,5 +1,5 @@
 import { requestApi } from './client'
-import { FeatureCacheResponse } from './types'
+import { FeatureCacheResponse, ProfileData } from './types'
 
 export function getScores(bindingId: string, termId?: string) {
   const query = termId ? `?termId=${encodeURIComponent(termId)}` : ''
@@ -18,8 +18,15 @@ export function getExams(bindingId: string, termId?: string) {
 }
 
 export function getProfile(bindingId: string) {
-  return requestApi<FeatureCacheResponse>({
+  return requestApi<FeatureCacheResponse<ProfileData>>({
     path: `/bindings/${encodeURIComponent(bindingId)}/profile`,
   })
 }
 
+export function saveProfile(bindingId: string, profile: ProfileData) {
+  return requestApi<FeatureCacheResponse<ProfileData>, { profile: ProfileData }>({
+    method: 'POST',
+    path: `/bindings/${encodeURIComponent(bindingId)}/profile`,
+    data: { profile },
+  })
+}

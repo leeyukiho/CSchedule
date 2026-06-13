@@ -1,0 +1,32 @@
+# Dependencies
+**/node_modules/
+
+# Build and generated output
+**/dist/
+**/build/
+**/coverage/
+**/.temp/
+**/.rn_temp/
+**/deploy_versions/
+**/.swc/
+**/.prisma/
+**/prisma/dev.db
+
+# Local environment and machine-specific files
+**/.env
+**/.env.*
+!**/.env.example
+**/project.private.config.json
+**/.DS_Store
+*.log
+**/*.log
+
+# Local assistant/index artifacts
+**/.claude/
+**/.gitnexus/
+**/AGENTS.md
+**/CLAUDE.md
+
+# Optional backups for local-only nested Git histories
+.local-git-repos/
+*.bundle
