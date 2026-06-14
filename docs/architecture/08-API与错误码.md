@@ -201,3 +201,53 @@ type AppErrorCode =
 | `CACHE_NOT_READY` | 缓存尚未生成 |
 | `PARSER_FAILED` | 课表格式变化或解析失败 |
 | `SYNC_RUNNING` | 已有同步任务进行中 |
+
+## Feature 读取响应
+
+`GET /bindings/:bindingId/scores`、`GET /bindings/:bindingId/exams`、`GET /bindings/:bindingId/profile`
+返回统一的 Feature 缓存响应。读取接口只查缓存，不触发学校系统请求。
+
+```ts
+interface FeatureCacheResponse<TData = unknown> {
+  bindingId: string
+  schoolId: string
+  providerId: string
+  target: 'score' | 'exam' | 'profile'
+  termId?: string
+  data: TData | null
+  meta: unknown
+  display?: FeatureDisplayConfig
+  syncedAt?: string
+  session: BindingSessionSummary
+}
+```
+
+`display` 是学校级前端展示协议：
+
+- `profile_fields`：资料页按 `summaryFields`、`detailFields`、`editableFields` 展示和编辑。
+- `score_semesters`：成绩页按 `summaryFields`、`groupPath`、`itemPath`、`itemFields` 展示学期和课程成绩。
+- `exam_list`：考试页按列表展示考试安排。
+- `raw`：学校暂未标准化展示结构时，前端只显示同步状态或通用摘要。
+
+前端不能根据学校 ID 写死字段数量。字段多寡、字段顺序、可编辑范围都由后端 `display` 决定。
+
+## Timetable 读取响应
+
+`GET /bindings/:bindingId/timetable` 也返回同一类 `display`，用于统一课表 UI 的字段映射。
+
+```ts
+interface TimetableCacheResponse {
+  bindingId: string
+  schoolId: string
+  providerId: string
+  termId?: string
+  courses: unknown[]
+  terms: unknown[]
+  sectionTimes: unknown[]
+  display?: FeatureDisplayConfig
+  syncedAt?: string
+  session: BindingSessionSummary
+}
+```
+
+课表页不按学校写分支。它始终用网格布局，只根据 `display.itemFields` 决定课程块里显示哪个字段作为课程名、哪个字段作为地点。

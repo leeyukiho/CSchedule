@@ -5,7 +5,7 @@ import { Button, Image, Input, ScrollView, Text, View } from '@tarojs/components
 import { getBinding, unbind } from '../../shared/api/bindings'
 import { getProfile, saveProfile } from '../../shared/api/features'
 import { createManualSync } from '../../shared/api/sync'
-import { BindingSummary, ProfileData } from '../../shared/api/types'
+import { BindingSummary, FeatureDisplayConfig, FeatureDisplayField, ProfileData } from '../../shared/api/types'
 import { formatTime } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
 import { clearStoredBindingId, getStoredBindingId } from '../../shared/storage'
@@ -37,6 +37,13 @@ const EDIT_FIELDS: EditField[] = [
   { key: 'counselor', label: '辅导员' },
 ]
 
+const FALLBACK_DETAIL_FIELDS: FeatureDisplayField[] = [
+  { key: 'grade', label: '年级' },
+  { key: 'gender', label: '性别' },
+  { key: 'phone', label: '手机号' },
+  { key: 'email', label: '邮箱' },
+]
+
 function formatBindingStatus(status?: BindingSummary['status']) {
   if (status === 'unbound' || status === 'disabled') {
     return '未绑定'
@@ -53,8 +60,47 @@ function getText(value: unknown, fallback = '暂无') {
   return fallback
 }
 
-function buildEditRows(profile: ProfileData): EditRow[] {
-  return EDIT_FIELDS.map((field) => ({
+function getProfileValue(
+  source: Record<string, unknown>,
+  field: Pick<FeatureDisplayField, 'key' | 'fallbackKeys'>,
+  fallback = '暂无',
+) {
+  const keys = [field.key, ...(field.fallbackKeys || [])]
+
+  for (const key of keys) {
+    const value = source[key]
+
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+  }
+
+  return fallback
+}
+
+function getEditableFields(display?: FeatureDisplayConfig): EditField[] {
+  const fields =
+    display?.editableFields ||
+    display?.detailFields?.filter((field) => field.editable && field.visible !== false)
+
+  if (!fields?.length) {
+    return EDIT_FIELDS
+  }
+
+  return fields.map((field) => ({
+    key: field.key as keyof ProfileData,
+    label: field.label,
+  }))
+}
+
+function getDetailFields(display?: FeatureDisplayConfig) {
+  const fields = display?.detailFields?.filter((field) => field.visible !== false)
+
+  return fields?.length ? fields : FALLBACK_DETAIL_FIELDS
+}
+
+function buildEditRows(profile: ProfileData, fields: EditField[]): EditRow[] {
+  return fields.map((field) => ({
     ...field,
     value: typeof profile[field.key] === 'string' ? String(profile[field.key]) : '',
   }))
@@ -70,6 +116,7 @@ function rowsToProfile(rows: EditRow[]): ProfileData {
 export default function ProfilePage() {
   const [binding, setBinding] = useState<BindingSummary | null>(null)
   const [profile, setProfile] = useState<ProfileData>({})
+  const [profileDisplay, setProfileDisplay] = useState<FeatureDisplayConfig | undefined>()
   const [syncUsername, setSyncUsername] = useState('')
   const [syncPassword, setSyncPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -91,31 +138,50 @@ export default function ProfilePage() {
   }, [])
 
   const bindingDisplayName = binding ? binding.displayName : undefined
+  const profileSource = useMemo(
+    () => ({
+      ...profile,
+      displayName: bindingDisplayName,
+      bindingStatus: formatBindingStatus(binding ? binding.status : undefined),
+      schoolName: (binding && binding.school && binding.school.name) || '未绑定',
+      lastCachedAt: formatTime(binding ? binding.lastCachedAt : undefined),
+    }),
+    [binding, bindingDisplayName, profile],
+  )
 
   const student = useMemo(
     () => ({
-      name: getText(profile.name || bindingDisplayName, '课程表用户'),
-      number: getText(profile.studentId || profile.maskedStudentId, '暂无学号'),
-      major: getText(profile.major, '暂无专业信息'),
-      className: getText(profile.className, ''),
-      level: getText(profile.level || profile.grade, '暂无层次信息'),
-      avatarUrl: getText(profile.avatarUrl, ''),
+      name: getText(profileSource.name || profileSource.displayName, '课程表用户'),
+      number: getText(profileSource.maskedStudentId || profileSource.studentId, '暂无学号'),
+      major: getText(profileSource.major, '暂无专业信息'),
+      className: getText(profileSource.className, ''),
+      level: getText(profileSource.level || profileSource.grade, '暂无层次信息'),
+      avatarUrl: getText(profileSource.avatarUrl, ''),
     }),
-    [bindingDisplayName, profile],
+    [profileSource],
   )
 
   const baseInfo = useMemo(
-    () => [
-      { label: '绑定状态', value: formatBindingStatus(binding ? binding.status : undefined) },
-      { label: '学校', value: (binding && binding.school && binding.school.name) || '未绑定' },
-      { label: '学号', value: student.number },
-      { label: '年级', value: getText(profile.grade) },
-      { label: '性别', value: getText(profile.gender) },
-      { label: '手机', value: getText(profile.phone) },
-      { label: '邮箱', value: getText(profile.email) },
-      { label: '课表缓存', value: formatTime(binding ? binding.lastCachedAt : undefined) },
-    ],
-    [binding, profile, student.number],
+    () => {
+      const schoolRows = [
+        { label: '绑定状态', value: String(profileSource.bindingStatus) },
+        { label: '学校', value: String(profileSource.schoolName) },
+        { label: '学号', value: student.number },
+      ]
+      const detailRows = getDetailFields(profileDisplay)
+        .filter((field) => !['studentId', 'maskedStudentId'].includes(field.key))
+        .map((field) => ({
+          label: field.label,
+          value: getProfileValue(profileSource, field),
+        }))
+
+      return [
+        ...schoolRows,
+        ...detailRows,
+        { label: '课表缓存', value: String(profileSource.lastCachedAt) },
+      ]
+    },
+    [profileDisplay, profileSource, student.number],
   )
 
   async function loadBinding(bindingId: string) {
@@ -127,6 +193,7 @@ export default function ProfilePage() {
 
       const profileData = await getProfile(bindingId)
       setProfile(profileData.data || {})
+      setProfileDisplay(profileData.display)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '账号信息读取失败')
     }
@@ -138,7 +205,7 @@ export default function ProfilePage() {
       return
     }
 
-    setEditRows(buildEditRows(profile))
+    setEditRows(buildEditRows(profile, getEditableFields(profileDisplay)))
     setEditVisible(true)
   }
 

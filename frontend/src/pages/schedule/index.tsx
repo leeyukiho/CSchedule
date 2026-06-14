@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Text, View } from '@tarojs/components'
 
 import { getTimetable } from '../../shared/api/timetable'
-import { CourseItem, TimetableCacheResponse } from '../../shared/api/types'
+import { CourseItem, FeatureDisplayField, TimetableCacheResponse } from '../../shared/api/types'
 import { SECTION_TIMES, getCourseSections, getCourseTone } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
 import { getStoredBindingId } from '../../shared/storage'
@@ -12,6 +12,10 @@ const TOTAL_SECTIONS = 13
 const LEFT_WIDTH = 64
 const HEADER_HEIGHT = 100
 const ROW_HEIGHT = 110
+const DEFAULT_COURSE_FIELDS: FeatureDisplayField[] = [
+  { key: 'name', label: '课程', primary: true },
+  { key: 'classroom', label: '教室', fallbackKeys: ['location'] },
+]
 
 interface PositionedLesson {
   id: string
@@ -19,6 +23,18 @@ interface PositionedLesson {
   room: string
   tone: string
   style: string
+}
+
+function getCourseValue(course: CourseItem, field: FeatureDisplayField) {
+  for (const key of [field.key, ...(field.fallbackKeys || [])]) {
+    const value = course[key as keyof CourseItem]
+
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+  }
+
+  return ''
 }
 
 export default function SchedulePage() {
@@ -100,6 +116,13 @@ export default function SchedulePage() {
     const top = HEADER_HEIGHT + (start - 1) * ROW_HEIGHT
     const height = span * ROW_HEIGHT
     const leftIndex = weekday - 1
+    const fields = timetable?.display?.itemFields?.length
+      ? timetable.display.itemFields
+      : DEFAULT_COURSE_FIELDS
+    const primaryField = fields.find((field) => field.primary) || fields[0]
+    const roomField =
+      fields.find((field) => ['classroom', 'location', 'campus'].includes(field.key)) ||
+      DEFAULT_COURSE_FIELDS[1]
     const style = [
       `left:calc(${LEFT_WIDTH}rpx + (100% - ${LEFT_WIDTH}rpx) / 7 * ${leftIndex})`,
       `top:${top}rpx`,
@@ -109,8 +132,8 @@ export default function SchedulePage() {
 
     return {
       id: course.id || `${weekday}-${start}-${course.name || index}`,
-      name: course.name || '未命名课程',
-      room: course.classroom || course.location || '',
+      name: getCourseValue(course, primaryField) || '未命名课程',
+      room: getCourseValue(course, roomField),
       tone: getCourseTone(course, index),
       style,
     }

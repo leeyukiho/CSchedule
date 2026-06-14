@@ -29,6 +29,34 @@ export interface ProviderCapabilities {
   profile: boolean
 }
 
+export type FeatureDisplayKind =
+  | 'course_grid'
+  | 'profile_fields'
+  | 'score_semesters'
+  | 'exam_list'
+  | 'raw'
+
+export interface FeatureDisplayField {
+  key: string
+  label: string
+  visible?: boolean
+  editable?: boolean
+  primary?: boolean
+  fallbackKeys?: string[]
+}
+
+export interface FeatureDisplayConfig {
+  title?: string
+  kind?: FeatureDisplayKind
+  summaryFields?: FeatureDisplayField[]
+  detailFields?: FeatureDisplayField[]
+  editableFields?: FeatureDisplayField[]
+  itemFields?: FeatureDisplayField[]
+  itemPath?: string
+  groupPath?: string
+  emptyText?: string
+}
+
 export interface SchoolListItem {
   id: string
   name: string
@@ -110,6 +138,7 @@ export interface TimetableCacheResponse {
   courses: CourseItem[]
   terms: unknown[]
   sectionTimes: unknown[]
+  display?: FeatureDisplayConfig
   syncedAt?: string
   session: BindingSessionSummary
 }
@@ -122,6 +151,7 @@ export interface FeatureCacheResponse<TData = unknown> {
   termId?: string
   data: TData | null
   meta: unknown
+  display?: FeatureDisplayConfig
   syncedAt?: string
   session: BindingSessionSummary
 }
@@ -145,6 +175,7 @@ export interface ProfileData {
   dormitory?: string
   counselor?: string
   avatarUrl?: string
+  [key: string]: string | undefined
 }
 
 export interface BindingSummary {

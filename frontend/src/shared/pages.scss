@@ -1085,6 +1085,38 @@
   text-align: center;
 }
 
+.grade-list {
+  padding: 0 24rpx 10rpx;
+}
+
+.grade-row {
+  min-height: 112rpx;
+  padding: 22rpx 0;
+  border-top: 1rpx solid #eef0f4;
+}
+
+.grade-course {
+  margin-bottom: 14rpx;
+  color: #101828;
+  font-size: 28rpx;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.grade-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx 20rpx;
+  color: #667085;
+  font-size: 23rpx;
+  line-height: 1.3;
+}
+
+.grade-field-primary {
+  color: #e11d48;
+  font-weight: 800;
+}
+
 .profile-card {
   min-height: 270rpx;
   padding: 40rpx 30rpx;

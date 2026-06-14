@@ -128,3 +128,61 @@ Provider 不负责：
 - 至少课表能成功写入 `CourseCache`。
 - 有适配记录和验证样例。
 - 错误不会输出账号、密码、Cookie、Token。
+
+## 学校级能力展示配置
+
+课表、个人资料、成绩、考试不再由前端写死字段。Provider 或 `School.config.featureDisplay`
+声明每个学校的展示协议，Feature API 随缓存一起返回 `display`，前端按该配置渲染。
+
+```ts
+type FeatureDisplayKind =
+  | 'course_grid'
+  | 'profile_fields'
+  | 'score_semesters'
+  | 'exam_list'
+  | 'raw'
+
+interface FeatureDisplayField {
+  key: string
+  label: string
+  visible?: boolean
+  editable?: boolean
+  primary?: boolean
+  fallbackKeys?: string[]
+}
+
+interface FeatureDisplayConfig {
+  title?: string
+  kind?: FeatureDisplayKind
+  summaryFields?: FeatureDisplayField[]
+  detailFields?: FeatureDisplayField[]
+  editableFields?: FeatureDisplayField[]
+  itemFields?: FeatureDisplayField[]
+  itemPath?: string
+  groupPath?: string
+  emptyText?: string
+}
+```
+
+优先级：
+
+```text
+School.config.featureDisplay[target]
+  -> School.config.provider.featureDisplay[target]
+  -> Provider.meta.featureDisplay[target]
+  -> 后端默认展示配置
+```
+
+新增学校时，Provider 负责两件事：
+
+- 把学校原始数据解析成稳定的 `course` / `score` / `exam` / `profile` 缓存数据。
+- 在 `featureDisplay` 中声明该学校前端应该展示哪些字段、字段顺序、是否可编辑。
+
+前端只理解 `display` 协议，不直接判断学校 ID。这样同一页面可以支持“有完整成绩绩点的学校”、“只有课程分数的学校”、“只返回基础资料的学校”等不同形态。
+
+统一 UI 的边界：
+
+- 课表页始终是统一网格，学校只决定课程标题、地点、教师等字段从哪个 key 取。
+- 成绩页始终是统一“汇总 + 分组 + 明细”布局，学校只决定汇总字段、分组路径和明细字段。
+- 考试页始终是统一列表布局，学校只决定考试项字段。
+- 资料页始终是统一资料卡和信息列表，学校只决定显示字段和可编辑字段。
