@@ -2,8 +2,7 @@ import { requestApi } from './client'
 import { SubmitFeedbackResponse } from './types'
 
 export interface SubmitFeedbackInput {
-  userId?: string
-  bindingId?: string
+  accountId?: string
   type?: string
   content: string
   contact?: string
@@ -16,4 +15,3 @@ export function submitFeedback(data: SubmitFeedbackInput) {
     data,
   })
 }
-

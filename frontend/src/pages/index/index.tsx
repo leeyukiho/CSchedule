@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import Taro from '@tarojs/taro'
+import { useMemo, useState } from 'react'
+import Taro, { useDidShow } from '@tarojs/taro'
 import { Button, Text, View } from '@tarojs/components'
 
 import { getTimetable } from '../../shared/api/timetable'
@@ -13,10 +13,10 @@ import {
   getWeekday,
 } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
-import { getStoredBindingId } from '../../shared/storage'
+import { getStoredAccountId } from '../../shared/storage'
 
 export default function HomePage() {
-  const [bindingId, setBindingId] = useState('')
+  const [accountId, setAccountId] = useState('')
   const [timetable, setTimetable] = useState<TimetableCacheResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [errorText, setErrorText] = useState('')
@@ -26,14 +26,21 @@ export default function HomePage() {
     return (timetable ? timetable.courses : []).filter((course) => Number(course.weekday) === weekday)
   }, [timetable])
 
-  useEffect(() => {
-    const id = getStoredBindingId()
-    setBindingId(id)
+  useDidShow(() => {
+    const id = getStoredAccountId()
+    setAccountId(id)
+
+    if (!id) {
+      setTimetable(null)
+      setLoading(false)
+      setErrorText('')
+      return
+    }
 
     if (id) {
       void loadTimetable(id)
     }
-  }, [])
+  })
 
   async function loadTimetable(id: string) {
     setLoading(true)
@@ -48,10 +55,6 @@ export default function HomePage() {
     }
   }
 
-  function goBind() {
-    Taro.navigateTo({ url: '/pages/bind/index' })
-  }
-
   function goSchedule() {
     Taro.switchTab({ url: '/pages/schedule/index' })
   }
@@ -62,7 +65,7 @@ export default function HomePage() {
         <View>
           <View className='date-title'>{formatDateText()}</View>
           <View className='date-week'>
-            {bindingId ? `更新于 ${formatTime(timetable ? timetable.syncedAt : undefined)}` : '登录后自动获取课表'}
+            {accountId ? `更新于 ${formatTime(timetable ? timetable.syncedAt : undefined)}` : ''}
           </View>
         </View>
         <View className='calendar-mini' />
@@ -70,17 +73,7 @@ export default function HomePage() {
 
       {errorText && <View className='status status-error'>{errorText}</View>}
 
-      {!bindingId && (
-        <View className='card'>
-          <Text className='item-title'>尚未绑定学校账号</Text>
-          <Text className='item-meta'>选择学校并登录教务系统后，课表会自动显示在这里。</Text>
-          <Button className='button' loading={loading} onClick={goBind}>
-            去绑定
-          </Button>
-        </View>
-      )}
-
-      {bindingId && !loading && todayCourses.length === 0 && (
+      {accountId && !loading && todayCourses.length === 0 && (
         <View className='soft-card state-card'>今日暂无安排</View>
       )}
 
@@ -116,9 +109,9 @@ export default function HomePage() {
         )
       })}
 
-      {bindingId && (
+      {accountId && (
         <View className='card'>
-          <Text className='item-title'>已绑定教务账号</Text>
+          <Text className='item-title'>已登录教务账号</Text>
           <Text className='item-meta'>上次更新：{formatTime(timetable ? timetable.syncedAt : undefined)}</Text>
           <Button className='button button-secondary' loading={loading} onClick={goSchedule}>
             查看完整课表

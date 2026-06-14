@@ -1,14 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
-import Taro from '@tarojs/taro'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import Taro, { useDidShow } from '@tarojs/taro'
 import { Button, Image, Input, ScrollView, Text, View } from '@tarojs/components'
 
-import { getBinding, unbind } from '../../shared/api/bindings'
+import { deactivateAccount, getAccount } from '../../shared/api/accounts'
 import { getProfile, saveProfile } from '../../shared/api/features'
+import { listSchools } from '../../shared/api/schools'
 import { createManualSync } from '../../shared/api/sync'
-import { BindingSummary, FeatureDisplayConfig, FeatureDisplayField, ProfileData } from '../../shared/api/types'
+import {
+  FeatureDisplayConfig,
+  FeatureDisplayField,
+  ProfileData,
+  SchoolListItem,
+  StudentAccountSummary,
+} from '../../shared/api/types'
 import { formatTime } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
-import { clearStoredBindingId, getStoredBindingId } from '../../shared/storage'
+import { clearStoredAccountId, getStoredAccountId } from '../../shared/storage'
 
 type EditField = {
   key: keyof ProfileData
@@ -32,7 +39,7 @@ const EDIT_FIELDS: EditField[] = [
   { key: 'email', label: '邮箱' },
   { key: 'nativePlace', label: '籍贯' },
   { key: 'enrollmentDate', label: '入学时间' },
-  { key: 'studentStatus', label: '学生状态' },
+  { key: 'studentStatus', label: '学籍状态' },
   { key: 'dormitory', label: '宿舍信息' },
   { key: 'counselor', label: '辅导员' },
 ]
@@ -44,12 +51,12 @@ const FALLBACK_DETAIL_FIELDS: FeatureDisplayField[] = [
   { key: 'email', label: '邮箱' },
 ]
 
-function formatBindingStatus(status?: BindingSummary['status']) {
+function formatAccountStatus(status?: StudentAccountSummary['status']) {
   if (status === 'unbound' || status === 'disabled') {
-    return '未绑定'
+    return '未登录'
   }
 
-  return status ? '已绑定' : '未知'
+  return status ? '已登录' : '未知'
 }
 
 function getText(value: unknown, fallback = '暂无') {
@@ -114,7 +121,11 @@ function rowsToProfile(rows: EditRow[]): ProfileData {
 }
 
 export default function ProfilePage() {
-  const [binding, setBinding] = useState<BindingSummary | null>(null)
+  const [account, setAccount] = useState<StudentAccountSummary | null>(null)
+  const [hasStoredAccount, setHasStoredAccount] = useState(() => Boolean(getStoredAccountId()))
+  const [schools, setSchools] = useState<SchoolListItem[]>([])
+  const [keyword, setKeyword] = useState('')
+  const [searching, setSearching] = useState(false)
   const [profile, setProfile] = useState<ProfileData>({})
   const [profileDisplay, setProfileDisplay] = useState<FeatureDisplayConfig | undefined>()
   const [syncUsername, setSyncUsername] = useState('')
@@ -125,33 +136,53 @@ export default function ProfilePage() {
   const [editRows, setEditRows] = useState<EditRow[]>([])
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
+  const requestSeq = useRef(0)
+  const searchCache = useRef(new Map<string, SchoolListItem[]>())
 
-  useEffect(() => {
-    const bindingId = getStoredBindingId()
+  useDidShow(() => {
+    const accountId = getStoredAccountId()
 
-    if (!bindingId) {
-      setErrorText('请先绑定学校账号')
+    if (!accountId) {
+      setHasStoredAccount(false)
+      setAccount(null)
+      setProfile({})
+      setProfileDisplay(undefined)
+      setMessage('')
+      setErrorText('')
       return
     }
 
-    void loadBinding(bindingId)
-  }, [])
+    setHasStoredAccount(true)
+    void loadAccount(accountId)
+  })
 
-  const bindingDisplayName = binding ? binding.displayName : undefined
+  useEffect(() => {
+    if (hasStoredAccount) {
+      return undefined
+    }
+
+    const timer = setTimeout(() => {
+      void searchSchools(keyword)
+    }, 220)
+
+    return () => clearTimeout(timer)
+  }, [hasStoredAccount, keyword])
+
+  const accountDisplayName = account ? account.displayName : undefined
   const profileSource = useMemo(
     () => ({
       ...profile,
-      displayName: bindingDisplayName,
-      bindingStatus: formatBindingStatus(binding ? binding.status : undefined),
-      schoolName: (binding && binding.school && binding.school.name) || '未绑定',
-      lastCachedAt: formatTime(binding ? binding.lastCachedAt : undefined),
+      displayName: accountDisplayName,
+      accountStatus: formatAccountStatus(account ? account.status : undefined),
+      schoolName: (account && account.school && account.school.name) || '未登录',
+      lastCachedAt: formatTime(account ? account.lastCachedAt : undefined),
     }),
-    [binding, bindingDisplayName, profile],
+    [account, accountDisplayName, profile],
   )
 
   const student = useMemo(
     () => ({
-      name: getText(profileSource.name || profileSource.displayName, '课程表用户'),
+      name: getText(profileSource.name || profileSource.displayName, '课表用户'),
       number: getText(profileSource.maskedStudentId || profileSource.studentId, '暂无学号'),
       major: getText(profileSource.major, '暂无专业信息'),
       className: getText(profileSource.className, ''),
@@ -161,37 +192,34 @@ export default function ProfilePage() {
     [profileSource],
   )
 
-  const baseInfo = useMemo(
-    () => {
-      const schoolRows = [
-        { label: '绑定状态', value: String(profileSource.bindingStatus) },
-        { label: '学校', value: String(profileSource.schoolName) },
-        { label: '学号', value: student.number },
-      ]
-      const detailRows = getDetailFields(profileDisplay)
-        .filter((field) => !['studentId', 'maskedStudentId'].includes(field.key))
-        .map((field) => ({
-          label: field.label,
-          value: getProfileValue(profileSource, field),
-        }))
+  const baseInfo = useMemo(() => {
+    const schoolRows = [
+      { label: '账号状态', value: String(profileSource.accountStatus) },
+      { label: '学校', value: String(profileSource.schoolName) },
+      { label: '学号', value: student.number },
+    ]
+    const detailRows = getDetailFields(profileDisplay)
+      .filter((field) => !['studentId', 'maskedStudentId'].includes(field.key))
+      .map((field) => ({
+        label: field.label,
+        value: getProfileValue(profileSource, field),
+      }))
 
-      return [
-        ...schoolRows,
-        ...detailRows,
-        { label: '课表缓存', value: String(profileSource.lastCachedAt) },
-      ]
-    },
-    [profileDisplay, profileSource, student.number],
-  )
+    return [
+      ...schoolRows,
+      ...detailRows,
+      { label: '更新时间', value: String(profileSource.lastCachedAt) },
+    ]
+  }, [profileDisplay, profileSource, student.number])
 
-  async function loadBinding(bindingId: string) {
+  async function loadAccount(accountId: string) {
     setErrorText('')
 
     try {
-      const bindingData = await getBinding(bindingId)
-      setBinding(bindingData)
+      const accountData = await getAccount(accountId)
+      setAccount(accountData)
 
-      const profileData = await getProfile(bindingId)
+      const profileData = await getProfile(accountId)
       setProfile(profileData.data || {})
       setProfileDisplay(profileData.display)
     } catch (error) {
@@ -199,8 +227,57 @@ export default function ProfilePage() {
     }
   }
 
+  async function searchSchools(value: string) {
+    const text = value.trim()
+    if (searchCache.current.has(text)) {
+      setSchools((searchCache.current.get(text) || []).filter((school) => school.enabled))
+      return
+    }
+
+    const seq = requestSeq.current + 1
+    requestSeq.current = seq
+    setSearching(true)
+    setErrorText('')
+
+    try {
+      const result = await listSchools({ keyword: text, limit: 30, enabledOnly: true })
+      if (seq !== requestSeq.current) return
+      searchCache.current.set(text, result.items)
+      setSchools(result.items.filter((school) => school.enabled))
+    } catch (error) {
+      if (seq === requestSeq.current) {
+        setErrorText(error instanceof Error ? error.message : '学校列表加载失败')
+      }
+    } finally {
+      if (seq === requestSeq.current) setSearching(false)
+    }
+  }
+
+  function selectSchoolForLogin(school: SchoolListItem) {
+    const params = [
+      ['schoolId', school.id],
+      ['schoolName', school.name],
+      ['shortName', school.shortName],
+      ['city', school.city],
+      ['province', school.province],
+      ['level', school.level],
+      ['status', school.status],
+      ['enabled', String(school.enabled)],
+    ]
+      .filter((item): item is [string, string] => Boolean(item[1]))
+      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .join('&')
+
+    Taro.navigateTo({ url: `/pages/bind/index?${params}` })
+  }
+
+  function openSchoolSubmission() {
+    const query = keyword.trim() ? `?schoolName=${encodeURIComponent(keyword.trim())}` : ''
+    Taro.navigateTo({ url: `/pages/submission/index${query}` })
+  }
+
   function openProfileEditor() {
-    if (!(binding && binding.id)) {
+    if (!(account && account.id)) {
       Taro.navigateTo({ url: '/pages/bind/index' })
       return
     }
@@ -222,7 +299,7 @@ export default function ProfilePage() {
   }
 
   async function handleSaveProfile() {
-    if (!(binding && binding.id) || savingProfile) {
+    if (!(account && account.id) || savingProfile) {
       return
     }
 
@@ -231,12 +308,12 @@ export default function ProfilePage() {
     setErrorText('')
 
     try {
-      const response = await saveProfile(binding.id, rowsToProfile(editRows))
+      const response = await saveProfile(account.id, rowsToProfile(editRows))
       setProfile(response.data || {})
       setEditVisible(false)
       setMessage('个人信息已保存')
       Taro.showToast({ title: '已保存', icon: 'success' })
-      await loadBinding(binding.id)
+      await loadAccount(account.id)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '保存失败')
     } finally {
@@ -245,7 +322,7 @@ export default function ProfilePage() {
   }
 
   async function handleSync() {
-    if (!(binding && binding.id)) {
+    if (!(account && account.id)) {
       Taro.navigateTo({ url: '/pages/bind/index' })
       return
     }
@@ -260,13 +337,13 @@ export default function ProfilePage() {
     setErrorText('')
 
     try {
-      const job = await createManualSync(binding.id, 'course', {
+      const job = await createManualSync(account.id, 'course', {
         username: syncUsername.trim(),
         password: syncPassword,
       })
       setMessage(job.status === 'success' ? '课表已同步' : `同步状态：${job.status}`)
       setSyncPassword('')
-      await loadBinding(binding.id)
+      await loadAccount(account.id)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '同步失败')
     } finally {
@@ -274,19 +351,80 @@ export default function ProfilePage() {
     }
   }
 
-  async function handleUnbind() {
-    if (!(binding && binding.id)) {
+  async function handleLogout() {
+    if (!(account && account.id)) {
       return
     }
 
     try {
-      await unbind(binding.id)
-      clearStoredBindingId()
-      setMessage('已退出绑定')
+      await deactivateAccount(account.id)
+      clearStoredAccountId()
+      setHasStoredAccount(false)
+      setAccount(null)
+      setProfile({})
+      setProfileDisplay(undefined)
+      setMessage('已退出账号')
       Taro.navigateTo({ url: '/pages/bind/index' })
     } catch (error) {
-      setErrorText(error instanceof Error ? error.message : '退出绑定失败')
+      setErrorText(error instanceof Error ? error.message : '退出失败')
     }
+  }
+
+  if (!hasStoredAccount) {
+    return (
+      <PageShell title='个人' activeTab='profile' contentClassName='login-content'>
+        <View className='login-hero'>
+          <View className='hero-icon'>
+            <View className='hero-icon-book' />
+          </View>
+          <View className='title'>选择学校</View>
+          <View className='subtitle'>选择你的学校后，将进入对应的教务认证流程。</View>
+        </View>
+
+        {errorText && <View className='status status-error'>{errorText}</View>}
+
+        <View className='panel'>
+          <View className='field school-field'>
+            <View className='label-row'>
+              <Text className='label'>学校</Text>
+              <Text className='field-hint'>{searching ? '正在搜索' : '可选择学校'}</Text>
+            </View>
+            <Input
+              className='input'
+              value={keyword}
+              placeholder='搜索或选择学校'
+              onInput={(event) => setKeyword(event.detail.value)}
+            />
+            <View className='school-list'>
+              {schools.map((school) => (
+                <View
+                  className='school-option'
+                  key={school.id}
+                  onClick={() => selectSchoolForLogin(school)}
+                >
+                  <View className='school-option-main'>
+                    <Text className='school-name'>{school.name}</Text>
+                  </View>
+                  <View className='row-arrow' />
+                </View>
+              ))}
+              {!searching && schools.length === 0 && (
+                <View className='empty-state'>
+                  <Text className='empty-title'>未找到匹配学校</Text>
+                  <Text className='empty-desc'>可以提交学校接入申请</Text>
+                </View>
+              )}
+            </View>
+          </View>
+          <View className='card-gap'>
+            <Button className='button button-secondary' onClick={openSchoolSubmission}>
+              申请添加学校
+            </Button>
+            <Text className='item-meta'>留下联系方式后，管理员会主动联系你。</Text>
+          </View>
+        </View>
+      </PageShell>
+    )
   }
 
   return (
@@ -325,7 +463,7 @@ export default function ProfilePage() {
         ))}
       </View>
 
-      {binding && binding.id && (
+      {account && account.id && (
         <View className='soft-card feedback-card card-gap'>
           <Text className='item-title'>手动同步课表</Text>
           <Text className='item-meta'>像登录学校官网一样输入教务系统账号密码。</Text>
@@ -341,7 +479,6 @@ export default function ProfilePage() {
             <Input
               className='input'
               password
-              type='password'
               value={syncPassword}
               placeholder='教务系统密码'
               onInput={(event) => setSyncPassword(event.detail.value)}
@@ -356,7 +493,7 @@ export default function ProfilePage() {
       <View className='soft-card action-panel'>
         <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/bind/index' })}>
           <View className='action-icon action-refresh' />
-          <Text>绑定学校账号</Text>
+          <Text>登录学校账号</Text>
           <View className='row-arrow' />
         </View>
         <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/feedback/index' })}>
@@ -374,9 +511,9 @@ export default function ProfilePage() {
           <Text>关于</Text>
           <View className='row-arrow' />
         </View>
-        {binding && binding.id && (
-          <Button className='button button-danger' onClick={handleUnbind}>
-            退出绑定
+        {account && account.id && (
+          <Button className='button button-danger' onClick={handleLogout}>
+            退出账号
           </Button>
         )}
       </View>

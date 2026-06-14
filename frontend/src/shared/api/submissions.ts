@@ -2,7 +2,6 @@ import { requestApi } from './client'
 import { SchoolSubmissionResponse } from './types'
 
 export interface CreateSchoolSubmissionInput {
-  submitterUserId?: string
   schoolName: string
   province?: string
   city?: string

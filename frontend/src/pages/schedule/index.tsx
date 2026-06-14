@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useDidShow } from '@tarojs/taro'
 import { Text, View } from '@tarojs/components'
 
 import { getTimetable } from '../../shared/api/timetable'
 import { CourseItem, FeatureDisplayField, TimetableCacheResponse } from '../../shared/api/types'
 import { SECTION_TIMES, getCourseSections, getCourseTone } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
-import { getStoredBindingId } from '../../shared/storage'
+import { getStoredAccountId } from '../../shared/storage'
 
 const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const TOTAL_SECTIONS = 13
@@ -38,7 +39,7 @@ function getCourseValue(course: CourseItem, field: FeatureDisplayField) {
 }
 
 export default function SchedulePage() {
-  const [bindingId, setBindingId] = useState('')
+  const [accountId, setAccountId] = useState('')
   const [timetable, setTimetable] = useState<TimetableCacheResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [errorText, setErrorText] = useState('')
@@ -75,18 +76,24 @@ export default function SchedulePage() {
       .filter((lesson): lesson is PositionedLesson => Boolean(lesson))
   }, [timetable])
 
-  useEffect(() => {
-    const id = getStoredBindingId()
-    setBindingId(id)
+  useDidShow(() => {
+    const id = getStoredAccountId()
+    setAccountId(id)
+
+    if (!id) {
+      setTimetable(null)
+      setLoading(false)
+      setErrorText('')
+      return
+    }
 
     if (id) {
       void loadTimetable(id)
     }
-  }, [])
+  })
 
-  async function loadTimetable(id = bindingId) {
+  async function loadTimetable(id = accountId) {
     if (!id) {
-      setErrorText('请先绑定学校账号')
       return
     }
 
@@ -144,7 +151,7 @@ export default function SchedulePage() {
       <View className='schedule-filters'>
         <View className='filter-picker semester-picker'>
           <View className='filter-select'>
-          <Text>{(timetable && timetable.termId) || '当前学期'}</Text>
+            <Text>{(timetable && timetable.termId) || '当前学期'}</Text>
             <View className='chevron-down' />
           </View>
         </View>

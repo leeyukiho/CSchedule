@@ -10,7 +10,7 @@ export interface LoginSubmitRequest {
 }
 
 export interface LoginSubmitResponse {
-  bindingId: string
+  accountId: string
   sessionId?: string
   status: 'success' | 'cached' | 'need_webview_fetch'
   sessionReusable?: boolean
@@ -22,7 +22,7 @@ export interface LoginSubmitResponse {
 
 export interface SessionImportFallbackResponse {
   status: 'need_webview_client_fetch'
-  bindingId: string
+  accountId: string
   requiredFetchTargets: DataTarget[]
   message: string
 }
@@ -37,7 +37,7 @@ export function submitLogin(schoolId: string, data: LoginSubmitRequest) {
 
 export function importSession(
   schoolId: string,
-  data: { contextId?: string; bindingId?: string; session?: unknown },
+  data: { contextId?: string; accountId?: string; session?: unknown },
 ) {
   return requestApi<SessionImportFallbackResponse, typeof data>({
     method: 'POST',

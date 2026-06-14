@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useDidShow } from '@tarojs/taro'
 import { Text, View } from '@tarojs/components'
 
 import { getExams, getScores } from '../../shared/api/features'
 import { FeatureCacheResponse, FeatureDisplayConfig, FeatureDisplayField } from '../../shared/api/types'
 import { formatTime } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
-import { getStoredBindingId } from '../../shared/storage'
+import { getStoredAccountId } from '../../shared/storage'
 
 type ScoreGroup = {
   id: string
@@ -107,23 +108,30 @@ function countScoreItems(groups: ScoreGroup[]) {
 export default function GradesPage() {
   const [scores, setScores] = useState<FeatureCacheResponse | null>(null)
   const [exams, setExams] = useState<FeatureCacheResponse | null>(null)
+  const [loading, setLoading] = useState(false)
   const [errorText, setErrorText] = useState('')
 
-  useEffect(() => {
-    const bindingId = getStoredBindingId()
+  useDidShow(() => {
+    const accountId = getStoredAccountId()
 
-    if (!bindingId) {
-      setErrorText('请先绑定学校账号')
+    if (!accountId) {
+      setScores(null)
+      setExams(null)
+      setLoading(false)
+      setErrorText('')
       return
     }
 
-    void Promise.all([getScores(bindingId), getExams(bindingId)])
+    setLoading(true)
+    setErrorText('')
+    void Promise.all([getScores(accountId), getExams(accountId)])
       .then(([scoreData, examData]) => {
         setScores(scoreData)
         setExams(examData)
       })
-      .catch((error) => setErrorText(error instanceof Error ? error.message : '能力缓存读取失败'))
-  }, [])
+      .catch((error) => setErrorText(error instanceof Error ? error.message : '成绩读取失败'))
+      .finally(() => setLoading(false))
+  })
 
   const scoreSummary = buildSummary(scores?.data, scores?.display)
   const scoreGroups = buildScoreGroups(scores?.data, scores?.display)
@@ -148,6 +156,7 @@ export default function GradesPage() {
       </View>
 
       {errorText && <View className='status status-error'>{errorText}</View>}
+      {loading && <View className='soft-card state-card'>正在读取成绩...</View>}
 
       <View className='filter'>
         <Text>考试安排</Text>
@@ -155,7 +164,7 @@ export default function GradesPage() {
       </View>
       <View className='soft-card exam-stack'>
         <View className='exam-stack-main'>
-          <View className='exam-stack-title'>{exams && exams.data ? '考试缓存已同步' : '暂无考试缓存'}</View>
+          <View className='exam-stack-title'>{exams && exams.data ? '考试安排已同步' : '暂无考试安排'}</View>
           <View className='exam-stack-subtitle'>同步时间：{formatTime(exams ? exams.syncedAt : undefined)}</View>
         </View>
         <View className='exam-stack-count'>{exams && exams.data ? 1 : 0}</View>
@@ -201,7 +210,7 @@ export default function GradesPage() {
       ))}
       {!scoreGroups.length && (
         <View className='soft-card semester-card'>
-          <View className='grade-state'>{scores?.display?.emptyText || '暂无成绩缓存'}</View>
+          <View className='grade-state'>{scores?.display?.emptyText || '暂无成绩数据'}</View>
         </View>
       )}
     </PageShell>

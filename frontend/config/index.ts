@@ -59,7 +59,10 @@ export default defineConfig<'webpack5'>(async (merge) => {
       }
     },
     h5: {
-      publicPath: '/',
+      publicPath: './',
+      router: {
+        mode: 'hash',
+      },
       staticDirectory: 'static',
       output: {
         filename: 'js/[name].[hash:8].js',

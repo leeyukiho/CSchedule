@@ -3,7 +3,7 @@ import { Button, Input, Text, Textarea, View } from '@tarojs/components'
 
 import { submitFeedback } from '../../shared/api/feedback'
 import { PageShell } from '../../shared/layout'
-import { getStoredBindingId } from '../../shared/storage'
+import { getStoredAccountId } from '../../shared/storage'
 
 export default function FeedbackPage() {
   const [content, setContent] = useState('')
@@ -19,7 +19,7 @@ export default function FeedbackPage() {
 
     try {
       const result = await submitFeedback({
-        bindingId: getStoredBindingId() || undefined,
+        accountId: getStoredAccountId() || undefined,
         content,
         contact,
       })
@@ -51,7 +51,12 @@ export default function FeedbackPage() {
         </View>
         <View className='field'>
           <Text className='label'>联系方式</Text>
-          <Input className='input' value={contact} placeholder='选填，便于后续联系' onInput={(event) => setContact(event.detail.value)} />
+          <Input
+            className='input'
+            value={contact}
+            placeholder='选填，便于后续联系'
+            onInput={(event) => setContact(event.detail.value)}
+          />
         </View>
         <Button className='submit-button' loading={loading} onClick={submit}>
           提交反馈

@@ -1,32 +1,50 @@
 import { requestApi } from './client'
 import { FeatureCacheResponse, ProfileData } from './types'
 
-export function getScores(bindingId: string, termId?: string) {
+function normalizeFeatureCache<TData = unknown>(response: FeatureCacheResponse<TData>): FeatureCacheResponse<TData> {
+  return {
+    ...response,
+    meta: response.meta ?? {},
+  }
+}
+
+export async function getScores(accountId: string, termId?: string) {
   const query = termId ? `?termId=${encodeURIComponent(termId)}` : ''
 
-  return requestApi<FeatureCacheResponse>({
-    path: `/bindings/${encodeURIComponent(bindingId)}/scores${query}`,
+  const response = await requestApi<FeatureCacheResponse>({
+    path: `/account/${encodeURIComponent(accountId)}/scores${query}`,
   })
+
+  return normalizeFeatureCache(response)
 }
 
-export function getExams(bindingId: string, termId?: string) {
+export async function getExams(accountId: string, termId?: string) {
   const query = termId ? `?termId=${encodeURIComponent(termId)}` : ''
 
-  return requestApi<FeatureCacheResponse>({
-    path: `/bindings/${encodeURIComponent(bindingId)}/exams${query}`,
+  const response = await requestApi<FeatureCacheResponse>({
+    path: `/account/${encodeURIComponent(accountId)}/exams${query}`,
   })
+
+  return normalizeFeatureCache(response)
 }
 
-export function getProfile(bindingId: string) {
-  return requestApi<FeatureCacheResponse<ProfileData>>({
-    path: `/bindings/${encodeURIComponent(bindingId)}/profile`,
+export async function getProfile(accountId: string) {
+  const response = await requestApi<FeatureCacheResponse<ProfileData>>({
+    path: `/account/${encodeURIComponent(accountId)}/profile`,
   })
+
+  return {
+    ...normalizeFeatureCache(response),
+    data: response.data && typeof response.data === 'object' && !Array.isArray(response.data)
+      ? response.data
+      : {},
+  }
 }
 
-export function saveProfile(bindingId: string, profile: ProfileData) {
+export function saveProfile(accountId: string, profile: ProfileData) {
   return requestApi<FeatureCacheResponse<ProfileData>, { profile: ProfileData }>({
     method: 'POST',
-    path: `/bindings/${encodeURIComponent(bindingId)}/profile`,
+    path: `/account/${encodeURIComponent(accountId)}/profile`,
     data: { profile },
   })
 }

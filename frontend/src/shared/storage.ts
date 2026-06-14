@@ -1,25 +1,47 @@
 import Taro from '@tarojs/taro'
 
-const BINDING_ID_KEY = 'cschedule.bindingId'
-const USER_ID_KEY = 'cschedule.userId'
+const AUTH_STATE_KEY = 'cschedule.authState'
 
-export function getStoredBindingId() {
-  return String(Taro.getStorageSync(BINDING_ID_KEY) || '')
+export interface StoredAuthState {
+  accountId: string
+  schoolId: string
+  updatedAt: string
 }
 
-export function setStoredBindingId(bindingId: string) {
-  Taro.setStorageSync(BINDING_ID_KEY, bindingId)
+function normalizeAuthState(value: unknown): StoredAuthState {
+  const state = value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Partial<StoredAuthState>)
+    : {}
+
+  const accountId = typeof state.accountId === 'string' ? state.accountId : ''
+
+  if (accountId && typeof state.schoolId === 'string') {
+    return {
+      accountId,
+      schoolId: state.schoolId,
+      updatedAt: typeof state.updatedAt === 'string' ? state.updatedAt : '',
+    }
+  }
+
+  return { accountId: '', schoolId: '', updatedAt: '' }
 }
 
-export function clearStoredBindingId() {
-  Taro.removeStorageSync(BINDING_ID_KEY)
+export function getStoredAuthState(): StoredAuthState {
+  return normalizeAuthState(Taro.getStorageSync(AUTH_STATE_KEY))
 }
 
-export function getStoredUserId() {
-  return String(Taro.getStorageSync(USER_ID_KEY) || '')
+export function getStoredAccountId() {
+  return getStoredAuthState().accountId
 }
 
-export function setStoredUserId(userId: string) {
-  Taro.setStorageSync(USER_ID_KEY, userId)
+export function setStoredAccountId(accountId: string, schoolId = '') {
+  Taro.setStorageSync(AUTH_STATE_KEY, {
+    accountId,
+    schoolId,
+    updatedAt: new Date().toISOString(),
+  })
 }
 
+export function clearStoredAccountId() {
+  Taro.removeStorageSync(AUTH_STATE_KEY)
+}

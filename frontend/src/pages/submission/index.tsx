@@ -1,14 +1,27 @@
 import { useState } from 'react'
+import Taro from '@tarojs/taro'
 import { Button, Input, Text, Textarea, View } from '@tarojs/components'
 import { submitSchoolAccess } from '../../shared/api/submissions'
 import { PageShell } from '../../shared/layout'
 
+function decodeRouteParam(value?: string) {
+  if (!value) return ''
+
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
 export default function SubmissionPage() {
-  const [schoolName, setSchoolName] = useState('')
+  const routeParams = Taro.getCurrentInstance().router?.params || {}
+  const [schoolName, setSchoolName] = useState(() => decodeRouteParam(routeParams.schoolName))
   const [province, setProvince] = useState('')
   const [city, setCity] = useState('')
   const [loginUrl, setLoginUrl] = useState('')
   const [eduSystemWebsite, setEduSystemWebsite] = useState('')
+  const [contact, setContact] = useState('')
   const [note, setNote] = useState('')
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
@@ -29,7 +42,10 @@ export default function SubmissionPage() {
         city: city.trim() || undefined,
         loginUrl: loginUrl.trim() || undefined,
         eduSystemWebsite: eduSystemWebsite.trim() || undefined,
-        note: note.trim() || undefined,
+        note: [
+          contact.trim() ? `联系方式：${contact.trim()}` : '',
+          note.trim() ? `备注：${note.trim()}` : '',
+        ].filter(Boolean).join('\n') || undefined,
         requestedTargets: ['course'],
       })
       setMessage('已提交：' + result.id)
@@ -38,6 +54,7 @@ export default function SubmissionPage() {
       setCity('')
       setLoginUrl('')
       setEduSystemWebsite('')
+      setContact('')
       setNote('')
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '提交失败')
@@ -48,7 +65,7 @@ export default function SubmissionPage() {
 
   return (
     <PageShell title='学校接入申请' back subPage>
-      <Text className='page-subtitle'>提交未收录学校的教务系统信息，我们将尽快调研接入。</Text>
+      <Text className='page-subtitle'>提交学校和联系方式，管理员会主动联系你确认接入信息。</Text>
       {message && <View className='status'>{message}</View>}
       {errorText && <View className='status status-error'>{errorText}</View>}
       <View className='panel'>
@@ -86,6 +103,13 @@ export default function SubmissionPage() {
             <Text className='field-hint'>选填</Text>
           </View>
           <Input className='input' value={eduSystemWebsite} placeholder='教务系统主页或统一认证入口' onInput={(e) => setEduSystemWebsite(e.detail.value)} />
+        </View>
+        <View className='field'>
+          <View className='label-row'>
+            <Text className='label'>联系方式</Text>
+            <Text className='field-hint'>选填</Text>
+          </View>
+          <Input className='input' value={contact} placeholder='手机号、微信或邮箱' onInput={(e) => setContact(e.detail.value)} />
         </View>
         <View className='field'>
           <View className='label-row'>

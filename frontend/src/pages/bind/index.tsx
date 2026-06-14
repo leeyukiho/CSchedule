@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import Taro from '@tarojs/taro'
 import { Button, Input, Text, View } from '@tarojs/components'
 
@@ -7,7 +7,7 @@ import { createLoginContext, listSchools } from '../../shared/api/schools'
 import { LoginContextResponse, LoginField, SchoolListItem } from '../../shared/api/types'
 import { formatSchoolMeta } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
-import { setStoredBindingId } from '../../shared/storage'
+import { setStoredAccountId } from '../../shared/storage'
 
 type LoginForm = Record<string, string>
 type BindStep = 'select_school' | 'login'
@@ -37,15 +37,48 @@ function getVisibleFields(loginContext: LoginContextResponse | null) {
   return fields.filter((field) => field.type !== 'hidden' && !HIDDEN_FIELD_NAMES.has(field.name))
 }
 
-function getKeyboardType(field: LoginField) {
-  return field.type === 'password' ? 'password' : 'text'
-}
-
 function formatLoginMode(mode?: string) {
   if (mode === 'cas_webview' || mode === 'oauth_webview') return '网页授权'
   if (mode === 'password_captcha') return '账号密码 + 验证码'
   if (mode === 'qrcode') return '扫码登录'
   return '账号密码'
+}
+
+function decodeRouteParam(value?: string) {
+  if (!value) return ''
+
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+function getInitialSchoolFromRoute(): SchoolListItem | null {
+  const params = Taro.getCurrentInstance().router?.params || {}
+  const id = decodeRouteParam(params.schoolId)
+  const name = decodeRouteParam(params.schoolName)
+
+  if (!id) {
+    return null
+  }
+
+  return {
+    id,
+    name: name || '已选择学校',
+    shortName: decodeRouteParam(params.shortName) || undefined,
+    city: decodeRouteParam(params.city) || undefined,
+    province: decodeRouteParam(params.province) || undefined,
+    level: decodeRouteParam(params.level) || undefined,
+    status: (decodeRouteParam(params.status) || 'enabled') as SchoolListItem['status'],
+    enabled: decodeRouteParam(params.enabled) !== 'false',
+    capabilities: {
+      course: true,
+      score: false,
+      exam: false,
+      profile: false,
+    },
+  }
 }
 
 export default function BindPage() {
@@ -62,6 +95,8 @@ export default function BindPage() {
   const [step, setStep] = useState<BindStep>('select_school')
   const requestSeq = useRef(0)
   const contextSeq = useRef(0)
+  const initialSchoolApplied = useRef(false)
+  const initialSchool = useRef<SchoolListItem | null>(getInitialSchoolFromRoute())
   const searchCache = useRef(new Map<string, SchoolListItem[]>())
 
   const visibleFields = useMemo(() => getVisibleFields(loginContext), [loginContext])
@@ -75,6 +110,18 @@ export default function BindPage() {
     }, 220)
     return () => clearTimeout(timer)
   }, [keyword])
+
+  useEffect(() => {
+    const routeSchool = initialSchool.current
+
+    if (!routeSchool || initialSchoolApplied.current || selectedSchool) {
+      return
+    }
+
+    const matchedSchool = schools.find((school) => school.id === routeSchool.id)
+    initialSchoolApplied.current = true
+    void selectSchool(matchedSchool || routeSchool, false)
+  }, [schools, selectedSchool])
 
   async function searchSchools(value: string) {
     const text = value.trim()
@@ -177,7 +224,7 @@ export default function BindPage() {
         ),
       })
 
-      setStoredBindingId(result.bindingId)
+      setStoredAccountId(result.accountId, selectedSchool.id)
 
       if (result.status === 'need_webview_fetch') {
         const webview = context.webview
@@ -187,8 +234,10 @@ export default function BindPage() {
           const targets = result.requiredFetchTargets || (webview ? webview.requiredFetchTargets : undefined) || ['course']
           Taro.navigateTo({
             url:
-              '/pages/webview-sync/index?bindingId=' +
-              encodeURIComponent(result.bindingId) +
+              '/pages/webview-sync/index?accountId=' +
+              encodeURIComponent(result.accountId) +
+              '&schoolId=' +
+              encodeURIComponent(selectedSchool.id) +
               '&contextId=' +
               encodeURIComponent(context.contextId) +
               '&url=' +
@@ -199,12 +248,12 @@ export default function BindPage() {
           return
         }
 
-        setMessage('已创建绑定，请继续完成学校页面登录。')
+        setMessage('已创建账号，请继续完成学校网页登录。')
       } else {
-        setMessage('绑定成功，课表已获取。')
+        setMessage('登录成功，课表已获取。')
       }
 
-      Taro.switchTab({ url: '/pages/schedule/index' })
+      Taro.switchTab({ url: '/pages/index/index' })
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '绑定失败')
     } finally {
@@ -253,7 +302,7 @@ export default function BindPage() {
                 placeholder='搜索或选择学校'
                 onInput={(event) => setKeyword(event.detail.value)}
               />
-                <View className='school-list'>
+              <View className='school-list'>
                 {schools.map((school) => {
                   const active = selectedSchool ? school.id === selectedSchool.id : false
                   return (
@@ -306,7 +355,6 @@ export default function BindPage() {
                   <Input
                     className='input'
                     password={field.type === 'password'}
-                    type={getKeyboardType(field)}
                     value={form[field.name] || ''}
                     placeholder={field.placeholder || `请输入${field.label}`}
                     onInput={(event) => updateField(field.name, event.detail.value)}

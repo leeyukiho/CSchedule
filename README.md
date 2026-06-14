@@ -30,3 +30,4 @@
 执行 `cd frontend && pnpm dev:weapp` 后，导入 `frontend/dist` 目录。
 
 运行、构建和部署请查看 [`docs/运行构建部署.md`](docs/运行构建部署.md)。
+管理员后台页面：frontend/admin-frontend/index.html

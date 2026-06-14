@@ -1,22 +1,22 @@
 import Taro from '@tarojs/taro'
-import { Button, Text, View } from '@tarojs/components'
+import { Button, View } from '@tarojs/components'
 
-import { unbind } from '../../shared/api/bindings'
+import { deactivateAccount } from '../../shared/api/accounts'
 import { PageShell } from '../../shared/layout'
-import { clearStoredBindingId, getStoredBindingId } from '../../shared/storage'
+import { clearStoredAccountId, getStoredAccountId } from '../../shared/storage'
 
 export default function SettingsPage() {
   async function clearCache() {
-    const bindingId = getStoredBindingId()
+    const accountId = getStoredAccountId()
 
     try {
-      if (bindingId) {
-        await unbind(bindingId)
+      if (accountId) {
+        await deactivateAccount(accountId)
       }
 
-      clearStoredBindingId()
+      clearStoredAccountId()
       Taro.showToast({ title: '已清理缓存', icon: 'success' })
-      Taro.navigateTo({ url: '/pages/bind/index' })
+      Taro.switchTab({ url: '/pages/profile/index' })
     } catch (error) {
       Taro.showToast({
         title: error instanceof Error ? error.message : '清理失败',
@@ -30,14 +30,7 @@ export default function SettingsPage() {
       <View className='soft-card settings-card'>
         <View className='settings-row'>
           <View>
-            <View className='settings-title'>自动缓存</View>
-            <View className='settings-desc'>课表、成绩和个人资料会缓存在本机，减少重复加载。</View>
-          </View>
-          <View className='small-button'>开启</View>
-        </View>
-        <View className='settings-row'>
-          <View>
-            <View className='settings-title'>本机缓存</View>
+            <View className='settings-title'>清理缓存</View>
             <View className='settings-desc'>清理后需要重新登录学校官网账号。</View>
           </View>
           <Button className='small-button danger-button' onClick={clearCache}>
@@ -45,7 +38,7 @@ export default function SettingsPage() {
           </Button>
         </View>
       </View>
-      <View className='settings-note'>清理缓存会解除当前绑定，并清空本机保存的绑定标识。</View>
+      <View className='settings-note'>清理缓存会退出当前账号，并清空本机保存的登录状态。</View>
     </PageShell>
   )
 }

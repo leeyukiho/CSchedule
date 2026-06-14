@@ -13,7 +13,7 @@ export interface RawDataUploadRequest {
 }
 
 export interface RawDataUploadResponse {
-  bindingId: string
+  accountId: string
   target: DataTarget
   cacheId: string
   status: 'cached'
@@ -22,7 +22,7 @@ export interface RawDataUploadResponse {
 }
 
 export interface WebviewSyncCompleteResponse {
-  bindingId: string
+  accountId: string
   status: 'ready' | 'partial'
   canCloseWebview: boolean
   sessionReusable?: boolean
@@ -30,21 +30,21 @@ export interface WebviewSyncCompleteResponse {
   missingRequiredTargets: DataTarget[]
 }
 
-export function uploadRawData(bindingId: string, data: RawDataUploadRequest) {
+export function uploadRawData(accountId: string, data: RawDataUploadRequest) {
   return requestApi<RawDataUploadResponse, RawDataUploadRequest>({
     method: 'POST',
-    path: `/bindings/${encodeURIComponent(bindingId)}/raw-data`,
+    path: `/account/${encodeURIComponent(accountId)}/raw-data`,
     data,
   })
 }
 
 export function completeWebviewSync(
-  bindingId: string,
+  accountId: string,
   data: { contextId?: string; completedTargets: DataTarget[] },
 ) {
   return requestApi<WebviewSyncCompleteResponse, typeof data>({
     method: 'POST',
-    path: `/bindings/${encodeURIComponent(bindingId)}/webview-sync/complete`,
+    path: `/account/${encodeURIComponent(accountId)}/webview-sync/complete`,
     data,
   })
 }

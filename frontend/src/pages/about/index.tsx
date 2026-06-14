@@ -17,7 +17,7 @@ export default function AboutPage() {
       <View className='soft-card about-card'>
         <View className='about-section-title'>服务说明</View>
         <View className='about-text'>
-          项目通过学校 Provider 获取原始教务数据，解析为统一模型后写入后端缓存。小程序页面只读取缓存，不直接依赖学校系统页面仍然打开。
+          项目通过学校 Provider 获取原始教务数据，解析为统一模型后在小程序内展示。小程序页面不直接依赖学校系统页面持续打开。
         </View>
       </View>
       <View className='soft-card about-card'>

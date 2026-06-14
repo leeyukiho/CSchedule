@@ -82,11 +82,13 @@ export interface SchoolListResponse {
   hasMore: boolean
 }
 
-export interface BindingSessionSummary {
+export type AccountStatus = 'active' | 'need_login' | 'cached_only' | 'disabled' | 'unbound'
+
+export interface AccountSessionSummary {
   sessionReusable: boolean
   sessionRefreshable: boolean
   sessionExpireAt?: string
-  bindingStatus: 'active' | 'need_login' | 'cached_only' | 'disabled' | 'unbound'
+  accountStatus: AccountStatus
 }
 
 export interface LoginField {
@@ -131,7 +133,7 @@ export interface CourseItem {
 }
 
 export interface TimetableCacheResponse {
-  bindingId: string
+  accountId: string
   schoolId: string
   providerId: string
   termId?: string
@@ -140,11 +142,11 @@ export interface TimetableCacheResponse {
   sectionTimes: unknown[]
   display?: FeatureDisplayConfig
   syncedAt?: string
-  session: BindingSessionSummary
+  session: AccountSessionSummary
 }
 
 export interface FeatureCacheResponse<TData = unknown> {
-  bindingId: string
+  accountId: string
   schoolId: string
   providerId: string
   target: Exclude<DataTarget, 'course'>
@@ -153,7 +155,7 @@ export interface FeatureCacheResponse<TData = unknown> {
   meta: unknown
   display?: FeatureDisplayConfig
   syncedAt?: string
-  session: BindingSessionSummary
+  session: AccountSessionSummary
 }
 
 export interface ProfileData {
@@ -178,13 +180,12 @@ export interface ProfileData {
   [key: string]: string | undefined
 }
 
-export interface BindingSummary {
+export interface StudentAccountSummary {
   id: string
-  userId: string
   schoolId: string
   providerId: string
   displayName?: string
-  status: BindingSessionSummary['bindingStatus']
+  status: AccountStatus
   sessionReusable: boolean
   sessionRefreshable: boolean
   sessionExpireAt?: string
@@ -199,7 +200,7 @@ export interface BindingSummary {
 
 export interface SyncJobResponse {
   jobId: string
-  bindingId: string
+  accountId: string
   target: DataTarget
   status:
     | 'pending'
