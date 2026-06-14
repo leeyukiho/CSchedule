@@ -169,6 +169,7 @@ export default function ProfilePage() {
   }, [hasStoredAccount, keyword])
 
   const accountDisplayName = account ? account.displayName : undefined
+  const hasSavedPassword = account?.credentialSaveMode === 'password_vault'
   const profileSource = useMemo(
     () => ({
       ...profile,
@@ -327,7 +328,7 @@ export default function ProfilePage() {
       return
     }
 
-    if (!syncUsername.trim() || !syncPassword) {
+    if (!hasSavedPassword && (!syncUsername.trim() || !syncPassword)) {
       setErrorText('请输入教务系统账号和密码')
       return
     }
@@ -337,10 +338,16 @@ export default function ProfilePage() {
     setErrorText('')
 
     try {
-      const job = await createManualSync(account.id, 'course', {
-        username: syncUsername.trim(),
-        password: syncPassword,
-      })
+      const job = await createManualSync(
+        account.id,
+        'course',
+        hasSavedPassword
+          ? undefined
+          : {
+              username: syncUsername.trim(),
+              password: syncPassword,
+            },
+      )
       setMessage(job.status === 'success' ? '课表已同步' : `同步状态：${job.status}`)
       setSyncPassword('')
       await loadAccount(account.id)
@@ -465,27 +472,35 @@ export default function ProfilePage() {
 
       {account && account.id && (
         <View className='soft-card feedback-card card-gap'>
-          <Text className='item-title'>手动同步课表</Text>
-          <Text className='item-meta'>像登录学校官网一样输入教务系统账号密码。</Text>
-          <View className='field field-gap'>
-            <Input
-              className='input'
-              value={syncUsername}
-              placeholder='教务系统账号'
-              onInput={(event) => setSyncUsername(event.detail.value)}
-            />
-          </View>
-          <View className='field field-gap'>
-            <Input
-              className='input'
-              password
-              value={syncPassword}
-              placeholder='教务系统密码'
-              onInput={(event) => setSyncPassword(event.detail.value)}
-            />
-          </View>
+          <Text className='item-title'>{hasSavedPassword ? '一键更新课表' : '手动同步课表'}</Text>
+          <Text className='item-meta'>
+            {hasSavedPassword
+              ? '将使用已加密保存的教务账号密码更新全部学期课表。'
+              : '像登录学校官网一样输入教务系统账号密码。'}
+          </Text>
+          {!hasSavedPassword && (
+            <View>
+              <View className='field field-gap'>
+                <Input
+                  className='input'
+                  value={syncUsername}
+                  placeholder='教务系统账号'
+                  onInput={(event) => setSyncUsername(event.detail.value)}
+                />
+              </View>
+              <View className='field field-gap'>
+                <Input
+                  className='input'
+                  password
+                  value={syncPassword}
+                  placeholder='教务系统密码'
+                  onInput={(event) => setSyncPassword(event.detail.value)}
+                />
+              </View>
+            </View>
+          )}
           <Button className='button' loading={loading} onClick={handleSync}>
-            同步课表
+            {hasSavedPassword ? '一键更新课表' : '同步课表'}
           </Button>
         </View>
       )}

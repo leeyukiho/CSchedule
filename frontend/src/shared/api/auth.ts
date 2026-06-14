@@ -6,6 +6,7 @@ export interface LoginSubmitRequest {
   username?: string
   password?: string
   captcha?: string
+  credentialSaveMode?: 'none' | 'password_vault'
   extra?: Record<string, unknown>
 }
 

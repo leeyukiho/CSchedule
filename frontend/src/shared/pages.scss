@@ -462,7 +462,7 @@
 }
 
 .week-picker {
-  flex: 0 0 172rpx;
+  flex: 0 0 188rpx;
 }
 
 .filter-select {
@@ -538,6 +538,14 @@
 .weekday-date {
   color: #667085;
   font-size: 20rpx;
+  font-weight: 700;
+}
+
+.weekday-date-active {
+  padding: 4rpx 10rpx;
+  border-radius: 999rpx;
+  background: #fff7ed;
+  color: #ea580c;
 }
 
 .period-index {
@@ -603,6 +611,24 @@
   color: #0f766e;
   border: 1rpx solid #99f6e4;
   background: #d8fbf6;
+}
+
+.back-today-button {
+  position: fixed;
+  right: 32rpx;
+  bottom: calc(148rpx + env(safe-area-inset-bottom));
+  z-index: 30;
+  min-width: 164rpx;
+  height: 72rpx;
+  padding: 0 28rpx;
+  border-radius: 999rpx;
+  background: #2f7bff;
+  color: #ffffff;
+  box-shadow: 0 18rpx 38rpx rgba(47, 123, 255, 0.28);
+  font-size: 26rpx;
+  font-weight: 800;
+  line-height: 72rpx;
+  text-align: center;
 }
 
 .login-hero {
@@ -856,6 +882,38 @@
   background: #ffffff;
   color: #1d4ed8;
   font-size: 24rpx;
+}
+
+.credential-save-card {
+  padding: 24rpx;
+  margin: 6rpx 0 26rpx;
+  border: 1rpx solid #d1fae5;
+  border-radius: 14rpx;
+  background: #f0fdf4;
+}
+
+.credential-save-title {
+  margin-bottom: 10rpx;
+  color: #166534;
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.credential-save-desc {
+  color: #475467;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.credential-save-option {
+  margin-top: 18rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  color: #14532d;
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .empty-state {
@@ -1510,6 +1568,10 @@
   border-bottom: 0;
 }
 
+.settings-row-stack {
+  align-items: flex-start;
+}
+
 .settings-row > view:first-child {
   flex: 1;
   min-width: 0;
@@ -1547,6 +1609,10 @@
 
 .danger-button {
   background: #fff1f2;
+}
+
+.settings-date-button {
+  color: #155eef;
 }
 
 .settings-note {

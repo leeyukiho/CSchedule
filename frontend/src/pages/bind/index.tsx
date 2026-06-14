@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import Taro from '@tarojs/taro'
-import { Button, Input, Text, View } from '@tarojs/components'
+import { Button, Checkbox, Input, Text, View } from '@tarojs/components'
 
 import { submitLogin } from '../../shared/api/auth'
 import { createLoginContext, listSchools } from '../../shared/api/schools'
@@ -81,6 +81,21 @@ function getInitialSchoolFromRoute(): SchoolListItem | null {
   }
 }
 
+function getBindErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : ''
+
+  if (
+    message.includes('教务系统数据同步失败') ||
+    message.includes('教务系统暂时无法访问') ||
+    message.includes('无法定位学生课表参数') ||
+    message.includes('登录后未返回有效会话')
+  ) {
+    return '教务系统响应不稳定，课表还没有获取完成。请保持当前页面，稍后再点一次“登录并获取课表”。'
+  }
+
+  return message || '绑定失败'
+}
+
 export default function BindPage() {
   const [schools, setSchools] = useState<SchoolListItem[]>([])
   const [keyword, setKeyword] = useState('')
@@ -90,6 +105,7 @@ export default function BindPage() {
   const [loading, setLoading] = useState(false)
   const [searching, setSearching] = useState(false)
   const [contextLoading, setContextLoading] = useState(false)
+  const [savePassword, setSavePassword] = useState(false)
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
   const [step, setStep] = useState<BindStep>('select_school')
@@ -102,6 +118,8 @@ export default function BindPage() {
   const visibleFields = useMemo(() => getVisibleFields(loginContext), [loginContext])
   const loginMode = loginContext ? loginContext.mode : undefined
   const isWebviewLogin = loginMode === 'cas_webview' || loginMode === 'oauth_webview'
+  const credentialSave = loginContext?.credentialSave || selectedSchool?.credentialSave
+  const canSavePassword = Boolean(credentialSave?.passwordVaultAllowed) && !isWebviewLogin
   const canBind = Boolean(selectedSchool) && !loading && !contextLoading
 
   useEffect(() => {
@@ -156,6 +174,7 @@ export default function BindPage() {
     setErrorText('')
     setLoginContext(null)
     setForm({})
+    setSavePassword(false)
     if (syncKeyword) setKeyword(school.name)
 
     const seq = contextSeq.current + 1
@@ -178,6 +197,7 @@ export default function BindPage() {
     setStep('select_school')
     setLoginContext(null)
     setForm({})
+    setSavePassword(false)
     setErrorText('')
   }
 
@@ -209,7 +229,7 @@ export default function BindPage() {
     }
 
     setLoading(true)
-    setMessage('')
+    setMessage('正在登录教务系统并获取课表，可能需要十几秒，请不要重复切换页面。')
     setErrorText('')
 
     try {
@@ -219,6 +239,7 @@ export default function BindPage() {
         username: form.username,
         password: form.password,
         captcha: form.captcha,
+        credentialSaveMode: savePassword && canSavePassword ? 'password_vault' : 'none',
         extra: Object.fromEntries(
           Object.entries(form).filter(([key]) => !['username', 'password', 'captcha'].includes(key)),
         ),
@@ -255,7 +276,7 @@ export default function BindPage() {
 
       Taro.switchTab({ url: '/pages/index/index' })
     } catch (error) {
-      setErrorText(error instanceof Error ? error.message : '绑定失败')
+      setErrorText(getBindErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -362,9 +383,30 @@ export default function BindPage() {
                 </View>
               ))}
 
+            {!contextLoading && credentialSave && (
+              <View className='credential-save-card'>
+                <View className='credential-save-title'>
+                  {credentialSave.title || '保存登录信息'}
+                </View>
+                <View className='credential-save-desc'>{credentialSave.notice}</View>
+                {canSavePassword && (
+                  <View
+                    className='credential-save-option'
+                    onClick={() => setSavePassword((value) => !value)}
+                  >
+                    <Checkbox
+                      value='password_vault'
+                      checked={savePassword}
+                    />
+                    <Text>{credentialSave.consentLabel}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
             {!contextLoading && (
               <Button className='button' disabled={!canBind} loading={loading} onClick={bind}>
-                登录并获取课表
+                {loading ? '正在获取课表...' : '登录并获取课表'}
               </Button>
             )}
           </View>
@@ -375,7 +417,9 @@ export default function BindPage() {
         <View className='security-icon' />
         <View>
           <View className='security-title'>安全说明</View>
-          <View className='note'>账号密码仅用于本次登录学校教务系统并获取课表，不会作为长期密码保存。</View>
+          <View className='note'>
+            未勾选保存时，账号密码仅用于本次登录。勾选保存时，账号密码会加密保存，仅用于后续同步教务数据。
+          </View>
         </View>
       </View>
     </PageShell>

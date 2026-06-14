@@ -29,6 +29,20 @@ export interface ProviderCapabilities {
   profile: boolean
 }
 
+export type AutoSyncCapability =
+  | 'manual_only'
+  | 'password_login'
+  | 'password_login_may_need_verification'
+
+export interface CredentialSaveCapability {
+  passwordVaultAllowed: boolean
+  autoSync: AutoSyncCapability
+  scheduledSyncSupported?: boolean
+  title?: string
+  notice: string
+  consentLabel: string
+}
+
 export type FeatureDisplayKind =
   | 'course_grid'
   | 'profile_fields'
@@ -71,6 +85,7 @@ export interface SchoolListItem {
   loginMode?: LoginMode
   dataAccess?: Record<DataTarget, DataAccessMode[]>
   capabilities: ProviderCapabilities
+  credentialSave?: CredentialSaveCapability
   message?: string
 }
 
@@ -116,6 +131,7 @@ export interface LoginContextResponse {
     requiredFetchTargets?: DataTarget[]
     closeAfterCacheWritten: boolean
   }
+  credentialSave?: CredentialSaveCapability
   expireAt: string
 }
 
@@ -186,6 +202,7 @@ export interface StudentAccountSummary {
   providerId: string
   displayName?: string
   status: AccountStatus
+  credentialSaveMode?: 'none' | 'session_only' | 'session_refresh' | 'password_vault'
   sessionReusable: boolean
   sessionRefreshable: boolean
   sessionExpireAt?: string

@@ -13,22 +13,58 @@ import {
   getWeekday,
 } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
-import { getStoredAccountId } from '../../shared/storage'
+import { getStoredAccountId, getStoredTermStarts } from '../../shared/storage'
+import { buildTermOptions, courseRunsInWeek, getTeachingWeekForDate } from '../../shared/term'
 
 export default function HomePage() {
   const [accountId, setAccountId] = useState('')
   const [timetable, setTimetable] = useState<TimetableCacheResponse | null>(null)
+  const [termStarts, setTermStarts] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [errorText, setErrorText] = useState('')
 
   const todayCourses = useMemo(() => {
     const weekday = getWeekday()
-    return (timetable ? timetable.courses : []).filter((course) => Number(course.weekday) === weekday)
-  }, [timetable])
+    const termOptions = buildTermOptions(timetable)
+    const currentTerm =
+      termOptions.find((term) => term.id === timetable?.termId) ||
+      termOptions[0] ||
+      null
+    const currentWeek = getTeachingWeekForDate(new Date(), currentTerm, timetable?.termId, termStarts)
+    const courseMap = new Map<string, CourseItem>()
+
+    for (const course of timetable ? timetable.courses : []) {
+      if (Number(course.weekday) !== weekday || !courseRunsInWeek(course, currentWeek)) {
+        continue
+      }
+
+      const sections = Array.isArray(course.sections) ? course.sections.map(Number).join(',') : ''
+      const key = [
+        course.name || '',
+        course.teacher || '',
+        course.classroom || course.location || '',
+        course.weekday || '',
+        course.startSection || '',
+        course.endSection || '',
+        sections,
+      ].join('|')
+
+      if (!courseMap.has(key)) {
+        courseMap.set(key, course)
+      }
+    }
+
+    return [...courseMap.values()].sort((left, right) => {
+      const leftStart = Number(left.startSection || left.sections?.[0] || 0)
+      const rightStart = Number(right.startSection || right.sections?.[0] || 0)
+      return leftStart - rightStart
+    })
+  }, [termStarts, timetable])
 
   useDidShow(() => {
     const id = getStoredAccountId()
     setAccountId(id)
+    setTermStarts(getStoredTermStarts())
 
     if (!id) {
       setTimetable(null)
@@ -73,16 +109,14 @@ export default function HomePage() {
 
       {errorText && <View className='status status-error'>{errorText}</View>}
 
-      {accountId && !loading && todayCourses.length === 0 && (
-        <View className='soft-card state-card'>今日暂无安排</View>
-      )}
-
       {loading && <View className='soft-card state-card'>正在加载课程...</View>}
 
-      <View className='section-head'>
-        <View className='section-title'>今日安排</View>
-        <Text>共 {todayCourses.length} 项</Text>
-      </View>
+      {todayCourses.length > 0 && (
+        <View className='section-head'>
+          <View className='section-title'>今日安排</View>
+          <Text>共 {todayCourses.length} 项</Text>
+        </View>
+      )}
 
       {todayCourses.map((course: CourseItem, index) => {
         const tone = getCourseTone(course, index)

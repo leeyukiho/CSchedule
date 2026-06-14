@@ -12,7 +12,7 @@
   "scripts": {
     "prepare": "husky",
     "new": "taro new",
-    "build:weapp": "taro build --type weapp && node scripts/verify-weapp-build.mjs",
+    "build:weapp": "taro build --type weapp --env production --mode production && node scripts/verify-weapp-build.mjs",
     "build:swan": "taro build --type swan",
     "build:alipay": "taro build --type alipay",
     "build:tt": "taro build --type tt",
@@ -21,7 +21,7 @@
     "build:qq": "taro build --type qq",
     "build:jd": "taro build --type jd",
     "build:harmony-hybrid": "taro build --type harmony-hybrid",
-    "dev:weapp": "taro build --type weapp --watch --env production",
+    "dev:weapp": "taro build --type weapp --watch --env production --mode development",
     "dev:swan": "npm run build:swan -- --watch",
     "dev:alipay": "npm run build:alipay -- --watch",
     "dev:tt": "npm run build:tt -- --watch",
