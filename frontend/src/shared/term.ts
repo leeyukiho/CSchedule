@@ -6,6 +6,7 @@ export interface TermOption {
 }
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+const MAX_TEACHING_WEEK = 20
 const ACADEMIC_YEAR_PATTERN = /(20\d{2})\s*[-~—至]\s*(20\d{2})/
 const ACADEMIC_YEAR_COMPACT_PATTERN = /(20\d{2})[-~—至]?(20\d{2})/
 
@@ -17,7 +18,7 @@ export function formatTermLabel(id: string, label: string) {
     return text
   }
 
-  return `${parsed.yearStart}-${parsed.yearEnd}学年${parsed.secondSemester ? '第二学期' : '第一学期'}`
+  return `${parsed.yearStart}-${parsed.yearEnd}学年${parsed.secondSemester ? '第2学期' : '第1学期'}`
 }
 
 export function normalizeTerm(term: unknown): TermOption | null {
@@ -137,7 +138,7 @@ export function getTeachingWeekForDate(
   const current = toLocalMidnight(date)
   const week = Math.floor((current.getTime() - start.getTime()) / WEEK_MS) + 1
 
-  return Number.isFinite(week) && week > 0 ? Math.min(week, 30) : null
+  return Number.isFinite(week) && week > 0 ? Math.min(week, MAX_TEACHING_WEEK) : null
 }
 
 export function getCurrentTeachingWeek(

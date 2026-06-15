@@ -7,8 +7,6 @@ import { getProfile, saveProfile } from '../../shared/api/features'
 import { listSchools } from '../../shared/api/schools'
 import { createManualSync } from '../../shared/api/sync'
 import {
-  FeatureDisplayConfig,
-  FeatureDisplayField,
   ProfileData,
   SchoolListItem,
   StudentAccountSummary,
@@ -20,6 +18,8 @@ import { clearStoredAccountId, getStoredAccountId } from '../../shared/storage'
 type EditField = {
   key: keyof ProfileData
   label: string
+  readonly?: boolean
+  getValue?: (source: Record<string, unknown>) => string
 }
 
 type EditRow = EditField & {
@@ -27,28 +27,20 @@ type EditRow = EditField & {
 }
 
 const EDIT_FIELDS: EditField[] = [
-  { key: 'name', label: '姓名' },
-  { key: 'major', label: '专业' },
-  { key: 'grade', label: '年级' },
-  { key: 'level', label: '层次' },
-  { key: 'className', label: '班级' },
-  { key: 'gender', label: '性别' },
-  { key: 'birthDate', label: '出生年月' },
-  { key: 'politicalStatus', label: '政治面貌' },
-  { key: 'phone', label: '手机号' },
-  { key: 'email', label: '邮箱' },
-  { key: 'nativePlace', label: '籍贯' },
-  { key: 'enrollmentDate', label: '入学时间' },
-  { key: 'studentStatus', label: '学籍状态' },
-  { key: 'dormitory', label: '宿舍信息' },
-  { key: 'counselor', label: '辅导员' },
-]
-
-const FALLBACK_DETAIL_FIELDS: FeatureDisplayField[] = [
-  { key: 'grade', label: '年级' },
+  {
+    key: 'schoolName',
+    label: '学校',
+    readonly: true,
+    getValue: (source) => getText(source.schoolName),
+  },
+  {
+    key: 'studentId',
+    label: '学号',
+    readonly: true,
+    getValue: (source) => getText(source.maskedStudentId || source.studentId),
+  },
   { key: 'gender', label: '性别' },
   { key: 'phone', label: '手机号' },
-  { key: 'email', label: '邮箱' },
 ]
 
 function formatAccountStatus(status?: StudentAccountSummary['status']) {
@@ -67,54 +59,23 @@ function getText(value: unknown, fallback = '暂无') {
   return fallback
 }
 
-function getProfileValue(
-  source: Record<string, unknown>,
-  field: Pick<FeatureDisplayField, 'key' | 'fallbackKeys'>,
-  fallback = '暂无',
-) {
-  const keys = [field.key, ...(field.fallbackKeys || [])]
-
-  for (const key of keys) {
-    const value = source[key]
-
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim()
-    }
-  }
-
-  return fallback
+function getEditableFields(): EditField[] {
+  return EDIT_FIELDS
 }
 
-function getEditableFields(display?: FeatureDisplayConfig): EditField[] {
-  const fields =
-    display?.editableFields ||
-    display?.detailFields?.filter((field) => field.editable && field.visible !== false)
-
-  if (!fields?.length) {
-    return EDIT_FIELDS
-  }
-
-  return fields.map((field) => ({
-    key: field.key as keyof ProfileData,
-    label: field.label,
-  }))
-}
-
-function getDetailFields(display?: FeatureDisplayConfig) {
-  const fields = display?.detailFields?.filter((field) => field.visible !== false)
-
-  return fields?.length ? fields : FALLBACK_DETAIL_FIELDS
-}
-
-function buildEditRows(profile: ProfileData, fields: EditField[]): EditRow[] {
+function buildEditRows(source: Record<string, unknown>, fields: EditField[]): EditRow[] {
   return fields.map((field) => ({
     ...field,
-    value: typeof profile[field.key] === 'string' ? String(profile[field.key]) : '',
+    value: field.getValue
+      ? field.getValue(source)
+      : typeof source[field.key] === 'string'
+        ? String(source[field.key])
+        : '',
   }))
 }
 
 function rowsToProfile(rows: EditRow[]): ProfileData {
-  return rows.reduce<ProfileData>((profile, row) => {
+  return rows.filter((row) => !row.readonly).reduce<ProfileData>((profile, row) => {
     profile[row.key] = row.value.trim()
     return profile
   }, {})
@@ -127,7 +88,6 @@ export default function ProfilePage() {
   const [keyword, setKeyword] = useState('')
   const [searching, setSearching] = useState(false)
   const [profile, setProfile] = useState<ProfileData>({})
-  const [profileDisplay, setProfileDisplay] = useState<FeatureDisplayConfig | undefined>()
   const [syncUsername, setSyncUsername] = useState('')
   const [syncPassword, setSyncPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -146,7 +106,6 @@ export default function ProfilePage() {
       setHasStoredAccount(false)
       setAccount(null)
       setProfile({})
-      setProfileDisplay(undefined)
       setMessage('')
       setErrorText('')
       return
@@ -194,24 +153,13 @@ export default function ProfilePage() {
   )
 
   const baseInfo = useMemo(() => {
-    const schoolRows = [
-      { label: '账号状态', value: String(profileSource.accountStatus) },
-      { label: '学校', value: String(profileSource.schoolName) },
-      { label: '学号', value: student.number },
-    ]
-    const detailRows = getDetailFields(profileDisplay)
-      .filter((field) => !['studentId', 'maskedStudentId'].includes(field.key))
-      .map((field) => ({
-        label: field.label,
-        value: getProfileValue(profileSource, field),
-      }))
-
-    return [
-      ...schoolRows,
-      ...detailRows,
-      { label: '更新时间', value: String(profileSource.lastCachedAt) },
-    ]
-  }, [profileDisplay, profileSource, student.number])
+    return EDIT_FIELDS.map((field) => ({
+      label: field.label,
+      value: field.getValue
+        ? field.getValue(profileSource)
+        : getText(profileSource[field.key]),
+    }))
+  }, [profileSource])
 
   async function loadAccount(accountId: string) {
     setErrorText('')
@@ -222,7 +170,6 @@ export default function ProfilePage() {
 
       const profileData = await getProfile(accountId)
       setProfile(profileData.data || {})
-      setProfileDisplay(profileData.display)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '账号信息读取失败')
     }
@@ -283,7 +230,7 @@ export default function ProfilePage() {
       return
     }
 
-    setEditRows(buildEditRows(profile, getEditableFields(profileDisplay)))
+    setEditRows(buildEditRows(profileSource, getEditableFields()))
     setEditVisible(true)
   }
 
@@ -369,7 +316,6 @@ export default function ProfilePage() {
       setHasStoredAccount(false)
       setAccount(null)
       setProfile({})
-      setProfileDisplay(undefined)
       setMessage('已退出账号')
       Taro.navigateTo({ url: '/pages/bind/index' })
     } catch (error) {
@@ -548,6 +494,7 @@ export default function ProfilePage() {
                     <Text className='edit-label'>{row.label}</Text>
                     <Input
                       className='edit-input'
+                      disabled={row.readonly}
                       value={row.value}
                       placeholder='点击填写'
                       placeholderClass='edit-placeholder'

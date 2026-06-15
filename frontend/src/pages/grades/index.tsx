@@ -78,6 +78,16 @@ function buildSummary(data: unknown, display?: FeatureDisplayConfig) {
   })
 }
 
+function formatSemesterTitle(title: unknown, fallback: string) {
+  const text = String(title || '').trim()
+
+  if (/^\d+$/.test(text)) {
+    return `第${text}学期`
+  }
+
+  return text || fallback
+}
+
 function buildScoreGroups(data: unknown, display?: FeatureDisplayConfig): ScoreGroup[] {
   const groupPath = display?.groupPath || 'semesters'
   const itemPath = display?.itemPath || 'grades'
@@ -93,7 +103,7 @@ function buildScoreGroups(data: unknown, display?: FeatureDisplayConfig): ScoreG
 
   return groups.map((group, index) => ({
     id: String(group.id || `group-${index + 1}`),
-    title: String(group.title || group.label || `学期 ${index + 1}`),
+    title: formatSemesterTitle(group.title || group.label, `第${index + 1}学期`),
     credit: typeof group.credit === 'string' ? group.credit : undefined,
     average: typeof group.average === 'string' ? group.average : undefined,
     gpa: typeof group.gpa === 'string' ? group.gpa : undefined,
@@ -110,6 +120,7 @@ export default function GradesPage() {
   const [exams, setExams] = useState<FeatureCacheResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [errorText, setErrorText] = useState('')
+  const [collapsedSemesters, setCollapsedSemesters] = useState<Record<string, boolean>>({})
 
   useDidShow(() => {
     const accountId = getStoredAccountId()
@@ -119,6 +130,7 @@ export default function GradesPage() {
       setExams(null)
       setLoading(false)
       setErrorText('')
+      setCollapsedSemesters({})
       return
     }
 
@@ -128,6 +140,7 @@ export default function GradesPage() {
       .then(([scoreData, examData]) => {
         setScores(scoreData)
         setExams(examData)
+        setCollapsedSemesters({})
       })
       .catch((error) => setErrorText(error instanceof Error ? error.message : '成绩读取失败'))
       .finally(() => setLoading(false))
@@ -139,6 +152,9 @@ export default function GradesPage() {
     ? scores.display.itemFields
     : DEFAULT_SCORE_ITEM_FIELDS
   const scoreCount = countScoreItems(scoreGroups)
+  const toggleSemester = (id: string) => {
+    setCollapsedSemesters((current) => ({ ...current, [id]: !current[id] }))
+  }
 
   return (
     <PageShell title='成绩' activeTab='grades'>
@@ -177,7 +193,7 @@ export default function GradesPage() {
       </View>
       {scoreGroups.map((group) => (
         <View className='soft-card semester-card' key={group.id}>
-          <View className='semester-top'>
+          <View className='semester-top' onClick={() => toggleSemester(group.id)}>
             <View>
               <View className='semester-title'>{group.title}</View>
               <View className='semester-stats'>
@@ -187,25 +203,27 @@ export default function GradesPage() {
                 {group.gpa && <Text>绩点：{group.gpa}</Text>}
               </View>
             </View>
-            <View className='chevron-down' />
+            <View className={collapsedSemesters[group.id] ? 'chevron-down' : 'chevron-down chevron-up'} />
           </View>
-          <View className='grade-list'>
-            {group.items.map((item, index) => (
-              <View className='grade-row' key={`${group.id}-${index}`}>
-                <View className='grade-course'>{getTextValue(item, scoreItemFields[0])}</View>
-                <View className='grade-fields'>
-                  {scoreItemFields.slice(1).map((field) => (
-                    <Text
-                      className={field.primary ? 'grade-field grade-field-primary' : 'grade-field'}
-                      key={field.key}
-                    >
-                      {field.label}：{getTextValue(item, field)}
-                    </Text>
-                  ))}
+          {!collapsedSemesters[group.id] && (
+            <View className='grade-list'>
+              {group.items.map((item, index) => (
+                <View className='grade-row' key={`${group.id}-${index}`}>
+                  <View className='grade-course'>{getTextValue(item, scoreItemFields[0])}</View>
+                  <View className='grade-fields'>
+                    {scoreItemFields.slice(1).map((field) => (
+                      <Text
+                        className={field.primary ? 'grade-field grade-field-primary' : 'grade-field'}
+                        key={field.key}
+                      >
+                        {field.label}：{getTextValue(item, field)}
+                      </Text>
+                    ))}
+                  </View>
                 </View>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          )}
         </View>
       ))}
       {!scoreGroups.length && (

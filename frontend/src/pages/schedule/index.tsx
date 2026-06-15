@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useDidShow } from '@tarojs/taro'
-import { Picker, Text, View } from '@tarojs/components'
+import { Picker, Text, View, type ITouchEvent } from '@tarojs/components'
 
 import { getTimetable } from '../../shared/api/timetable'
 import { CourseItem, FeatureDisplayField, TimetableCacheResponse } from '../../shared/api/types'
@@ -19,9 +19,12 @@ import {
 
 const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const TOTAL_SECTIONS = 13
+const MAX_WEEK = 20
 const LEFT_WIDTH = 64
-const HEADER_HEIGHT = 100
-const ROW_HEIGHT = 110
+const HEADER_HEIGHT = 84
+const ROW_HEIGHT = 88
+const LESSON_GAP = 4
+const WEEK_SWIPE_THRESHOLD = 48
 const DEFAULT_COURSE_FIELDS: FeatureDisplayField[] = [
   { key: 'name', label: '课程', primary: true },
   { key: 'classroom', label: '教室', fallbackKeys: ['location'] },
@@ -31,6 +34,10 @@ interface PositionedLesson {
   id: string
   name: string
   room: string
+  teacher: string
+  weeksText: string
+  sectionsText: string
+  timeText: string
   tone: string
   style: string
 }
@@ -63,30 +70,12 @@ function mergeTermOptions(current: TermOption[], next: TermOption[]) {
   return dedupeAndSortTerms([...current, ...next])
 }
 
-function buildWeekOptions(timetable: TimetableCacheResponse | null, currentWeek: number | null): WeekOption[] {
-  const weekNumbers = new Set<number>()
+function buildWeekOptions(): WeekOption[] {
+  return Array.from({ length: MAX_WEEK }, (_, index) => {
+    const week = index + 1
 
-  for (const course of timetable ? timetable.courses : []) {
-    for (const week of course.weeks || []) {
-      const value = Number(week)
-
-      if (Number.isFinite(value) && value > 0) {
-        weekNumbers.add(value)
-      }
-    }
-  }
-
-  const sortedWeeks = [...weekNumbers].sort((a, b) => a - b)
-  const maxWeek = Math.max(20, currentWeek || 0, sortedWeeks[sortedWeeks.length - 1] || 0)
-  const rangedWeeks =
-    maxWeek > 0
-      ? Array.from({ length: maxWeek }, (_, index) => index + 1)
-      : []
-  const weeks = currentWeek && !rangedWeeks.includes(currentWeek)
-    ? [...rangedWeeks, currentWeek].sort((a, b) => a - b)
-    : rangedWeeks
-
-  return weeks.map((week) => ({ value: week, label: `第 ${week} 周` }))
+    return { value: week, label: `第${week}周` }
+  })
 }
 
 function formatMonthDay(date: Date) {
@@ -101,6 +90,36 @@ function isSameDate(left: Date, right: Date) {
   )
 }
 
+function formatSectionsText(sections: number[]) {
+  if (sections.length === 0) {
+    return ''
+  }
+
+  if (sections.length === 1) {
+    return `第 ${sections[0]} 节`
+  }
+
+  return `第 ${sections[0]}-${sections[sections.length - 1]} 节`
+}
+
+function formatWeeksText(weeks: number[] | undefined) {
+  if (!Array.isArray(weeks) || weeks.length === 0) {
+    return '整学期'
+  }
+
+  const sortedWeeks = [...new Set(weeks.map(Number))]
+    .filter((week) => Number.isFinite(week) && week > 0)
+    .sort((a, b) => a - b)
+
+  if (sortedWeeks.length === 0) {
+    return '整学期'
+  }
+
+  return sortedWeeks.length > 8
+    ? `第 ${sortedWeeks[0]}-${sortedWeeks[sortedWeeks.length - 1]} 周`
+    : `第 ${sortedWeeks.join('、')} 周`
+}
+
 export default function SchedulePage() {
   const [accountId, setAccountId] = useState('')
   const [timetable, setTimetable] = useState<TimetableCacheResponse | null>(null)
@@ -110,6 +129,8 @@ export default function SchedulePage() {
   const [termStarts, setTermStarts] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [errorText, setErrorText] = useState('')
+  const [selectedLesson, setSelectedLesson] = useState<PositionedLesson | null>(null)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
   const periods = useMemo(
     () =>
@@ -133,20 +154,21 @@ export default function SchedulePage() {
     0,
   )
   const selectedTerm = termOptions[selectedTermIndex] || null
-  const currentTeachingWeek = useMemo(
-    () => getCurrentTeachingWeek(selectedTerm, timetable?.termId, termStarts),
-    [selectedTerm, termStarts, timetable?.termId],
-  )
-  const weekOptions = useMemo(
-    () => buildWeekOptions(timetable, currentTeachingWeek),
-    [currentTeachingWeek, timetable],
-  )
+  const weekOptions = useMemo(() => buildWeekOptions(), [])
   const selectedWeekIndex = Math.max(
     weekOptions.findIndex((week) => week.value === selectedWeek),
     0,
   )
   const selectedTermLabel = termOptions[selectedTermIndex]?.label || timetable?.termId || '当前学期'
-  const selectedWeekLabel = weekOptions[selectedWeekIndex]?.label || '第 1 周'
+  const selectedWeekLabel = weekOptions[selectedWeekIndex]?.label || '第1周'
+  const termWeekLabel = `${selectedTermLabel}${selectedWeekLabel}`
+  const termWeekRange = useMemo(
+    () => [
+      termOptions.length > 0 ? termOptions.map((term) => term.label) : [selectedTermLabel],
+      weekOptions.map((week) => week.label),
+    ],
+    [selectedTermLabel, termOptions, weekOptions],
+  )
   const weekdays = useMemo<WeekdayColumn[]>(() => {
     const today = new Date()
     const startDate = getWeekStartDate(selectedTerm, selectedWeek, timetable?.termId, termStarts)
@@ -245,26 +267,69 @@ export default function SchedulePage() {
     }
   }
 
-  function handleTermChange(value: string | number) {
-    const term = termOptions[Number(value)]
+  function handleTermWeekChange(value: Array<string | number>) {
+    const [termValue, weekValue] = value
+    const term = termOptions[Number(termValue)] || selectedTerm
+    const week = weekOptions[Number(weekValue)]
 
-    if (!term || loading) {
+    if (!term || !week || loading) {
       return
     }
 
-    setSelectedTermId(term.id)
-    setSelectedWeek(getCurrentTeachingWeek(term, term.id, termStarts))
-    void loadTimetable(accountId, term.id === '__current__' ? '' : term.id)
+    if (term.id !== selectedTermId) {
+      setSelectedTermId(term.id)
+      void loadTimetable(accountId, term.id === '__current__' ? '' : term.id)
+    }
+
+    setSelectedLesson(null)
+    setSelectedWeek(week.value)
   }
 
-  function handleWeekChange(value: string | number) {
-    const week = weekOptions[Number(value)]
+  function handleWeekPage(offset: number) {
+    const nextWeek = weekOptions[selectedWeekIndex + offset]
 
-    if (!week) {
+    if (!nextWeek) {
       return
     }
 
-    setSelectedWeek(week.value)
+    setSelectedLesson(null)
+    setSelectedWeek(nextWeek.value)
+  }
+
+  function handleScheduleTouchStart(event: ITouchEvent) {
+    const touch = event.touches[0]
+
+    if (!touch) {
+      return
+    }
+
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY }
+  }
+
+  function handleScheduleTouchEnd(event: ITouchEvent) {
+    const start = touchStartRef.current
+    const touch = event.changedTouches[0]
+    touchStartRef.current = null
+
+    if (!start || !touch) {
+      return
+    }
+
+    const deltaX = touch.clientX - start.x
+    const deltaY = touch.clientY - start.y
+
+    if (
+      Math.abs(deltaX) < WEEK_SWIPE_THRESHOLD ||
+      Math.abs(deltaX) < Math.abs(deltaY) * 1.25
+    ) {
+      return
+    }
+
+    handleWeekPage(deltaX < 0 ? 1 : -1)
+  }
+
+  function handleScheduleTouchCancel() {
+    touchStartRef.current = null
   }
 
   function handleBackToday() {
@@ -276,7 +341,12 @@ export default function SchedulePage() {
       void loadTimetable(accountId, todayTerm.id === '__current__' ? '' : todayTerm.id)
     }
 
+    setSelectedLesson(null)
     setSelectedWeek(todayWeek)
+  }
+
+  function closeLessonDetail() {
+    setSelectedLesson(null)
   }
 
   function toLesson(course: CourseItem, index: number): PositionedLesson | null {
@@ -301,16 +371,22 @@ export default function SchedulePage() {
       fields.find((field) => ['classroom', 'location', 'campus'].includes(field.key)) ||
       DEFAULT_COURSE_FIELDS[1]
     const style = [
-      `left:calc(${LEFT_WIDTH}rpx + (100% - ${LEFT_WIDTH}rpx) / 7 * ${leftIndex})`,
-      `top:${top}rpx`,
-      `width:calc((100% - ${LEFT_WIDTH}rpx) / 7)`,
-      `height:${height}rpx`,
+      `left:calc(${LEFT_WIDTH}rpx + (100% - ${LEFT_WIDTH}rpx) / 7 * ${leftIndex} + ${LESSON_GAP}rpx)`,
+      `top:${top + LESSON_GAP}rpx`,
+      `width:calc((100% - ${LEFT_WIDTH}rpx) / 7 - ${LESSON_GAP * 2}rpx)`,
+      `height:${height - LESSON_GAP * 2}rpx`,
     ].join(';')
+    const startTime = SECTION_TIMES[start]?.start || ''
+    const endTime = SECTION_TIMES[end]?.end || ''
 
     return {
       id: course.id || `${weekday}-${start}-${course.name || index}`,
       name: getCourseValue(course, primaryField) || '未命名课程',
       room: getCourseValue(course, roomField),
+      teacher: course.teacher?.trim() || '',
+      weeksText: formatWeeksText(course.weeks),
+      sectionsText: formatSectionsText(sections.map(Number)),
+      timeText: startTime && endTime ? `${startTime}-${endTime}` : '',
       tone: getCourseTone(course, index),
       style,
     }
@@ -318,45 +394,40 @@ export default function SchedulePage() {
 
   return (
     <PageShell title='课表' activeTab='schedule' contentClassName='schedule-content'>
-      <View className='schedule-filters'>
+      <View className='schedule-header'>
         <Picker
-          className='filter-picker semester-picker'
-          mode='selector'
-          range={termOptions.map((term) => term.label)}
-          value={selectedTermIndex}
+          className='term-week-picker'
+          mode='multiSelector'
+          range={termWeekRange}
+          value={[selectedTermIndex, selectedWeekIndex]}
           disabled={loading || termOptions.length === 0}
-          onChange={(event) => handleTermChange(event.detail.value)}
+          onChange={(event) => handleTermWeekChange(event.detail.value)}
         >
-          <View className='filter-select'>
-            <Text>{selectedTermLabel}</Text>
+          <View className='filter-select term-week-select'>
+            <Text>{termWeekLabel}</Text>
             <View className='chevron-down' />
           </View>
         </Picker>
-        <Picker
-          className='filter-picker week-picker'
-          mode='selector'
-          range={weekOptions.map((week) => week.label)}
-          value={selectedWeekIndex}
-          disabled={loading}
-          onChange={(event) => handleWeekChange(event.detail.value)}
-        >
-          <View className='filter-select'>
-            <Text>{selectedWeekLabel}</Text>
-            <View className='chevron-down' />
-          </View>
-        </Picker>
+        <View className='schedule-today-button' onClick={handleBackToday}>今天</View>
       </View>
 
       {errorText && <View className='status status-error'>{errorText}</View>}
       {loading && <View className='soft-card state-card'>正在读取课表...</View>}
 
-      <View className='timetable'>
+      <View
+        className='timetable'
+        onTouchStart={handleScheduleTouchStart}
+        onTouchEnd={handleScheduleTouchEnd}
+        onTouchCancel={handleScheduleTouchCancel}
+      >
         {weekdays.map((item) => (
-          <View className='weekday' key={item.weekday} style={item.style}>
+          <View
+            className={'weekday ' + (item.isToday ? 'weekday-active' : '')}
+            key={item.weekday}
+            style={item.style}
+          >
             <View className='weekday-name'>{item.weekday}</View>
-            <View className={'weekday-date ' + (item.isToday ? 'weekday-date-active' : '')}>
-              {item.dateText}
-            </View>
+            <View className='weekday-date'>{item.dateText}</View>
           </View>
         ))}
 
@@ -369,15 +440,42 @@ export default function SchedulePage() {
         ))}
 
         {lessons.map((lesson) => (
-          <View className={`lesson-block lesson-${lesson.tone}`} key={lesson.id} style={lesson.style}>
+          <View
+            className={`lesson-block lesson-${lesson.tone}`}
+            key={lesson.id}
+            style={lesson.style}
+            onClick={() => setSelectedLesson(lesson)}
+          >
             <View>{lesson.name}</View>
             {lesson.room && <View className='lesson-room'>{lesson.room}</View>}
           </View>
         ))}
       </View>
 
-      {!loading && lessons.length === 0 && <View className='soft-card state-card empty-schedule'>暂无课表数据</View>}
-      <View className='back-today-button' onClick={handleBackToday}>回到今天</View>
+      {selectedLesson && (
+        <View className='lesson-detail-mask' onClick={closeLessonDetail}>
+          <View className='lesson-detail-card' onClick={(event) => event.stopPropagation()}>
+            <View className='lesson-detail-title'>{selectedLesson.name}</View>
+            <View className='lesson-detail-row'>
+              <Text>时间</Text>
+              <Text>{[selectedLesson.sectionsText, selectedLesson.timeText].filter(Boolean).join(' ') || '--'}</Text>
+            </View>
+            <View className='lesson-detail-row'>
+              <Text>周次</Text>
+              <Text>{selectedLesson.weeksText}</Text>
+            </View>
+            <View className='lesson-detail-row'>
+              <Text>地点</Text>
+              <Text>{selectedLesson.room || '--'}</Text>
+            </View>
+            <View className='lesson-detail-row'>
+              <Text>教师</Text>
+              <Text>{selectedLesson.teacher || '--'}</Text>
+            </View>
+            <View className='lesson-detail-close' onClick={closeLessonDetail}>关闭</View>
+          </View>
+        </View>
+      )}
     </PageShell>
   )
 }

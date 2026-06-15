@@ -27,8 +27,14 @@ wxapp/
 # Local assistant/index artifacts
 **/.claude/
 **/.gitnexus/
+**/.firecrawl/
+**/firecrawl/
+**/.tmp-whggvc/
 **/AGENTS.md
 **/CLAUDE.md
+
+# Generated provider docs
+docs/providers/
 
 # Optional backups for local-only nested Git histories
 .local-git-repos/
