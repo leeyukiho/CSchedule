@@ -1,5 +1,9 @@
 import { requestApi } from './client'
-import { DataTarget } from './types'
+import {
+  DataTarget,
+  FeatureCacheResponse,
+  TimetableCacheResponse,
+} from './types'
 
 export interface LoginSubmitRequest {
   contextId: string
@@ -7,6 +11,13 @@ export interface LoginSubmitRequest {
   password?: string
   captcha?: string
   credentialSaveMode?: 'none' | 'password_vault'
+  verifiedByCloud?: boolean
+  target?: DataTarget
+  cacheData?: TimetableCacheResponse | FeatureCacheResponse
+  parsedCount?: number
+  termId?: string
+  sourceHash?: string
+  cloudWarnings?: string[]
   extra?: Record<string, unknown>
 }
 

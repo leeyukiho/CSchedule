@@ -1,5 +1,10 @@
 import { requestApi } from './client'
 import { StudentAccountSummary } from './types'
+import { getStoredAccountSummary, setStoredAccountSummary } from '../storage'
+
+interface AccountCacheOptions {
+  forceRefresh?: boolean
+}
 
 function normalizeAccount(response: StudentAccountSummary): StudentAccountSummary {
   return {
@@ -16,12 +21,28 @@ export function listAccounts() {
   })
 }
 
-export async function getAccount(accountId: string) {
+export async function getAccount(
+  accountId: string,
+  options: AccountCacheOptions = {},
+) {
+  const cached = getStoredAccountSummary(accountId)
+
+  if (!options.forceRefresh && cached) {
+    return cached
+  }
+
+  if (!options.forceRefresh) {
+    throw new Error('CACHE_NOT_READY')
+  }
+
   const response = await requestApi<StudentAccountSummary>({
     path: `/account/${encodeURIComponent(accountId)}`,
   })
 
-  return normalizeAccount(response)
+  const account = normalizeAccount(response)
+  setStoredAccountSummary(account)
+
+  return account
 }
 
 export function deactivateAccount(accountId: string) {

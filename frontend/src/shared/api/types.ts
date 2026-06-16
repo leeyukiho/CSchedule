@@ -34,6 +34,20 @@ export type AutoSyncCapability =
   | 'password_login'
   | 'password_login_may_need_verification'
 
+export type ImportMode = 'password_server' | 'webview_cloud' | 'manual_import'
+export type SyncMode = 'cloud_worker' | 'server_worker' | 'manual_webview'
+
+export interface SchoolSyncStrategy {
+  importMode: ImportMode
+  syncMode: SyncMode
+  cloudParserRequired: boolean
+  localCachePreferred: boolean
+  scheduledSyncSupported: boolean
+  passwordVaultRequired: boolean
+  manualSyncRequired: boolean
+  reason?: string
+}
+
 export interface CredentialSaveCapability {
   passwordVaultAllowed: boolean
   autoSync: AutoSyncCapability
@@ -82,10 +96,12 @@ export interface SchoolListItem {
   isPrivate?: boolean
   status: SchoolStatus
   enabled: boolean
+  providerId?: string
   loginMode?: LoginMode
   dataAccess?: Record<DataTarget, DataAccessMode[]>
   capabilities: ProviderCapabilities
   credentialSave?: CredentialSaveCapability
+  syncStrategy?: SchoolSyncStrategy
   message?: string
 }
 
@@ -132,6 +148,7 @@ export interface LoginContextResponse {
     closeAfterCacheWritten: boolean
   }
   credentialSave?: CredentialSaveCapability
+  syncStrategy?: SchoolSyncStrategy
   expireAt: string
 }
 
@@ -157,6 +174,8 @@ export interface TimetableCacheResponse {
   terms: unknown[]
   sectionTimes: unknown[]
   display?: FeatureDisplayConfig
+  sourceHash?: string
+  notModified?: boolean
   syncedAt?: string
   session: AccountSessionSummary
 }
@@ -170,6 +189,8 @@ export interface FeatureCacheResponse<TData = unknown> {
   data: TData | null
   meta: unknown
   display?: FeatureDisplayConfig
+  sourceHash?: string
+  notModified?: boolean
   syncedAt?: string
   session: AccountSessionSummary
 }
@@ -226,7 +247,16 @@ export interface SyncJobResponse {
     | 'failed'
     | 'need_login'
     | 'need_webview_fetch'
+    | 'rate_limited'
     | 'cancelled'
+  createdAt?: string
+  startedAt?: string
+  finishedAt?: string
+  queuePosition?: number
+  runningAhead?: number
+  errorCode?: string
+  errorMessage?: string
+  cacheData?: TimetableCacheResponse | FeatureCacheResponse
 }
 
 export interface SubmitFeedbackResponse {

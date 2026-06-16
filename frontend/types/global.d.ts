@@ -34,5 +34,10 @@ declare namespace NodeJS {
      */
     TARO_APP_ID: string;
     TARO_APP_API_BASE_URL: string;
+    TARO_APP_CLOUDBASE_ENV_ID: string;
+    TARO_APP_CLOUD_PARSER_FUNCTION: string;
+    TARO_APP_CLOUD_PARSER_URL: string;
+    TARO_APP_CLOUD_SYNC_FUNCTION: string;
+    TARO_APP_CLOUD_SYNC_URL: string;
   }
 }

@@ -1,5 +1,17 @@
 import { requestApi } from './client'
-import { FeatureCacheResponse, ProfileData } from './types'
+import { DataTarget, FeatureCacheResponse, ProfileData } from './types'
+import {
+  getStoredAccountSummary,
+  getStoredDataCache,
+  setStoredDataCache,
+} from '../storage'
+
+type FeatureTarget = Exclude<DataTarget, 'course'>
+const featureRequests = new Map<string, Promise<FeatureCacheResponse<unknown>>>()
+
+interface CacheOptions {
+  forceRefresh?: boolean
+}
 
 function normalizeFeatureCache<TData = unknown>(response: FeatureCacheResponse<TData>): FeatureCacheResponse<TData> {
   return {
@@ -8,43 +20,169 @@ function normalizeFeatureCache<TData = unknown>(response: FeatureCacheResponse<T
   }
 }
 
+function getFeatureRequestKey(accountId: string, target: FeatureTarget, termId?: string) {
+  return `${accountId}:${target}:${termId || 'latest'}`
+}
+
+function getEmptyFeatureCache<TData = unknown>(
+  accountId: string,
+  target: FeatureTarget,
+  termId?: string,
+): FeatureCacheResponse<TData> {
+  const account = getStoredAccountSummary(accountId)
+
+  return {
+    accountId,
+    schoolId: account?.schoolId || '',
+    providerId: account?.providerId || '',
+    target,
+    termId,
+    data: null,
+    meta: {},
+    session: {
+      sessionReusable: Boolean(account?.sessionReusable),
+      sessionRefreshable: Boolean(account?.sessionRefreshable),
+      sessionExpireAt: account?.sessionExpireAt,
+      accountStatus: account?.status || 'cached_only',
+    },
+  }
+}
+
+async function getFeatureWithCache<TData = unknown>(
+  accountId: string,
+  target: FeatureTarget,
+  basePath: string,
+  termId?: string,
+  options: CacheOptions = {},
+) {
+  const cached = getStoredDataCache<FeatureCacheResponse<TData>>(
+    accountId,
+    target,
+    termId,
+  )
+
+  if (!options.forceRefresh && cached) {
+    return cached.data
+  }
+
+  if (!options.forceRefresh) {
+    return getEmptyFeatureCache<TData>(accountId, target, termId)
+  }
+
+  const requestKey = getFeatureRequestKey(accountId, target, termId)
+  const pendingRequest = featureRequests.get(requestKey) as
+    | Promise<FeatureCacheResponse<TData>>
+    | undefined
+
+  if (pendingRequest) {
+    return pendingRequest
+  }
+
+  const queryParts = [
+    termId ? `termId=${encodeURIComponent(termId)}` : '',
+    cached?.sourceHash ? `knownHash=${encodeURIComponent(cached.sourceHash)}` : '',
+  ].filter(Boolean)
+  const query = queryParts.length ? `?${queryParts.join('&')}` : ''
+
+  const request = (async () => {
+    try {
+      const response = await requestApi<FeatureCacheResponse<TData>>({
+        path: `${basePath}${query}`,
+      })
+
+      if (response.notModified && cached) {
+        setStoredDataCache(accountId, target, cached.data, {
+          termId,
+          sourceHash: cached.sourceHash,
+          syncedAt: cached.syncedAt,
+        })
+        return cached.data
+      }
+
+      const feature = normalizeFeatureCache(response)
+      setStoredDataCache(accountId, target, feature, {
+        termId,
+        sourceHash: feature.sourceHash,
+        syncedAt: feature.syncedAt,
+      })
+
+      if (!termId && feature.termId) {
+        setStoredDataCache(accountId, target, feature, {
+          termId: feature.termId,
+          sourceHash: feature.sourceHash,
+          syncedAt: feature.syncedAt,
+        })
+      }
+
+      return feature
+    } catch (error) {
+      if (cached) {
+        return cached.data
+      }
+
+      throw error
+    } finally {
+      featureRequests.delete(requestKey)
+    }
+  })()
+
+  featureRequests.set(requestKey, request as Promise<FeatureCacheResponse<unknown>>)
+
+  return request
+}
+
 export async function getScores(accountId: string, termId?: string) {
-  const query = termId ? `?termId=${encodeURIComponent(termId)}` : ''
-
-  const response = await requestApi<FeatureCacheResponse>({
-    path: `/account/${encodeURIComponent(accountId)}/scores${query}`,
-  })
-
-  return normalizeFeatureCache(response)
+  return getFeatureWithCache(
+    accountId,
+    'score',
+    `/account/${encodeURIComponent(accountId)}/scores`,
+    termId,
+  )
 }
 
 export async function getExams(accountId: string, termId?: string) {
-  const query = termId ? `?termId=${encodeURIComponent(termId)}` : ''
-
-  const response = await requestApi<FeatureCacheResponse>({
-    path: `/account/${encodeURIComponent(accountId)}/exams${query}`,
-  })
-
-  return normalizeFeatureCache(response)
+  return getFeatureWithCache(
+    accountId,
+    'exam',
+    `/account/${encodeURIComponent(accountId)}/exams`,
+    termId,
+  )
 }
 
 export async function getProfile(accountId: string) {
-  const response = await requestApi<FeatureCacheResponse<ProfileData>>({
-    path: `/account/${encodeURIComponent(accountId)}/profile`,
-  })
+  const response = await getFeatureWithCache<ProfileData>(
+    accountId,
+    'profile',
+    `/account/${encodeURIComponent(accountId)}/profile`,
+  )
 
-  return {
-    ...normalizeFeatureCache(response),
+  const profile = {
+    ...response,
     data: response.data && typeof response.data === 'object' && !Array.isArray(response.data)
       ? response.data
       : {},
   }
+
+  setStoredDataCache(accountId, 'profile', profile, {
+    sourceHash: profile.sourceHash,
+    syncedAt: profile.syncedAt,
+  })
+
+  return profile
 }
 
-export function saveProfile(accountId: string, profile: ProfileData) {
-  return requestApi<FeatureCacheResponse<ProfileData>, { profile: ProfileData }>({
+export async function saveProfile(accountId: string, profile: ProfileData) {
+  const response = await requestApi<FeatureCacheResponse<ProfileData>, { profile: ProfileData }>({
     method: 'POST',
     path: `/account/${encodeURIComponent(accountId)}/profile`,
     data: { profile },
   })
+  const feature = normalizeFeatureCache(response)
+
+  setStoredDataCache(accountId, 'profile', feature, {
+    sourceHash: feature.sourceHash,
+    syncedAt: feature.syncedAt,
+  })
+
+  return feature
 }

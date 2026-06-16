@@ -8,6 +8,8 @@ import { getTimetable } from '../../shared/api/timetable'
 import { PageShell } from '../../shared/layout'
 import {
   clearStoredAccountId,
+  clearStoredAccountSummary,
+  clearStoredDataCaches,
   clearStoredTermStarts,
   getStoredAccountId,
   getStoredTermStarts,
@@ -68,6 +70,8 @@ export default function SettingsPage() {
       }
 
       clearStoredAccountId()
+      clearStoredAccountSummary(accountId || undefined)
+      clearStoredDataCaches(accountId || undefined)
       clearStoredTermStarts()
       Taro.showToast({ title: '已清理缓存', icon: 'success' })
       Taro.switchTab({ url: '/pages/profile/index' })

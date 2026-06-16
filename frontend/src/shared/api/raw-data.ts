@@ -1,5 +1,10 @@
 import { requestApi } from './client'
-import { DataAccessMode, DataTarget } from './types'
+import {
+  DataAccessMode,
+  DataTarget,
+  FeatureCacheResponse,
+  TimetableCacheResponse,
+} from './types'
 
 export interface RawDataUploadRequest {
   contextId?: string
@@ -16,9 +21,12 @@ export interface RawDataUploadResponse {
   accountId: string
   target: DataTarget
   cacheId: string
+  sourceHash?: string
   status: 'cached'
   parsedCount: number
   warnings?: string[]
+  cacheData?: TimetableCacheResponse | FeatureCacheResponse
+  syncStatus?: WebviewSyncCompleteResponse
 }
 
 export interface WebviewSyncCompleteResponse {

@@ -3,11 +3,28 @@ import Taro from '@tarojs/taro'
 import { Button, Checkbox, Input, Text, View } from '@tarojs/components'
 
 import { submitLogin } from '../../shared/api/auth'
+import {
+  CloudCredentialSyncResult,
+  hasCloudCredentialSync,
+  runCredentialSyncWithCloud,
+} from '../../shared/api/cloud-parser'
 import { createLoginContext, listSchools } from '../../shared/api/schools'
-import { LoginContextResponse, LoginField, SchoolListItem } from '../../shared/api/types'
+import {
+  FeatureCacheResponse,
+  LoginContextResponse,
+  LoginField,
+  ProfileData,
+  SchoolListItem,
+  StudentAccountSummary,
+  TimetableCacheResponse,
+} from '../../shared/api/types'
 import { formatSchoolMeta } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
-import { setStoredAccountId } from '../../shared/storage'
+import {
+  setStoredAccountId,
+  setStoredAccountSummary,
+  setStoredDataCache,
+} from '../../shared/storage'
 
 type LoginForm = Record<string, string>
 type BindStep = 'select_school' | 'login'
@@ -69,6 +86,7 @@ function getInitialSchoolFromRoute(): SchoolListItem | null {
     shortName: decodeRouteParam(params.shortName) || undefined,
     city: decodeRouteParam(params.city) || undefined,
     province: decodeRouteParam(params.province) || undefined,
+    providerId: decodeRouteParam(params.providerId) || undefined,
     level: decodeRouteParam(params.level) || undefined,
     status: (decodeRouteParam(params.status) || 'enabled') as SchoolListItem['status'],
     enabled: decodeRouteParam(params.enabled) !== 'false',
@@ -90,10 +108,89 @@ function getBindErrorMessage(error: unknown) {
     message.includes('无法定位学生课表参数') ||
     message.includes('登录后未返回有效会话')
   ) {
-    return '教务系统响应不稳定，课表还没有获取完成。请保持当前页面，稍后再点一次“登录并获取课表”。'
+    return '教务系统响应不稳定，请进入学校页面完成首次导入，或稍后再试。'
   }
 
   return message || '绑定失败'
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function persistCloudCache(
+  accountId: string,
+  result: CloudCredentialSyncResult,
+) {
+  const cacheData = result.cacheData
+
+  if (!cacheData) {
+    return
+  }
+
+  if (result.target === 'course') {
+    const timetable = {
+      ...(cacheData as TimetableCacheResponse),
+      accountId,
+    }
+
+    setStoredDataCache(accountId, 'timetable', timetable, {
+      termId: timetable.termId,
+      sourceHash: timetable.sourceHash || result.sourceHash,
+      syncedAt: timetable.syncedAt,
+    })
+    return
+  }
+
+  if (!['score', 'exam', 'profile'].includes(result.target)) {
+    return
+  }
+
+  const feature = {
+    ...(cacheData as FeatureCacheResponse),
+    accountId,
+  }
+
+  if (!isRecord(feature) || feature.target !== result.target) {
+    return
+  }
+
+  setStoredDataCache(accountId, result.target, feature, {
+    termId: feature.termId,
+    sourceHash: feature.sourceHash || result.sourceHash,
+    syncedAt: feature.syncedAt,
+  })
+}
+
+function getText(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function buildAccountSummary(input: {
+  accountId: string
+  school: SchoolListItem
+  cacheData?: TimetableCacheResponse | FeatureCacheResponse
+}): StudentAccountSummary {
+  const session = input.cacheData?.session
+
+  return {
+    id: input.accountId,
+    schoolId: input.school.id,
+    providerId: input.school.providerId || input.cacheData?.providerId || input.school.id,
+    displayName: getText(
+      (input.cacheData as FeatureCacheResponse<ProfileData> | undefined)?.data?.name,
+    ),
+    status: session?.accountStatus || 'cached_only',
+    sessionReusable: Boolean(session?.sessionReusable),
+    sessionRefreshable: Boolean(session?.sessionRefreshable),
+    sessionExpireAt: session?.sessionExpireAt,
+    lastCachedAt: input.cacheData?.syncedAt,
+    school: {
+      id: input.school.id,
+      name: input.school.name,
+      shortName: input.school.shortName,
+    },
+  }
 }
 
 export default function BindPage() {
@@ -117,10 +214,30 @@ export default function BindPage() {
 
   const visibleFields = useMemo(() => getVisibleFields(loginContext), [loginContext])
   const loginMode = loginContext ? loginContext.mode : undefined
-  const isWebviewLogin = loginMode === 'cas_webview' || loginMode === 'oauth_webview'
+  const isExternalWebviewLogin = loginMode === 'cas_webview' || loginMode === 'oauth_webview'
+  const syncStrategy = loginContext?.syncStrategy || selectedSchool?.syncStrategy
+  const isPasswordServerImport = syncStrategy?.importMode === 'password_server'
+  const canSaveForAutoSync = Boolean(syncStrategy?.scheduledSyncSupported)
   const credentialSave = loginContext?.credentialSave || selectedSchool?.credentialSave
-  const canSavePassword = Boolean(credentialSave?.passwordVaultAllowed) && !isWebviewLogin
+  const canSavePassword =
+    Boolean(credentialSave?.passwordVaultAllowed) &&
+    canSaveForAutoSync &&
+    !isExternalWebviewLogin
+  const shouldCollectCredentials =
+    isPasswordServerImport ||
+    (canSavePassword && (savePassword || syncStrategy?.passwordVaultRequired))
+  const credentialFields = useMemo(
+    () => visibleFields.filter((field) => field.name === 'username' || field.name === 'password'),
+    [visibleFields],
+  )
   const canBind = Boolean(selectedSchool) && !loading && !contextLoading
+  const bindButtonText = loading
+    ? isPasswordServerImport
+      ? '正在导入...'
+      : '正在进入学校页面...'
+    : isPasswordServerImport
+      ? '登录并导入'
+      : '进入学校页面导入'
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -174,7 +291,7 @@ export default function BindPage() {
     setErrorText('')
     setLoginContext(null)
     setForm({})
-    setSavePassword(false)
+    setSavePassword(Boolean(school.syncStrategy?.passwordVaultRequired))
     if (syncKeyword) setKeyword(school.name)
 
     const seq = contextSeq.current + 1
@@ -183,7 +300,10 @@ export default function BindPage() {
 
     try {
       const context = await createLoginContext(school.id)
-      if (seq === contextSeq.current) setLoginContext(context)
+      if (seq === contextSeq.current) {
+        setLoginContext(context)
+        setSavePassword(Boolean(context.syncStrategy?.passwordVaultRequired))
+      }
     } catch (error) {
       if (seq === contextSeq.current) {
         setErrorText(error instanceof Error ? error.message : '登录配置获取失败')
@@ -206,7 +326,7 @@ export default function BindPage() {
   }
 
   function validateForm() {
-    for (const field of visibleFields) {
+    for (const field of credentialFields) {
       if (field.required && !String(form[field.name] || '').trim()) {
         return `请输入${field.label}`
       }
@@ -220,7 +340,7 @@ export default function BindPage() {
       return
     }
 
-    if (!isWebviewLogin) {
+    if (shouldCollectCredentials) {
       const validationError = validateForm()
       if (validationError) {
         setErrorText(validationError)
@@ -229,20 +349,71 @@ export default function BindPage() {
     }
 
     setLoading(true)
-    setMessage('正在登录教务系统并获取课表，可能需要十几秒，请不要重复切换页面。')
+    setMessage(
+      isPasswordServerImport
+        ? '正在通过云函数校验账号并导入课表。'
+        : '正在创建账号，请在学校页面完成首次数据导入。',
+    )
     setErrorText('')
 
     try {
       const context = loginContext || (await createLoginContext(selectedSchool.id))
+
+      if (context.syncStrategy?.importMode === 'password_server') {
+        if (!hasCloudCredentialSync()) {
+          throw new Error('云函数未配置，暂时无法导入该学校。')
+        }
+
+        const cloudResult = await runCredentialSyncWithCloud({
+          schoolId: selectedSchool.id,
+          providerId: selectedSchool.providerId || selectedSchool.id,
+          target: 'course',
+          username: form.username,
+          password: form.password,
+        })
+
+        if (!cloudResult.cacheData) {
+          throw new Error('云函数未返回可保存的课表数据。')
+        }
+
+        setMessage('账号已校验成功，正在保存绑定信息。')
+
+        const result = await submitLogin(selectedSchool.id, {
+          contextId: context.contextId,
+          username: form.username,
+          password: savePassword || context.syncStrategy?.passwordVaultRequired
+            ? form.password
+            : undefined,
+          credentialSaveMode:
+            savePassword || context.syncStrategy?.passwordVaultRequired
+              ? 'password_vault'
+              : 'none',
+          verifiedByCloud: true,
+          target: cloudResult.target || 'course',
+          cacheData: cloudResult.cacheData,
+          parsedCount: cloudResult.parsedCount,
+          termId: cloudResult.termId,
+          sourceHash: cloudResult.sourceHash,
+          cloudWarnings: cloudResult.warnings,
+        })
+
+        setStoredAccountId(result.accountId, selectedSchool.id)
+        persistCloudCache(result.accountId, cloudResult)
+        setStoredAccountSummary(buildAccountSummary({
+          accountId: result.accountId,
+          school: selectedSchool,
+          cacheData: cloudResult.cacheData,
+        }))
+        setMessage('登录成功，课表已获取。')
+        Taro.switchTab({ url: '/pages/index/index' })
+        return
+      }
+
       const result = await submitLogin(selectedSchool.id, {
         contextId: context.contextId,
-        username: form.username,
-        password: form.password,
-        captcha: form.captcha,
-        credentialSaveMode: savePassword && canSavePassword ? 'password_vault' : 'none',
-        extra: Object.fromEntries(
-          Object.entries(form).filter(([key]) => !['username', 'password', 'captcha'].includes(key)),
-        ),
+        username: shouldCollectCredentials ? form.username : undefined,
+        password: shouldCollectCredentials ? form.password : undefined,
+        credentialSaveMode: shouldCollectCredentials ? 'password_vault' : 'none',
       })
 
       setStoredAccountId(result.accountId, selectedSchool.id)
@@ -251,25 +422,31 @@ export default function BindPage() {
         const webview = context.webview
         const webviewUrl = webview ? webview.url : ''
 
-        if (webviewUrl) {
-          const targets = result.requiredFetchTargets || (webview ? webview.requiredFetchTargets : undefined) || ['course']
-          Taro.navigateTo({
-            url:
-              '/pages/webview-sync/index?accountId=' +
-              encodeURIComponent(result.accountId) +
-              '&schoolId=' +
-              encodeURIComponent(selectedSchool.id) +
-              '&contextId=' +
-              encodeURIComponent(context.contextId) +
-              '&url=' +
-              encodeURIComponent(webviewUrl) +
-              '&targets=' +
-              encodeURIComponent(targets.join(',')),
-          })
-          return
+        if (!webviewUrl || webviewUrl === 'about:blank') {
+          throw new Error('该学校暂未配置前端导入入口，请联系管理员。')
         }
 
-        setMessage('已创建账号，请继续完成学校网页登录。')
+        const targets = (webview ? webview.requiredFetchTargets : undefined) || result.requiredFetchTargets || ['course']
+        Taro.navigateTo({
+          url:
+            '/pages/webview-sync/index?accountId=' +
+            encodeURIComponent(result.accountId) +
+            '&schoolId=' +
+            encodeURIComponent(selectedSchool.id) +
+            '&schoolName=' +
+            encodeURIComponent(selectedSchool.name) +
+            '&shortName=' +
+            encodeURIComponent(selectedSchool.shortName || '') +
+            '&providerId=' +
+            encodeURIComponent(selectedSchool.providerId || selectedSchool.id) +
+            '&contextId=' +
+            encodeURIComponent(context.contextId) +
+            '&url=' +
+            encodeURIComponent(webviewUrl) +
+            '&targets=' +
+            encodeURIComponent(targets.join(',')),
+        })
+        return
       } else {
         setMessage('登录成功，课表已获取。')
       }
@@ -366,8 +543,8 @@ export default function BindPage() {
             {contextLoading && <View className='status'>正在加载登录表单...</View>}
 
             {!contextLoading &&
-              !isWebviewLogin &&
-              visibleFields.map((field) => (
+              shouldCollectCredentials &&
+              credentialFields.map((field) => (
                 <View className='field' key={field.name}>
                   <View className='label-row'>
                     <Text className='label'>{field.label}</Text>
@@ -392,7 +569,11 @@ export default function BindPage() {
                 {canSavePassword && (
                   <View
                     className='credential-save-option'
-                    onClick={() => setSavePassword((value) => !value)}
+                    onClick={() =>
+                      setSavePassword((value) =>
+                        syncStrategy?.passwordVaultRequired ? true : !value,
+                      )
+                    }
                   >
                     <Checkbox
                       value='password_vault'
@@ -406,7 +587,7 @@ export default function BindPage() {
 
             {!contextLoading && (
               <Button className='button' disabled={!canBind} loading={loading} onClick={bind}>
-                {loading ? '正在获取课表...' : '登录并获取课表'}
+                {bindButtonText}
               </Button>
             )}
           </View>
@@ -418,7 +599,7 @@ export default function BindPage() {
         <View>
           <View className='security-title'>安全说明</View>
           <View className='note'>
-            未勾选保存时，账号密码仅用于本次登录。勾选保存时，账号密码会加密保存，仅用于后续同步教务数据。
+            支持账号密码同步的学校会加密保存凭据，用于首次拉取和后续自动同步。WebView 学校不会保存账号密码，导入结果会优先保存在本地。
           </View>
         </View>
       </View>

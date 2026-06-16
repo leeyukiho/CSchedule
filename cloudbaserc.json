@@ -1,0 +1,22 @@
+{
+  "envId": "unilinkcore-d8go81s3a0534ee67",
+  "region": "ap-guangzhou",
+  "functions": [
+    {
+      "name": "parseRawPayload",
+      "timeout": 20,
+      "memorySize": 256,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main",
+      "ignore": ["node_modules", "package-lock.json"]
+    },
+    {
+      "name": "runProviderSync",
+      "timeout": 60,
+      "memorySize": 512,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main",
+      "ignore": ["node_modules", "package-lock.json"]
+    }
+  ]
+}

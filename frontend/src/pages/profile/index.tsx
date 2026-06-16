@@ -5,15 +5,24 @@ import { Button, Image, Input, ScrollView, Text, View } from '@tarojs/components
 import { deactivateAccount, getAccount } from '../../shared/api/accounts'
 import { getProfile, saveProfile } from '../../shared/api/features'
 import { listSchools } from '../../shared/api/schools'
-import { createManualSync } from '../../shared/api/sync'
+import { createManualSync, getSyncJob } from '../../shared/api/sync'
+import { getTimetable } from '../../shared/api/timetable'
 import {
   ProfileData,
   SchoolListItem,
+  SyncJobResponse,
   StudentAccountSummary,
+  TimetableCacheResponse,
 } from '../../shared/api/types'
 import { formatTime } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
-import { clearStoredAccountId, getStoredAccountId } from '../../shared/storage'
+import {
+  clearStoredAccountId,
+  clearStoredAccountSummary,
+  clearStoredDataCaches,
+  getStoredAccountId,
+  setStoredDataCache,
+} from '../../shared/storage'
 
 type EditField = {
   key: keyof ProfileData
@@ -42,6 +51,8 @@ const EDIT_FIELDS: EditField[] = [
   { key: 'gender', label: '性别' },
   { key: 'phone', label: '手机号' },
 ]
+const SYNC_POLL_INTERVAL_MS = 1500
+const SYNC_POLL_TIMEOUT_MS = 120000
 
 function formatAccountStatus(status?: StudentAccountSummary['status']) {
   if (status === 'unbound' || status === 'disabled') {
@@ -81,6 +92,66 @@ function rowsToProfile(rows: EditRow[]): ProfileData {
   }, {})
 }
 
+function delay(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+function isTerminalSyncStatus(status: SyncJobResponse['status']) {
+  return ['success', 'failed', 'need_login', 'need_webview_fetch', 'rate_limited', 'cancelled'].includes(status)
+}
+
+async function waitForSyncJob(job: SyncJobResponse) {
+  let currentJob = job
+  const startedAt = Date.now()
+
+  while (
+    !isTerminalSyncStatus(currentJob.status) &&
+    Date.now() - startedAt < SYNC_POLL_TIMEOUT_MS
+  ) {
+    await delay(SYNC_POLL_INTERVAL_MS)
+    currentJob = await getSyncJob(job.jobId)
+  }
+
+  return currentJob
+}
+
+function persistSyncCache(accountId: string, job: SyncJobResponse) {
+  if (job.target !== 'course' || !job.cacheData) {
+    return false
+  }
+
+  const timetable = {
+    ...(job.cacheData as TimetableCacheResponse),
+    accountId,
+  }
+
+  setStoredDataCache(accountId, 'timetable', timetable, {
+    sourceHash: timetable.sourceHash,
+    syncedAt: timetable.syncedAt,
+  })
+
+  if (timetable.termId) {
+    setStoredDataCache(accountId, 'timetable', timetable, {
+      termId: timetable.termId,
+      sourceHash: timetable.sourceHash,
+      syncedAt: timetable.syncedAt,
+    })
+  }
+
+  return true
+}
+
+function getBindUrl(account: StudentAccountSummary) {
+  const params = new URLSearchParams({
+    schoolId: account.schoolId,
+    schoolName: account.school?.name || '',
+    shortName: account.school?.shortName || '',
+    providerId: account.providerId,
+  })
+
+  return `/pages/bind/index?${params.toString()}`
+}
+
 export default function ProfilePage() {
   const [account, setAccount] = useState<StudentAccountSummary | null>(null)
   const [hasStoredAccount, setHasStoredAccount] = useState(() => Boolean(getStoredAccountId()))
@@ -88,8 +159,6 @@ export default function ProfilePage() {
   const [keyword, setKeyword] = useState('')
   const [searching, setSearching] = useState(false)
   const [profile, setProfile] = useState<ProfileData>({})
-  const [syncUsername, setSyncUsername] = useState('')
-  const [syncPassword, setSyncPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [savingProfile, setSavingProfile] = useState(false)
   const [editVisible, setEditVisible] = useState(false)
@@ -161,16 +230,20 @@ export default function ProfilePage() {
     }))
   }, [profileSource])
 
-  async function loadAccount(accountId: string) {
+  async function loadAccount(accountId: string, forceRefresh = false) {
     setErrorText('')
 
     try {
-      const accountData = await getAccount(accountId)
+      const accountData = await getAccount(accountId, { forceRefresh })
       setAccount(accountData)
 
       const profileData = await getProfile(accountId)
       setProfile(profileData.data || {})
     } catch (error) {
+      if (error instanceof Error && error.message === 'CACHE_NOT_READY') {
+        return
+      }
+
       setErrorText(error instanceof Error ? error.message : '账号信息读取失败')
     }
   }
@@ -206,6 +279,7 @@ export default function ProfilePage() {
       ['schoolId', school.id],
       ['schoolName', school.name],
       ['shortName', school.shortName],
+      ['providerId', school.providerId],
       ['city', school.city],
       ['province', school.province],
       ['level', school.level],
@@ -261,7 +335,7 @@ export default function ProfilePage() {
       setEditVisible(false)
       setMessage('个人信息已保存')
       Taro.showToast({ title: '已保存', icon: 'success' })
-      await loadAccount(account.id)
+      await loadAccount(account.id, true)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '保存失败')
     } finally {
@@ -275,8 +349,9 @@ export default function ProfilePage() {
       return
     }
 
-    if (!hasSavedPassword && (!syncUsername.trim() || !syncPassword)) {
-      setErrorText('请输入教务系统账号和密码')
+    if (!hasSavedPassword) {
+      setMessage('请通过学校页面重新导入课表。')
+      Taro.navigateTo({ url: getBindUrl(account) })
       return
     }
 
@@ -285,19 +360,26 @@ export default function ProfilePage() {
     setErrorText('')
 
     try {
-      const job = await createManualSync(
-        account.id,
-        'course',
-        hasSavedPassword
-          ? undefined
-          : {
-              username: syncUsername.trim(),
-              password: syncPassword,
-            },
-      )
-      setMessage(job.status === 'success' ? '课表已同步' : `同步状态：${job.status}`)
-      setSyncPassword('')
-      await loadAccount(account.id)
+      const job = await createManualSync(account.id, 'course')
+      setMessage(job.status === 'pending' ? '同步已排队' : `同步状态：${job.status}`)
+      const finalJob = await waitForSyncJob(job)
+
+      if (finalJob.status === 'success') {
+        const cachePersisted = persistSyncCache(account.id, finalJob)
+
+        if (!cachePersisted) {
+          await getTimetable(account.id, undefined, { forceRefresh: true })
+        }
+      }
+
+      if (finalJob.status === 'need_webview_fetch') {
+        setMessage('该学校需要通过前端导入更新课表。')
+        Taro.navigateTo({ url: getBindUrl(account) })
+        return
+      }
+
+      setMessage(finalJob.status === 'success' ? '课表已同步' : `同步状态：${finalJob.status}`)
+      await loadAccount(account.id, true)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '同步失败')
     } finally {
@@ -312,6 +394,8 @@ export default function ProfilePage() {
 
     try {
       await deactivateAccount(account.id)
+      clearStoredDataCaches(account.id)
+      clearStoredAccountSummary(account.id)
       clearStoredAccountId()
       setHasStoredAccount(false)
       setAccount(null)
@@ -424,23 +508,23 @@ export default function ProfilePage() {
               ? '将使用已加密保存的教务账号密码更新全部学期课表。'
               : '像登录学校官网一样输入教务系统账号密码。'}
           </Text>
-          {!hasSavedPassword && (
+          {false && !hasSavedPassword && (
             <View>
               <View className='field field-gap'>
                 <Input
                   className='input'
-                  value={syncUsername}
+                  value=''
                   placeholder='教务系统账号'
-                  onInput={(event) => setSyncUsername(event.detail.value)}
+                  onInput={() => undefined}
                 />
               </View>
               <View className='field field-gap'>
                 <Input
                   className='input'
                   password
-                  value={syncPassword}
+                  value=''
                   placeholder='教务系统密码'
-                  onInput={(event) => setSyncPassword(event.detail.value)}
+                  onInput={() => undefined}
                 />
               </View>
             </View>
