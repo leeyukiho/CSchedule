@@ -73,11 +73,11 @@ export default function SettingsPage() {
       clearStoredAccountSummary(accountId || undefined)
       clearStoredDataCaches(accountId || undefined)
       clearStoredTermStarts()
-      Taro.showToast({ title: '已清理缓存', icon: 'success' })
+      Taro.showToast({ title: '已退出登录', icon: 'success' })
       Taro.switchTab({ url: '/pages/profile/index' })
     } catch (error) {
       Taro.showToast({
-        title: error instanceof Error ? error.message : '清理失败',
+        title: error instanceof Error ? error.message : '退出失败',
         icon: 'none',
       })
     }
@@ -93,13 +93,9 @@ export default function SettingsPage() {
           </View>
         </View>
         {terms.length > 0 && (
-          <>
-          <View className='settings-row'>
-            <View>
-              <View className='settings-title'>选择学期</View>
-              <View className='settings-desc'>先选择需要调整开始周的学期，再修改日期。</View>
-            </View>
+          <View className='settings-row settings-term-option'>
             <Picker
+              className='settings-term-picker'
               mode='selector'
               range={terms.map((term) => term.label)}
               value={selectedTermIndex}
@@ -107,21 +103,27 @@ export default function SettingsPage() {
                 setSelectedTermId(terms[Number(event.detail.value)]?.id || '')
               }
             >
-              <View className='small-button settings-date-button'>
-                {selectedTerm?.label || ''}
+              <View className='settings-term-summary'>
+                <View className='settings-term-main'>
+                  <View className='settings-term-title-row'>
+                    <View className='settings-title settings-term-title'>
+                      {selectedTerm?.label || '选择学期'}
+                    </View>
+                    <View className='settings-term-badge'>切换</View>
+                  </View>
+                  <View className='settings-desc'>
+                    {selectedTerm
+                      ? (termStarts[selectedTerm.id]
+                        ? `首周开始：${termStarts[selectedTerm.id]}`
+                        : '未设置，将使用默认估算日期')
+                      : '请先选择学期'}
+                  </View>
+                </View>
+                <View className='settings-term-arrow' />
               </View>
             </Picker>
-          </View>
-          <View className='settings-row'>
-            <View>
-              <View className='settings-title'>{selectedTerm?.label || '未选择学期'}</View>
-              <View className='settings-desc'>
-                {selectedTerm
-                  ? (termStarts[selectedTerm.id] || '未设置，将使用默认估算日期')
-                  : '请先选择学期'}
-              </View>
-            </View>
             <Picker
+              className='settings-date-picker'
               mode='date'
               value={selectedTerm ? (termStarts[selectedTerm.id] || '') : ''}
               onChange={(event) => {
@@ -131,11 +133,10 @@ export default function SettingsPage() {
               }}
             >
               <View className='small-button settings-date-button'>
-                {selectedTerm && termStarts[selectedTerm.id] ? '修改' : '设置'}
+                {selectedTerm && termStarts[selectedTerm.id] ? '修改日期' : '设置日期'}
               </View>
             </Picker>
           </View>
-          </>
         )}
         {terms.length === 0 && (
           <View className='settings-row settings-row-stack'>
@@ -146,15 +147,15 @@ export default function SettingsPage() {
       <View className='soft-card settings-card'>
         <View className='settings-row'>
           <View>
-            <View className='settings-title'>清理缓存</View>
-            <View className='settings-desc'>清理后需要重新登录学校官网账号。</View>
+            <View className='settings-title'>退出登录</View>
+            <View className='settings-desc'>退出后需要重新登录学校官网账号。</View>
           </View>
           <Button className='small-button danger-button' onClick={clearCache}>
-            清理
+            退出
           </Button>
         </View>
       </View>
-      <View className='settings-note'>清理缓存会退出当前账号，并清空本机保存的登录状态。</View>
+      <View className='settings-note'>退出登录会清空本机保存的登录状态和课表缓存。</View>
     </PageShell>
   )
 }

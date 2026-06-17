@@ -14,6 +14,9 @@ export interface RawDataUploadRequest {
   contentType: 'json' | 'html' | 'text' | 'csv' | 'xlsx' | 'ics' | 'pdf'
   sourceUrl?: string
   payload: unknown
+  completedTargets?: DataTarget[]
+  requiredTargets?: DataTarget[]
+  responseMode?: 'full' | 'status_only'
   meta?: Record<string, unknown>
 }
 
@@ -24,6 +27,7 @@ export interface RawDataUploadResponse {
   sourceHash?: string
   status: 'cached'
   parsedCount: number
+  syncedAt?: string
   warnings?: string[]
   cacheData?: TimetableCacheResponse | FeatureCacheResponse
   syncStatus?: WebviewSyncCompleteResponse
@@ -48,7 +52,11 @@ export function uploadRawData(accountId: string, data: RawDataUploadRequest) {
 
 export function completeWebviewSync(
   accountId: string,
-  data: { contextId?: string; completedTargets: DataTarget[] },
+  data: {
+    contextId?: string
+    completedTargets: DataTarget[]
+    requiredTargets?: DataTarget[]
+  },
 ) {
   return requestApi<WebviewSyncCompleteResponse, typeof data>({
     method: 'POST',

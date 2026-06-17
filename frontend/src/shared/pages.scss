@@ -452,6 +452,15 @@
   margin-bottom: 16rpx;
 }
 
+.today-empty-text {
+  margin: 44rpx 0 18rpx;
+  color: #667085;
+  font-size: 30rpx;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: center;
+}
+
 .schedule-filters,
 .schedule-toolbar {
   min-height: 82rpx;
@@ -511,7 +520,8 @@
   height: 68rpx;
   justify-content: center;
   border-radius: 999rpx;
-  font-size: 23rpx;
+  font-size: 24rpx;
+  font-weight: 700;
 }
 
 .schedule-today-button {
@@ -544,11 +554,13 @@
 }
 
 .timetable {
-  height: 1228rpx;
+  width: 684rpx;
+  height: 1184rpx;
   background: #ffffff;
   position: relative;
   overflow: hidden;
   border: 1rpx solid #eef0f4;
+  border-radius: 12rpx;
 }
 
 .timetable::before {
@@ -557,8 +569,8 @@
   inset: 0;
   pointer-events: none;
   background-image: linear-gradient(#f8fafc 1rpx, transparent 1rpx);
-  background-size: 100% 88rpx;
-  background-position: 0 84rpx;
+  background-size: 100% 92rpx;
+  background-position: 0 80rpx;
 }
 
 .weekday,
@@ -571,12 +583,12 @@
   justify-content: center;
   text-align: center;
   color: #4b5563;
-  font-size: 22rpx;
+  font-size: 20rpx;
   line-height: 1.2;
 }
 
 .weekday-name {
-  margin-bottom: 8rpx;
+  margin-bottom: 5rpx;
   color: #111827;
   font-size: 24rpx;
   font-weight: 800;
@@ -584,26 +596,23 @@
 
 .weekday-date {
   color: #667085;
-  font-size: 20rpx;
+  font-size: 19rpx;
   font-weight: 700;
 }
 
 .weekday-active {
-  box-sizing: border-box;
-  background: #fff7ed;
-  border: 1rpx solid #fed7aa;
-  color: #ea580c;
+  color: #2f7bff;
 }
 
 .weekday-active .weekday-name,
 .weekday-active .weekday-date {
-  color: #ea580c;
+  color: #2f7bff;
 }
 
 .period-index {
-  margin-bottom: 8rpx;
+  margin-bottom: 5rpx;
   color: #111827;
-  font-size: 26rpx;
+  font-size: 24rpx;
   font-weight: 800;
 }
 
@@ -611,58 +620,34 @@
   position: absolute;
   z-index: 2;
   box-sizing: border-box;
-  padding: 12rpx 8rpx;
-  border-radius: 12rpx;
+  padding: 10rpx 8rpx;
+  border: 1rpx solid #c9d7ee;
+  border-radius: 8rpx;
+  background: #eef4ff;
+  color: #24476f;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  font-size: 20rpx;
-  line-height: 1.22;
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+  font-size: 22rpx;
+  line-height: 1.2;
   font-weight: 800;
   overflow: hidden;
 }
 
+.lesson-name,
 .lesson-room {
-  margin-top: 8rpx;
+  display: block;
+  width: 100%;
+  word-break: break-all;
+}
+
+.lesson-room {
+  margin-top: 6rpx;
+  font-size: 19rpx;
   font-weight: 700;
-}
-
-.lesson-blue {
-  color: #1d4ed8;
-  border: 1rpx solid #9cc4ff;
-  background: #d9ebff;
-}
-
-.lesson-green {
-  color: #047857;
-  border: 1rpx solid #a7e4be;
-  background: #daf8e5;
-}
-
-.lesson-purple {
-  color: #6d28d9;
-  border: 1rpx solid #d6b7ff;
-  background: #efe0ff;
-}
-
-.lesson-yellow {
-  color: #92400e;
-  border: 1rpx solid #f4d17f;
-  background: #fff2c7;
-}
-
-.lesson-red {
-  color: #e11d48;
-  border: 1rpx solid #ffc1ca;
-  background: #ffe0e3;
-}
-
-.lesson-cyan {
-  color: #0f766e;
-  border: 1rpx solid #99f6e4;
-  background: #d8fbf6;
+  line-height: 1.18;
 }
 
 .lesson-detail-mask {
@@ -1704,9 +1689,76 @@
   align-items: flex-start;
 }
 
+.settings-term-option {
+  align-items: flex-start;
+}
+
 .settings-row>view:first-child {
   flex: 1;
   min-width: 0;
+}
+
+.settings-term-picker {
+  flex: 1;
+  min-width: 0;
+  display: block;
+}
+
+.settings-date-picker {
+  flex: 0 0 auto;
+  align-self: center;
+  display: block;
+}
+
+.settings-term-summary {
+  min-height: 88rpx;
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  min-width: 0;
+  padding: 18rpx 20rpx;
+  border: 1rpx solid #cfe0ff;
+  border-radius: 14rpx;
+  background: #f5f8ff;
+  box-shadow: inset 0 0 0 1rpx rgba(47, 123, 255, 0.04);
+  cursor: pointer;
+}
+
+.settings-term-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-term-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.settings-term-title {
+  margin-bottom: 0;
+  color: #1d4ed8;
+}
+
+.settings-term-badge {
+  flex: 0 0 auto;
+  height: 36rpx;
+  padding: 0 12rpx;
+  border-radius: 999rpx;
+  background: #e0edff;
+  color: #155eef;
+  font-size: 20rpx;
+  font-weight: 800;
+  line-height: 36rpx;
+}
+
+.settings-term-arrow {
+  flex: 0 0 14rpx;
+  width: 14rpx;
+  height: 14rpx;
+  border-right: 4rpx solid #2f7bff;
+  border-bottom: 4rpx solid #2f7bff;
+  transform: rotate(45deg);
 }
 
 .settings-title {
@@ -1744,7 +1796,13 @@
 }
 
 .settings-date-button {
+  flex-basis: 132rpx;
+  width: 132rpx;
   color: #155eef;
+}
+
+.settings-term-option .settings-date-button {
+  align-self: center;
 }
 
 .settings-note {
@@ -1863,13 +1921,70 @@
   text-align: right;
 }
 
-.feedback-card {
-  padding: 32rpx 28rpx 34rpx;
+.feedback-page-head {
+  margin-bottom: 22rpx;
 }
 
-.feedback-card .label {
-  display: block;
+.feedback-title {
+  margin-bottom: 12rpx;
+  color: #101828;
+  font-size: 40rpx;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.feedback-subtitle {
+  color: #667085;
+  font-size: 25rpx;
+  line-height: 1.5;
+}
+
+.feedback-form {
+  padding: 30rpx 28rpx 34rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 16rpx;
+  background: #ffffff;
+  box-shadow: 0 12rpx 36rpx rgba(16, 24, 40, 0.025);
+}
+
+.feedback-field+.feedback-field {
+  margin-top: 30rpx;
+}
+
+.feedback-label-row {
+  min-height: 34rpx;
   margin-bottom: 14rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.feedback-textarea,
+.feedback-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1rpx solid #d0d5dd;
+  border-radius: 14rpx;
+  background: #ffffff;
+  color: #101828;
+  font-size: 29rpx;
+}
+
+.feedback-textarea {
+  min-height: 260rpx;
+  padding: 22rpx 24rpx;
+  line-height: 1.5;
+}
+
+.feedback-input {
+  height: 88rpx;
+  padding: 0 24rpx;
+  line-height: 88rpx;
+}
+
+.feedback-placeholder {
+  color: #98a2b3;
 }
 
 .counter {
@@ -1888,6 +2003,11 @@
   font-size: 30rpx;
   font-weight: 700;
   line-height: 88rpx;
+}
+
+.submit-button[disabled] {
+  background: #93b4e8;
+  color: #eef4ff;
 }
 
 .admin-hero {

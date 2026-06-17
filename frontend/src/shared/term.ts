@@ -28,13 +28,18 @@ export function normalizeTerm(term: unknown): TermOption | null {
 
   const item = term as Record<string, unknown>
   const id = typeof item.id === 'string' ? item.id.trim() : ''
-  const label =
+  const rawLabel =
     (typeof item.label === 'string' && item.label.trim()) ||
     (typeof item.name === 'string' && item.name.trim()) ||
     (typeof item.title === 'string' && item.title.trim()) ||
     id
+  const label = formatTermLabel(id, rawLabel)
 
-  return id ? { id, label: formatTermLabel(id, label) } : null
+  if (!id || isScheduleArtifactTerm(id, rawLabel, label)) {
+    return null
+  }
+
+  return { id, label }
 }
 
 export function buildTermOptions(timetable: TimetableCacheResponse | null) {
@@ -45,6 +50,7 @@ export function buildTermOptions(timetable: TimetableCacheResponse | null) {
 
   if (
     currentTermId &&
+    !isScheduleArtifactTerm(currentTermId, currentTermId, currentTermId) &&
     !options.some(
       (term) =>
         term.id === currentTermId ||
@@ -70,7 +76,7 @@ export function dedupeAndSortTerms(terms: TermOption[]) {
   for (const term of terms) {
     const key = getTermKey(term)
 
-    if (!key || termMap.has(key) || isFutureAcademicYear(term)) {
+    if (!key || termMap.has(key) || isFutureAcademicYear(term) || isScheduleArtifactTerm(term.id, term.label, term.label)) {
       continue
     }
 
@@ -179,6 +185,29 @@ function getTermKey(term: TermOption) {
   }
 
   return `${parsed.yearStart}-${parsed.yearEnd}-${parsed.secondSemester ? '2' : '1'}`
+}
+
+function isScheduleArtifactTerm(id: string, rawLabel: string, label: string) {
+  const parsed = parseTermDescriptor({ id, label: [rawLabel, label].filter(Boolean).join(' ') })
+
+  if (parsed.yearStart && parsed.yearEnd) {
+    return false
+  }
+
+  return stripScheduleTermNoise([rawLabel, label].filter(Boolean).join(' ')) === ''
+}
+
+function stripScheduleTermNoise(value: string) {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*学生\s*课表\s*/g, ' ')
+    .replace(
+      /[\s,，、;；|/\\_-]*第?\s*[\d一二三四五六七八九十]+(?:\s*[-~—至]\s*[\d一二三四五六七八九十]+)?\s*周\s*/g,
+      ' ',
+    )
+    .replace(/[\s,，、;；|/\\_-]+/g, '')
+    .trim()
 }
 
 function getTermSortKey(term: TermOption) {

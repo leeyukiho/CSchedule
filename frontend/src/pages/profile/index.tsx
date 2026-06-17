@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { Button, Image, Input, ScrollView, Text, View } from '@tarojs/components'
 
-import { deactivateAccount, getAccount } from '../../shared/api/accounts'
+import { getAccount } from '../../shared/api/accounts'
 import { getProfile, saveProfile } from '../../shared/api/features'
 import { listSchools } from '../../shared/api/schools'
 import { createManualSync, getSyncJob } from '../../shared/api/sync'
@@ -17,9 +17,6 @@ import {
 import { formatTime } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
 import {
-  clearStoredAccountId,
-  clearStoredAccountSummary,
-  clearStoredDataCaches,
   getStoredAccountId,
   setStoredDataCache,
 } from '../../shared/storage'
@@ -43,10 +40,10 @@ const EDIT_FIELDS: EditField[] = [
     getValue: (source) => getText(source.schoolName),
   },
   {
-    key: 'studentId',
-    label: '学号',
+    key: 'gender',
+    label: '性别',
     readonly: true,
-    getValue: (source) => getText(source.studentId || source.maskedStudentId),
+    getValue: (source) => getText(source.gender),
   },
   { key: 'phone', label: '手机号' },
 ]
@@ -98,6 +95,22 @@ function delay(ms: number) {
 
 function isTerminalSyncStatus(status: SyncJobResponse['status']) {
   return ['success', 'failed', 'need_login', 'need_webview_fetch', 'rate_limited', 'cancelled'].includes(status)
+}
+
+function getSyncResultMessage(status: SyncJobResponse['status']) {
+  if (status === 'success') {
+    return '课表已同步'
+  }
+
+  if (status === 'need_login' || status === 'need_webview_fetch') {
+    return '请重新导入课表。'
+  }
+
+  if (status === 'rate_limited') {
+    return '同步太频繁，请稍后再试。'
+  }
+
+  return '同步未完成，请稍后再试。'
 }
 
 async function waitForSyncJob(job: SyncJobResponse) {
@@ -358,7 +371,6 @@ export default function ProfilePage() {
       setProfile(response.data || {})
       setEditVisible(false)
       setMessage('个人信息已保存')
-      Taro.showToast({ title: '已保存', icon: 'success' })
       await loadAccount(account.id, true)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '保存失败')
@@ -385,7 +397,6 @@ export default function ProfilePage() {
 
     try {
       const job = await createManualSync(account.id, 'course')
-      setMessage(job.status === 'pending' ? '同步已排队' : `同步状态：${job.status}`)
       const finalJob = await waitForSyncJob(job)
 
       if (finalJob.status === 'success') {
@@ -397,13 +408,13 @@ export default function ProfilePage() {
       }
 
       if (finalJob.status === 'need_webview_fetch') {
-        setMessage('请重新导入课表。')
+        setMessage(getSyncResultMessage(finalJob.status))
         Taro.navigateTo({ url: getBindUrl(account) })
         return
       }
 
       if (finalJob.status === 'success') {
-        setMessage('课表已同步')
+        setMessage(getSyncResultMessage(finalJob.status))
         setAccount((current) =>
           current && current.id === account.id
             ? { ...current, lastCachedAt: finalJob.finishedAt || finalJob.startedAt || finalJob.createdAt }
@@ -412,31 +423,11 @@ export default function ProfilePage() {
         return
       }
 
-      setMessage(`同步状态：${finalJob.status}`)
+      setMessage(getSyncResultMessage(finalJob.status))
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '同步失败')
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function handleLogout() {
-    if (!(account && account.id)) {
-      return
-    }
-
-    try {
-      await deactivateAccount(account.id)
-      clearStoredDataCaches(account.id)
-      clearStoredAccountSummary(account.id)
-      clearStoredAccountId()
-      setHasStoredAccount(false)
-      setAccount(null)
-      setProfile({})
-      setMessage('已退出账号')
-      Taro.navigateTo({ url: '/pages/bind/index' })
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : '退出失败')
     }
   }
 
@@ -537,12 +528,12 @@ export default function ProfilePage() {
         <View className='action-row' onClick={openSchoolAccount}>
           <View className='action-icon action-refresh' />
           <View className='action-text'>
-            <Text className='action-title'>登录学校账号</Text>
+            <Text className='action-title'>同步最新教务系统数据</Text>
             <Text className='action-desc'>
-              {canAutoSyncCourse ? '更新课表' : '登录后导入课表'}
+              {canAutoSyncCourse ? '刷新课表、成绩等信息' : '需要重新认证后同步'}
             </Text>
           </View>
-          {loading && <Text className='action-loading'>更新中</Text>}
+          {loading && <Text className='action-loading'>同步中</Text>}
           <View className='row-arrow' />
         </View>
         <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/feedback/index' })}>
@@ -560,11 +551,6 @@ export default function ProfilePage() {
           <Text>关于</Text>
           <View className='row-arrow' />
         </View>
-        {account && account.id && (
-          <Button className='button button-danger' onClick={handleLogout}>
-            退出账号
-          </Button>
-        )}
       </View>
 
       {editVisible && (

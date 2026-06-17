@@ -107,6 +107,8 @@ export default function HomePage() {
     Taro.switchTab({ url: '/pages/schedule/index' })
   }
 
+  const showTodayRestText = Boolean(accountId && timetable && !loading && !errorText && todayCourses.length === 0)
+
   return (
     <PageShell title='首页' activeTab='home' contentClassName='home-content'>
       <View className='date-row'>
@@ -122,6 +124,8 @@ export default function HomePage() {
       {errorText && <View className='status status-error'>{errorText}</View>}
 
       {loading && <View className='soft-card state-card'>正在加载课程...</View>}
+
+      {showTodayRestText && <View className='today-empty-text'>今天没有安排，可以好好放松一下。</View>}
 
       {todayCourses.length > 0 && (
         <View className='section-head'>
@@ -155,7 +159,7 @@ export default function HomePage() {
         )
       })}
 
-      {accountId && (
+      {accountId && !showTodayRestText && (
         <View className='card'>
           <Text className='item-title'>已登录教务账号</Text>
           <Text className='item-meta'>上次更新：{formatTime(timetable ? timetable.syncedAt : undefined)}</Text>

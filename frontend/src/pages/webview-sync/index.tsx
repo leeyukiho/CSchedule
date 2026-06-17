@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Taro, { useRouter } from '@tarojs/taro'
 import { Button, Text, View, WebView } from '@tarojs/components'
 
@@ -23,11 +23,14 @@ interface WebviewPayload {
   termId?: string
   sourceUrl?: string
   payload?: unknown
+  cacheData?: unknown
+  data?: unknown
   meta?: Record<string, unknown>
 }
 
 const DEFAULT_TARGETS: DataTarget[] = ['course']
-const BACKEND_JSON_TARGETS = new Set(['course', 'score', 'exam', 'profile'])
+const DATA_TARGETS: DataTarget[] = ['course', 'score', 'exam', 'profile']
+const BACKEND_JSON_TARGETS = new Set<DataTarget>(DATA_TARGETS)
 const INITIAL_MESSAGE = '请在学校页面完成登录，数据同步完成后会自动返回小程序。'
 const STATUS_CLEAR_DELAY_MS = 3000
 
@@ -36,7 +39,7 @@ function parseTargets(value?: string) {
     .split(',')
     .map((item) => item.trim())
     .filter((item): item is DataTarget =>
-      ['course', 'score', 'exam', 'profile'].includes(item),
+      DATA_TARGETS.includes(item as DataTarget),
     )
 
   return targets.length > 0 ? targets : DEFAULT_TARGETS
@@ -44,6 +47,220 @@ function parseTargets(value?: string) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function getText(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function parseMessage(value: unknown) {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  try {
+    return JSON.parse(value) as unknown
+  } catch {
+    return value
+  }
+}
+
+function normalizePayloadMessages(item: unknown): WebviewPayload[] {
+  const data = parseMessage(item)
+
+  if (Array.isArray(data)) {
+    return data.flatMap((entry) => normalizePayloadMessages(entry))
+  }
+
+  if (!isRecord(data)) {
+    return []
+  }
+
+  if (Array.isArray(data.payloads)) {
+    return data.payloads.flatMap((entry) => normalizePayloadMessages(entry))
+  }
+
+  if (Array.isArray(data.cacheResults)) {
+    return data.cacheResults.flatMap((entry) => normalizePayloadMessages(entry))
+  }
+
+  if (!('target' in data) && !('payload' in data) && !('cacheData' in data) && !('data' in data)) {
+    return []
+  }
+
+  return [
+    {
+      target: data.target as DataTarget | undefined,
+      contentType: data.contentType as WebviewPayload['contentType'],
+      termId: getText(data.termId),
+      sourceUrl: getText(data.sourceUrl),
+      payload: data.payload ?? data.cacheData ?? data.data,
+      cacheData: data.cacheData,
+      data: data.data,
+      meta: isRecord(data.meta) ? data.meta : undefined,
+    },
+  ]
+}
+
+function getPayloadSource(payload: unknown) {
+  if (!isRecord(payload)) {
+    return payload
+  }
+
+  return payload.cacheData ?? payload.data ?? payload.result ?? payload
+}
+
+function findArray(value: unknown, keys: string[]) {
+  if (Array.isArray(value)) {
+    return value
+  }
+
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  for (const key of keys) {
+    if (Array.isArray(value[key])) {
+      return value[key] as unknown[]
+    }
+  }
+
+  return undefined
+}
+
+function normalizeNumberArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => Number(item)).filter((item) => Number.isFinite(item) && item > 0)
+    : undefined
+}
+
+function normalizeCourseForUpload(value: unknown, index: number) {
+  const course = isRecord(value) ? value : {}
+  const sections = normalizeNumberArray(course.sections)
+  const startSection = Number(course.startSection ?? sections?.[0] ?? 0)
+  const endSection = Number(course.endSection ?? sections?.[sections.length - 1] ?? startSection)
+
+  return {
+    id: getText(course.id) || `course-${index + 1}`,
+    name: getText(course.name) || getText(course.courseName),
+    teacher: getText(course.teacher) || getText(course.teacherName),
+    location: getText(course.location) || getText(course.classroom) || getText(course.room),
+    classroom: getText(course.classroom) || getText(course.location) || getText(course.room),
+    weekday: Number(course.weekday ?? course.dayOfWeek ?? course.week ?? 0),
+    startSection: Number.isFinite(startSection) ? startSection : undefined,
+    endSection: Number.isFinite(endSection) ? endSection : undefined,
+    sections,
+    weeks: normalizeNumberArray(course.weeks),
+    rawWeeks: getText(course.rawWeeks),
+  }
+}
+
+function compactPayload(target: DataTarget, payload: unknown) {
+  const source = getPayloadSource(payload)
+  const sourceRecord = isRecord(source) ? source : {}
+
+  if (target === 'course') {
+    const courses = findArray(source, ['courses', 'courseList', 'lessons'])
+
+    if (!courses) {
+      return null
+    }
+
+    return {
+      termId: getText(sourceRecord.termId) || getText(sourceRecord.selectedSemesterId),
+      courses: courses.map((course, index) => normalizeCourseForUpload(course, index)),
+      terms: findArray(source, ['terms', 'semesters']) || [],
+      sectionTimes: findArray(source, ['sectionTimes', 'sections']) || [],
+    }
+  }
+
+  if (isRecord(source) && ('data' in source || 'meta' in source || 'termId' in source)) {
+    return {
+      termId: getText(source.termId) || getText(source.selectedSemesterId),
+      data: source.data ?? null,
+      meta: isRecord(source.meta) ? source.meta : {},
+    }
+  }
+
+  return { data: source, meta: {} }
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value)
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`
+  }
+
+  const record = value as Record<string, unknown>
+  return `{${Object.keys(record)
+    .sort()
+    .filter((key) => record[key] !== undefined)
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+    .join(',')}}`
+}
+
+function hashPayload(value: unknown) {
+  const text = stableStringify(value)
+  let hash = 2166136261
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+
+  return (hash >>> 0).toString(36)
+}
+
+function createClientSession() {
+  return {
+    sessionReusable: false,
+    sessionRefreshable: false,
+    accountStatus: 'active' as const,
+  }
+}
+
+function buildLocalCacheData(input: {
+  accountId: string
+  schoolId: string
+  providerId: string
+  target: DataTarget
+  payload: unknown
+  sourceHash?: string
+  syncedAt?: string
+}): TimetableCacheResponse | FeatureCacheResponse | undefined {
+  const payload = isRecord(input.payload) ? input.payload : {}
+  const base = {
+    accountId: input.accountId,
+    schoolId: input.schoolId,
+    providerId: input.providerId,
+    termId: getText(payload.termId),
+    sourceHash: input.sourceHash,
+    syncedAt: input.syncedAt,
+    session: createClientSession(),
+  }
+
+  if (input.target === 'course') {
+    if (!Array.isArray(payload.courses)) {
+      return undefined
+    }
+
+    return {
+      ...base,
+      courses: payload.courses as TimetableCacheResponse['courses'],
+      terms: Array.isArray(payload.terms) ? payload.terms : [],
+      sectionTimes: Array.isArray(payload.sectionTimes) ? payload.sectionTimes : [],
+    }
+  }
+
+  return {
+    ...base,
+    target: input.target,
+    data: 'data' in payload ? payload.data : null,
+    meta: payload.meta ?? {},
+  } as FeatureCacheResponse
 }
 
 function persistUploadCache(
@@ -103,10 +320,6 @@ function persistUploadCache(
   }
 }
 
-function getText(value: unknown) {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined
-}
-
 function buildAccountSummary(input: {
   accountId: string
   schoolId: string
@@ -156,6 +369,10 @@ export default function WebviewSyncPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState(INITIAL_MESSAGE)
   const [errorText, setErrorText] = useState('')
+  const completedTargetsRef = useRef<DataTarget[]>([])
+  const uploadedPayloadHashes = useRef(new Set<string>())
+  const uploadingPayloadHashes = useRef(new Set<string>())
+  const closingRef = useRef(false)
 
   useEffect(() => {
     if (!message && !errorText) {
@@ -175,7 +392,9 @@ export default function WebviewSyncPage() {
     const messages = Array.isArray(data) ? data : []
 
     for (const item of messages) {
-      await handlePayload(item)
+      for (const payload of normalizePayloadMessages(item)) {
+        await handlePayload(payload)
+      }
     }
   }
 
@@ -185,8 +404,7 @@ export default function WebviewSyncPage() {
       return
     }
 
-    const data =
-      item && typeof item === 'object' ? (item as WebviewPayload) : {}
+    const data = isRecord(item) ? (item as WebviewPayload) : {}
     const target = data.target || 'course'
     const contentType = data.contentType || 'json'
 
@@ -199,6 +417,29 @@ export default function WebviewSyncPage() {
       return
     }
 
+    const payload = compactPayload(target, data.payload)
+
+    if (!payload) {
+      setErrorText('当前数据暂时无法导入。')
+      return
+    }
+
+    const payloadHash = hashPayload({
+      accountId: activeAccountId,
+      contextId,
+      target,
+      termId: data.termId,
+      payload,
+    })
+
+    if (
+      uploadedPayloadHashes.current.has(payloadHash) ||
+      uploadingPayloadHashes.current.has(payloadHash)
+    ) {
+      return
+    }
+
+    uploadingPayloadHashes.current.add(payloadHash)
     setLoading(true)
     setErrorText('')
 
@@ -210,11 +451,15 @@ export default function WebviewSyncPage() {
         termId: data.termId,
         contentType,
         sourceUrl: data.sourceUrl || sourceUrl,
-        payload: data.payload,
+        payload,
+        completedTargets: completedTargetsRef.current,
+        requiredTargets,
+        responseMode: 'status_only',
         meta: {
           ...data.meta,
           parsedBy: 'webview_structured_json',
           localCachePreferred: true,
+          payloadHash,
         },
       })
 
@@ -224,8 +469,20 @@ export default function WebviewSyncPage() {
         setActiveAccountId(nextAccountId)
       }
 
+      const cacheData =
+        uploadResult.cacheData ||
+        buildLocalCacheData({
+          accountId: nextAccountId,
+          schoolId,
+          providerId,
+          target,
+          payload,
+          sourceHash: uploadResult.sourceHash,
+          syncedAt: uploadResult.syncedAt,
+        })
+
       setStoredAccountId(nextAccountId, schoolId)
-      persistUploadCache(nextAccountId, target, uploadResult.cacheData)
+      persistUploadCache(nextAccountId, target, cacheData)
       setStoredAccountSummary(buildAccountSummary({
         accountId: nextAccountId,
         schoolId,
@@ -233,22 +490,25 @@ export default function WebviewSyncPage() {
         schoolShortName,
         providerId,
         profile: target === 'profile'
-          ? (uploadResult.cacheData as FeatureCacheResponse<ProfileData> | undefined)?.data || undefined
+          ? (cacheData as FeatureCacheResponse<ProfileData> | undefined)?.data || undefined
           : undefined,
-        cacheData: uploadResult.cacheData,
+        cacheData,
       }))
 
-      const nextTargets = Array.from(new Set([...completedTargets, target]))
+      const nextTargets = Array.from(new Set([...completedTargetsRef.current, target]))
+      completedTargetsRef.current = nextTargets
       setCompletedTargets(nextTargets)
+      uploadedPayloadHashes.current.add(payloadHash)
 
       const result = uploadResult.syncStatus || {
         accountId: nextAccountId,
         status: 'partial' as const,
         canCloseWebview: false,
-        missingRequiredTargets: ['course'] as DataTarget[],
+        missingRequiredTargets: requiredTargets,
       }
 
-      if (result.canCloseWebview) {
+      if (result.canCloseWebview && !closingRef.current) {
+        closingRef.current = true
         setMessage('同步完成，正在进入小程序。')
         Taro.switchTab({ url: '/pages/index/index' })
       } else {
@@ -259,6 +519,7 @@ export default function WebviewSyncPage() {
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '网页同步失败')
     } finally {
+      uploadingPayloadHashes.current.delete(payloadHash)
       setLoading(false)
     }
   }
@@ -271,10 +532,12 @@ export default function WebviewSyncPage() {
 
     void completeWebviewSync(activeAccountId, {
       contextId,
-      completedTargets,
+      completedTargets: completedTargetsRef.current,
+      requiredTargets,
     })
       .then((result) => {
-        if (result.canCloseWebview) {
+        if (result.canCloseWebview && !closingRef.current) {
+          closingRef.current = true
           setStoredAccountId(activeAccountId, schoolId)
           Taro.switchTab({ url: '/pages/index/index' })
         } else {
@@ -297,6 +560,11 @@ export default function WebviewSyncPage() {
           <Text className='item-meta'>
             必需数据：{requiredTargets.join(', ')}
           </Text>
+          {completedTargets.length > 0 && (
+            <Text className='item-meta'>
+              已同步：{completedTargets.join(', ')}
+            </Text>
+          )}
         </View>
         <Button
           className='button button-secondary webview-sync-button'

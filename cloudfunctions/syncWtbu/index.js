@@ -649,6 +649,28 @@ function getAcademicTermKey(value) {
   return match ? `${match[1]}-${match[2]}-${match[3]}` : ''
 }
 
+function stripScheduleTermNoise(value) {
+  return cleanText(String(value || '').replace(/&nbsp;/gi, ' '))
+    .replace(/\s*学生\s*课表\s*/g, ' ')
+    .replace(
+      /[\s,，、;；|/\\_-]*第?\s*[\d一二三四五六七八九十]+(?:\s*[-~—至]\s*[\d一二三四五六七八九十]+)?\s*周\s*/g,
+      ' ',
+    )
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s,，、;；|/\\_-]+|[\s,，、;；|/\\_-]+$/g, '')
+    .trim()
+}
+
+function isScheduleTermNoise(value) {
+  const text = cleanText(String(value || '').replace(/&nbsp;/gi, ' '))
+
+  if (!text || getAcademicTermLabel(text)) {
+    return false
+  }
+
+  return stripScheduleTermNoise(text).replace(/[\s,，、;；|/\\_-]+/g, '') === ''
+}
+
 function cleanScheduleTermTitle(value) {
   const text = cleanText(String(value || '').replace(/&nbsp;/gi, ' '))
   const academicLabel = getAcademicTermLabel(text)
@@ -657,17 +679,13 @@ function cleanScheduleTermTitle(value) {
     return academicLabel
   }
 
-  return text
-    .replace(/\s*学生课表\s*/g, ' ')
-    .replace(/\s*第\s*[\d一二三四五六七八九十]+\s*周\s*/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  return stripScheduleTermNoise(text)
 }
 
 function normalizeSemesterRecord(semester) {
   const id = cleanText(semester.id)
   const rawLabel = semester.label || semester.title || (id ? `term ${id}` : '')
-  const label = cleanScheduleTermTitle(rawLabel) || rawLabel
+  const label = cleanScheduleTermTitle(rawLabel)
 
   return {
     ...semester,
@@ -729,12 +747,18 @@ function parseSemesters(indexHtml) {
       continue
     }
 
-    semesters.push(normalizeSemesterRecord({
+    const semester = normalizeSemesterRecord({
       id,
       title: label || `term ${id}`,
       label: label || `term ${id}`,
       selected: /\bselected\b/i.test(attr),
-    }))
+    })
+
+    if (!semester.label || isScheduleTermNoise(label || semester.title)) {
+      continue
+    }
+
+    semesters.push(semester)
   }
 
   return semesters
