@@ -1,6 +1,10 @@
 import { requestApi } from './client'
 import { DataTarget, SyncJobResponse } from './types'
 
+interface SyncJobOptions {
+  includeCache?: boolean
+}
+
 export function createManualSync(
   accountId: string,
   target: DataTarget,
@@ -13,8 +17,10 @@ export function createManualSync(
   })
 }
 
-export function getSyncJob(jobId: string) {
+export function getSyncJob(jobId: string, options: SyncJobOptions = {}) {
+  const query = options.includeCache ? '?includeCache=1' : ''
+
   return requestApi<SyncJobResponse>({
-    path: `/sync/${encodeURIComponent(jobId)}`,
+    path: `/sync/${encodeURIComponent(jobId)}${query}`,
   })
 }

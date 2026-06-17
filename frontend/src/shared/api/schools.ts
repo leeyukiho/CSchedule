@@ -6,6 +6,7 @@ export interface ListSchoolsOptions {
   enabledOnly?: boolean
   limit?: number
   offset?: number
+  fields?: 'full' | 'summary'
 }
 
 const SCHOOL_LIST_CACHE_TTL_MS = 5 * 60 * 1000
@@ -21,6 +22,7 @@ function createSchoolListCacheKey(options: ListSchoolsOptions) {
     enabledOnly: options.enabledOnly ?? true,
     limit: options.limit ?? 50,
     offset: options.offset ?? 0,
+    fields: options.fields || 'full',
   })
 }
 
@@ -54,6 +56,10 @@ export async function listSchools(options: ListSchoolsOptions = {}) {
 
   if (options.offset) {
     params.set('offset', String(options.offset))
+  }
+
+  if (options.fields) {
+    params.set('fields', options.fields)
   }
 
   const query = params.toString() ? `?${params.toString()}` : ''

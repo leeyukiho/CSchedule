@@ -89,6 +89,9 @@ function normalizeAccountSummary(value: unknown): StudentAccountSummary | null {
     sessionExpireAt: typeof account.sessionExpireAt === 'string' ? account.sessionExpireAt : undefined,
     lastLoginAt: typeof account.lastLoginAt === 'string' ? account.lastLoginAt : undefined,
     lastCachedAt: typeof account.lastCachedAt === 'string' ? account.lastCachedAt : undefined,
+    syncStrategy: account.syncStrategy && typeof account.syncStrategy === 'object' && !Array.isArray(account.syncStrategy)
+      ? account.syncStrategy
+      : undefined,
     school: account.school && typeof account.school === 'object' && !Array.isArray(account.school)
       ? {
           id: String(account.school.id || account.schoolId),

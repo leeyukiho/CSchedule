@@ -385,7 +385,12 @@ export default function BindPage() {
     setErrorText('')
 
     try {
-      const result = await listSchools({ keyword: text, limit: 30, enabledOnly: true })
+      const result = await listSchools({
+        keyword: text,
+        limit: 30,
+        enabledOnly: true,
+        fields: 'summary',
+      })
       if (seq !== requestSeq.current) return
       setSchools(result.items.filter((school) => school.enabled))
     } catch (error) {

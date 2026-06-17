@@ -109,7 +109,7 @@ async function waitForSyncJob(job: SyncJobResponse) {
     Date.now() - startedAt < SYNC_POLL_TIMEOUT_MS
   ) {
     await delay(SYNC_POLL_INTERVAL_MS)
-    currentJob = await getSyncJob(job.jobId)
+    currentJob = await getSyncJob(job.jobId, { includeCache: true })
   }
 
   return currentJob
@@ -273,7 +273,12 @@ export default function ProfilePage() {
     setErrorText('')
 
     try {
-      const result = await listSchools({ keyword: text, limit: 30, enabledOnly: true })
+      const result = await listSchools({
+        keyword: text,
+        limit: 30,
+        enabledOnly: true,
+        fields: 'summary',
+      })
       if (seq !== requestSeq.current) return
       setSchools(result.items.filter((school) => school.enabled))
     } catch (error) {
