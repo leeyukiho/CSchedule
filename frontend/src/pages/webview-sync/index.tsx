@@ -2,11 +2,6 @@ import { useMemo, useState } from 'react'
 import Taro, { useRouter } from '@tarojs/taro'
 import { Button, Text, View, WebView } from '@tarojs/components'
 
-import {
-  CloudParserResult,
-  hasCloudParser,
-  parseRawPayloadWithCloud,
-} from '../../shared/api/cloud-parser'
 import { completeWebviewSync, uploadRawData } from '../../shared/api/raw-data'
 import {
   DataTarget,
@@ -106,57 +101,6 @@ function persistUploadCache(
   }
 }
 
-function getUploadPayloadFromCloudResult(
-  result: CloudParserResult,
-  fallbackPayload: unknown,
-) {
-  if (result.payload !== undefined) {
-    return result.payload
-  }
-
-  if (result.cacheData) {
-    return result.cacheData
-  }
-
-  return fallbackPayload
-}
-
-async function parsePayloadBeforeUpload(input: {
-  schoolId: string
-  providerId: string
-  data: WebviewPayload
-  sourceUrl: string
-}) {
-  if (!hasCloudParser()) {
-    throw new Error('CLOUD_PARSER_NOT_CONFIGURED')
-  }
-
-  const result = await parseRawPayloadWithCloud({
-    schoolId: input.schoolId,
-    providerId: input.providerId,
-    target: input.data.target || 'course',
-    contentType: input.data.contentType || 'json',
-    sourceUrl: input.data.sourceUrl || input.sourceUrl,
-    termId: input.data.termId,
-    payload: input.data.payload,
-    meta: input.data.meta,
-  })
-
-  return {
-    payload: getUploadPayloadFromCloudResult(result, input.data.payload),
-    contentType: 'json' as const,
-    cacheData: result.cacheData,
-    meta: {
-      ...input.data.meta,
-      parsedBy: 'cloud_function',
-      cloudParser: process.env.TARO_APP_CLOUD_PARSER_FUNCTION || 'parseRawPayload',
-      cloudSourceHash: result.sourceHash,
-      cloudWarnings: result.warnings,
-      localCachePreferred: true,
-    },
-  }
-}
-
 function getText(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
@@ -229,8 +173,14 @@ export default function WebviewSyncPage() {
     const data =
       item && typeof item === 'object' ? (item as WebviewPayload) : {}
     const target = data.target || 'course'
+    const contentType = data.contentType || 'json'
 
     if (!data.payload || !BACKEND_JSON_TARGETS.has(target)) {
+      return
+    }
+
+    if (contentType !== 'json') {
+      setErrorText('当前架构只接受学校页面返回的结构化 JSON 数据。')
       return
     }
 
@@ -238,24 +188,19 @@ export default function WebviewSyncPage() {
     setErrorText('')
 
     try {
-      const parsed = await parsePayloadBeforeUpload({
-        schoolId,
-        providerId,
-        data,
-        sourceUrl,
-      })
-
-      persistUploadCache(activeAccountId, target, parsed.cacheData)
-
       const uploadResult = await uploadRawData(activeAccountId, {
         contextId,
         target,
         accessMode: 'webview_client_fetch',
         termId: data.termId,
-        contentType: parsed.contentType,
+        contentType,
         sourceUrl: data.sourceUrl || sourceUrl,
-        payload: parsed.payload,
-        meta: parsed.meta,
+        payload: data.payload,
+        meta: {
+          ...data.meta,
+          parsedBy: 'webview_structured_json',
+          localCachePreferred: true,
+        },
       })
 
       const nextAccountId = uploadResult.accountId || activeAccountId

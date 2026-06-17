@@ -2,7 +2,7 @@
   "miniprogramRoot": "dist/",
   "projectname": "CSchedule",
   "description": "A Taro multi-platform mini app",
-  "appid": "wx78d8ead727e6f034",
+  "appid": "wx4d568590b993fc96",
   "setting": {
     "urlCheck": true,
     "es6": true,

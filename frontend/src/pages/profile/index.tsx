@@ -166,7 +166,6 @@ export default function ProfilePage() {
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
   const requestSeq = useRef(0)
-  const searchCache = useRef(new Map<string, SchoolListItem[]>())
 
   useDidShow(() => {
     const accountId = getStoredAccountId()
@@ -250,10 +249,6 @@ export default function ProfilePage() {
 
   async function searchSchools(value: string) {
     const text = value.trim()
-    if (searchCache.current.has(text)) {
-      setSchools((searchCache.current.get(text) || []).filter((school) => school.enabled))
-      return
-    }
 
     const seq = requestSeq.current + 1
     requestSeq.current = seq
@@ -263,7 +258,6 @@ export default function ProfilePage() {
     try {
       const result = await listSchools({ keyword: text, limit: 30, enabledOnly: true })
       if (seq !== requestSeq.current) return
-      searchCache.current.set(text, result.items)
       setSchools(result.items.filter((school) => school.enabled))
     } catch (error) {
       if (seq === requestSeq.current) {

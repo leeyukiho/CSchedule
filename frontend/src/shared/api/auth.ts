@@ -6,14 +6,21 @@ import {
 } from './types'
 
 export interface LoginSubmitRequest {
+  accountId?: string
   contextId: string
   username?: string
   password?: string
   captcha?: string
   credentialSaveMode?: 'none' | 'password_vault'
   verifiedByCloud?: boolean
-  target?: DataTarget
-  cacheData?: TimetableCacheResponse | FeatureCacheResponse
+  cacheResults?: Array<{
+    target: DataTarget
+    cacheData: TimetableCacheResponse | FeatureCacheResponse
+    parsedCount?: number
+    termId?: string
+    sourceHash?: string
+    warnings?: string[]
+  }>
   parsedCount?: number
   termId?: string
   sourceHash?: string
@@ -30,6 +37,8 @@ export interface LoginSubmitResponse {
   requiredFetchTargets?: DataTarget[]
   cacheId?: string
   parsedCount?: number
+  cacheResults?: LoginSubmitRequest['cacheResults']
+  savedTargets?: DataTarget[]
 }
 
 export interface SessionImportFallbackResponse {

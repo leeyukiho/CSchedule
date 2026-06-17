@@ -173,9 +173,8 @@ Agent 不能替代 Provider。最终仍应落到现有架构：
 School
   -> School.config
   -> SchoolProvider
-  -> LoginStrategy
-  -> FeatureConnector
-  -> Parser
+  -> cloudFunctions[target]
+  -> Cloud Worker Parser
   -> Cache
 ```
 

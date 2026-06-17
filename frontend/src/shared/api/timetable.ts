@@ -36,10 +36,6 @@ export async function getTimetable(
     return cached.data
   }
 
-  if (!options.forceRefresh) {
-    throw new Error('CACHE_NOT_READY')
-  }
-
   const requestKey = getTimetableRequestKey(accountId, termId)
   const pendingRequest = timetableRequests.get(requestKey)
 

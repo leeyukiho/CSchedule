@@ -14,9 +14,7 @@
 | --- | --- |
 | `TARO_APP_API_BASE_URL` | 后端 API 地址，需包含 `/api/v1` |
 | `TARO_APP_ID` | 小程序 AppID，没有可先不填 |
-| `TARO_APP_CLOUDBASE_ENV_ID` | CloudBase 环境 ID，配置后 WebView 导入可直连云函数 parser |
-| `TARO_APP_CLOUD_PARSER_FUNCTION` | 云函数 parser 名称，默认 `parseRawPayload` |
-| `TARO_APP_CLOUD_PARSER_URL` | 云函数 HTTP 触发地址，配置后优先使用该地址 |
+| `TARO_APP_CLOUDBASE_ENV_ID` | CloudBase 环境 ID，学校配置中的专用同步函数会通过该环境调用 |
 
 后端：复制 `backend/.env.example` 为 `backend/.env` 后修改。
 

@@ -7,7 +7,7 @@ import {
   CloudCredentialSyncResult,
   hasCloudCredentialSync,
   runCredentialSyncWithCloud,
-} from '../../shared/api/cloud-parser'
+} from '../../shared/api/cloud-sync'
 import { createLoginContext, listSchools } from '../../shared/api/schools'
 import {
   FeatureCacheResponse,
@@ -103,6 +103,9 @@ function getBindErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : ''
 
   if (
+    message.includes('云函数未配置') ||
+    message.includes('PROVIDER_NOT_FOUND') ||
+    message.includes('SYNC_INPUT_INVALID') ||
     message.includes('教务系统数据同步失败') ||
     message.includes('教务系统暂时无法访问') ||
     message.includes('无法定位学生课表参数') ||
@@ -118,31 +121,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
 }
 
-function persistCloudCache(
-  accountId: string,
-  result: CloudCredentialSyncResult,
-) {
-  const cacheData = result.cacheData
+function getText(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
 
+function persistLoginCache(
+  accountId: string,
+  cacheData?: TimetableCacheResponse | FeatureCacheResponse,
+  sourceHash?: string,
+) {
   if (!cacheData) {
     return
   }
 
-  if (result.target === 'course') {
+  if ('courses' in cacheData) {
     const timetable = {
       ...(cacheData as TimetableCacheResponse),
       accountId,
     }
 
     setStoredDataCache(accountId, 'timetable', timetable, {
-      termId: timetable.termId,
-      sourceHash: timetable.sourceHash || result.sourceHash,
+      sourceHash: timetable.sourceHash || sourceHash,
       syncedAt: timetable.syncedAt,
     })
-    return
-  }
 
-  if (!['score', 'exam', 'profile'].includes(result.target)) {
+    if (timetable.termId) {
+      setStoredDataCache(accountId, 'timetable', timetable, {
+        termId: timetable.termId,
+        sourceHash: timetable.sourceHash || sourceHash,
+        syncedAt: timetable.syncedAt,
+      })
+    }
+
     return
   }
 
@@ -151,35 +161,51 @@ function persistCloudCache(
     accountId,
   }
 
-  if (!isRecord(feature) || feature.target !== result.target) {
+  if (!isRecord(feature) || !['score', 'exam', 'profile'].includes(String(feature.target))) {
     return
   }
 
-  setStoredDataCache(accountId, result.target, feature, {
+  setStoredDataCache(accountId, feature.target, feature, {
     termId: feature.termId,
-    sourceHash: feature.sourceHash || result.sourceHash,
+    sourceHash: feature.sourceHash || sourceHash,
     syncedAt: feature.syncedAt,
   })
 }
 
-function getText(value: unknown) {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+function persistCloudCache(
+  accountId: string,
+  cacheResults: NonNullable<CloudCredentialSyncResult['cacheResults']>,
+) {
+  for (const cacheResult of cacheResults) {
+    persistLoginCache(accountId, cacheResult.cacheData, cacheResult.sourceHash)
+  }
+}
+
+function getCacheResult(
+  result: CloudCredentialSyncResult,
+  target: 'course' | 'profile',
+) {
+  return (result.cacheResults || []).find((item) => item.target === target)
+}
+
+function getPrimaryCacheData(result: CloudCredentialSyncResult) {
+  return getCacheResult(result, 'course')?.cacheData
 }
 
 function buildAccountSummary(input: {
   accountId: string
   school: SchoolListItem
   cacheData?: TimetableCacheResponse | FeatureCacheResponse
+  profileCacheData?: TimetableCacheResponse | FeatureCacheResponse
 }): StudentAccountSummary {
   const session = input.cacheData?.session
+  const profile = input.profileCacheData as FeatureCacheResponse<ProfileData> | undefined
 
   return {
     id: input.accountId,
     schoolId: input.school.id,
     providerId: input.school.providerId || input.cacheData?.providerId || input.school.id,
-    displayName: getText(
-      (input.cacheData as FeatureCacheResponse<ProfileData> | undefined)?.data?.name,
-    ),
+    displayName: getText(profile?.data?.name),
     status: session?.accountStatus || 'cached_only',
     sessionReusable: Boolean(session?.sessionReusable),
     sessionRefreshable: Boolean(session?.sessionRefreshable),
@@ -210,7 +236,6 @@ export default function BindPage() {
   const contextSeq = useRef(0)
   const initialSchoolApplied = useRef(false)
   const initialSchool = useRef<SchoolListItem | null>(getInitialSchoolFromRoute())
-  const searchCache = useRef(new Map<string, SchoolListItem[]>())
 
   const visibleFields = useMemo(() => getVisibleFields(loginContext), [loginContext])
   const loginMode = loginContext ? loginContext.mode : undefined
@@ -223,9 +248,10 @@ export default function BindPage() {
     Boolean(credentialSave?.passwordVaultAllowed) &&
     canSaveForAutoSync &&
     !isExternalWebviewLogin
+  const wantsPasswordVault = canSavePassword && savePassword
   const shouldCollectCredentials =
     isPasswordServerImport ||
-    (canSavePassword && (savePassword || syncStrategy?.passwordVaultRequired))
+    wantsPasswordVault
   const credentialFields = useMemo(
     () => visibleFields.filter((field) => field.name === 'username' || field.name === 'password'),
     [visibleFields],
@@ -260,10 +286,6 @@ export default function BindPage() {
 
   async function searchSchools(value: string) {
     const text = value.trim()
-    if (searchCache.current.has(text)) {
-      setSchools((searchCache.current.get(text) || []).filter((school) => school.enabled))
-      return
-    }
 
     const seq = requestSeq.current + 1
     requestSeq.current = seq
@@ -273,7 +295,6 @@ export default function BindPage() {
     try {
       const result = await listSchools({ keyword: text, limit: 30, enabledOnly: true })
       if (seq !== requestSeq.current) return
-      searchCache.current.set(text, result.items)
       setSchools(result.items.filter((school) => school.enabled))
     } catch (error) {
       if (seq === requestSeq.current) {
@@ -291,7 +312,7 @@ export default function BindPage() {
     setErrorText('')
     setLoginContext(null)
     setForm({})
-    setSavePassword(Boolean(school.syncStrategy?.passwordVaultRequired))
+    setSavePassword(false)
     if (syncKeyword) setKeyword(school.name)
 
     const seq = contextSeq.current + 1
@@ -302,7 +323,7 @@ export default function BindPage() {
       const context = await createLoginContext(school.id)
       if (seq === contextSeq.current) {
         setLoginContext(context)
-        setSavePassword(Boolean(context.syncStrategy?.passwordVaultRequired))
+        setSavePassword(false)
       }
     } catch (error) {
       if (seq === contextSeq.current) {
@@ -360,7 +381,9 @@ export default function BindPage() {
       const context = loginContext || (await createLoginContext(selectedSchool.id))
 
       if (context.syncStrategy?.importMode === 'password_server') {
-        if (!hasCloudCredentialSync()) {
+        const cloudFunction = context.syncStrategy.cloudFunctions?.course
+
+        if (!hasCloudCredentialSync(cloudFunction)) {
           throw new Error('云函数未配置，暂时无法导入该学校。')
         }
 
@@ -370,10 +393,13 @@ export default function BindPage() {
           target: 'course',
           username: form.username,
           password: form.password,
+          cloudFunction,
         })
 
-        if (!cloudResult.cacheData) {
-          throw new Error('云函数未返回可保存的课表数据。')
+        const primaryCacheData = getPrimaryCacheData(cloudResult)
+
+        if (!primaryCacheData) {
+          throw new Error('云函数未返回可保存的数据。')
         }
 
         setMessage('账号已校验成功，正在保存绑定信息。')
@@ -381,16 +407,11 @@ export default function BindPage() {
         const result = await submitLogin(selectedSchool.id, {
           contextId: context.contextId,
           username: form.username,
-          password: savePassword || context.syncStrategy?.passwordVaultRequired
-            ? form.password
-            : undefined,
+          password: wantsPasswordVault ? form.password : undefined,
           credentialSaveMode:
-            savePassword || context.syncStrategy?.passwordVaultRequired
-              ? 'password_vault'
-              : 'none',
+            wantsPasswordVault ? 'password_vault' : 'none',
           verifiedByCloud: true,
-          target: cloudResult.target || 'course',
-          cacheData: cloudResult.cacheData,
+          cacheResults: cloudResult.cacheResults,
           parsedCount: cloudResult.parsedCount,
           termId: cloudResult.termId,
           sourceHash: cloudResult.sourceHash,
@@ -398,22 +419,34 @@ export default function BindPage() {
         })
 
         setStoredAccountId(result.accountId, selectedSchool.id)
-        persistCloudCache(result.accountId, cloudResult)
-        setStoredAccountSummary(buildAccountSummary({
-          accountId: result.accountId,
-          school: selectedSchool,
-          cacheData: cloudResult.cacheData,
-        }))
-        setMessage('登录成功，课表已获取。')
+        const savedCacheResults = result.cacheResults || cloudResult.cacheResults || []
+        const savedCourseCache = getCacheResult(
+          { cacheResults: savedCacheResults, target: 'course' },
+          'course',
+        )?.cacheData
+        const savedProfileCache = getCacheResult(
+          { cacheResults: savedCacheResults, target: 'course' },
+          'profile',
+        )?.cacheData
+        persistCloudCache(result.accountId, savedCacheResults)
+        setStoredAccountSummary(
+          buildAccountSummary({
+            accountId: result.accountId,
+            school: selectedSchool,
+            cacheData: savedCourseCache || primaryCacheData,
+            profileCacheData: savedProfileCache,
+          }),
+        )
+        setMessage('登录成功，数据已获取。')
         Taro.switchTab({ url: '/pages/index/index' })
         return
       }
 
       const result = await submitLogin(selectedSchool.id, {
         contextId: context.contextId,
-        username: shouldCollectCredentials ? form.username : undefined,
-        password: shouldCollectCredentials ? form.password : undefined,
-        credentialSaveMode: shouldCollectCredentials ? 'password_vault' : 'none',
+        username: undefined,
+        password: undefined,
+        credentialSaveMode: 'none',
       })
 
       setStoredAccountId(result.accountId, selectedSchool.id)
@@ -570,9 +603,7 @@ export default function BindPage() {
                   <View
                     className='credential-save-option'
                     onClick={() =>
-                      setSavePassword((value) =>
-                        syncStrategy?.passwordVaultRequired ? true : !value,
-                      )
+                      setSavePassword((value) => !value)
                     }
                   >
                     <Checkbox

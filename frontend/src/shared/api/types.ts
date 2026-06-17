@@ -7,7 +7,7 @@ export type LoginMode =
   | 'qrcode'
 
 export type DataAccessMode =
-  | 'server_session'
+  | 'cloud_worker'
   | 'webview_client_fetch'
   | 'session_import'
   | 'manual_import'
@@ -35,15 +35,26 @@ export type AutoSyncCapability =
   | 'password_login_may_need_verification'
 
 export type ImportMode = 'password_server' | 'webview_cloud' | 'manual_import'
-export type SyncMode = 'cloud_worker' | 'server_worker' | 'manual_webview'
+export type SyncMode = 'cloud_worker' | 'manual_webview'
+
+export interface CloudSyncFunctionConfig {
+  functionName?: string
+  url?: string
+}
+
+export type CloudSyncFunctionMap = Partial<
+  Record<DataTarget, CloudSyncFunctionConfig>
+>
 
 export interface SchoolSyncStrategy {
   importMode: ImportMode
   syncMode: SyncMode
+  cloudFunctions?: CloudSyncFunctionMap
   cloudParserRequired: boolean
   localCachePreferred: boolean
   scheduledSyncSupported: boolean
   passwordVaultRequired: boolean
+  passwordVaultOptional?: boolean
   manualSyncRequired: boolean
   reason?: string
 }
