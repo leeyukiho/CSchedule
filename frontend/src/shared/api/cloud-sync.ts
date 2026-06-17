@@ -3,8 +3,6 @@ import Taro from '@tarojs/taro'
 import {
   CloudSyncFunctionConfig,
   DataTarget,
-  FeatureCacheResponse,
-  TimetableCacheResponse,
 } from './types'
 
 export interface CloudCredentialSyncRequest {
@@ -21,20 +19,15 @@ export interface CloudCredentialSyncRequest {
 export interface CloudCredentialCacheResult {
   target: DataTarget
   termId?: string
-  cacheData: TimetableCacheResponse | FeatureCacheResponse
+  cacheData: Record<string, unknown>
   parsedCount?: number
   sourceHash?: string
+  syncedAt?: string
   warnings?: string[]
 }
 
 export interface CloudCredentialSyncResult {
-  target: DataTarget
-  termId?: string
-  cacheResults?: CloudCredentialCacheResult[]
-  parsedCount?: number
-  sourceHash?: string
-  warnings?: string[]
-  profile?: unknown
+  cacheResults: CloudCredentialCacheResult[]
 }
 
 interface CloudCredentialSyncResponse {
@@ -80,7 +73,21 @@ function unwrapCloudCredentialSyncResult(
     throw new Error('CLOUD_SYNC_EMPTY_RESULT')
   }
 
-  return result
+  const cacheResults = result.cacheResults.filter((item) => {
+    return Boolean(
+      item &&
+        ['course', 'score', 'exam', 'profile'].includes(item.target) &&
+        item.cacheData &&
+        typeof item.cacheData === 'object' &&
+        !Array.isArray(item.cacheData),
+    )
+  })
+
+  if (cacheResults.length === 0) {
+    throw new Error('CLOUD_SYNC_EMPTY_RESULT')
+  }
+
+  return { cacheResults }
 }
 
 export function hasCloudCredentialSync(cloudFunction?: CloudSyncFunctionConfig) {

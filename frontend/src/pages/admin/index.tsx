@@ -33,6 +33,7 @@ interface SubmissionItem {
 }
 
 const ADMIN_KEY_STORAGE = 'cschedule.adminKey'
+const STATUS_CLEAR_DELAY_MS = 3000
 
 function getStoredAdminKey(): string {
   return String(Taro.getStorageSync(ADMIN_KEY_STORAGE) || '')
@@ -58,6 +59,19 @@ export default function AdminPage() {
   useEffect(() => {
     if (adminKey) void tryAuth()
   }, [])
+
+  useEffect(() => {
+    if (!message && !errorText) {
+      return undefined
+    }
+
+    const timer = setTimeout(() => {
+      setMessage('')
+      setErrorText('')
+    }, STATUS_CLEAR_DELAY_MS)
+
+    return () => clearTimeout(timer)
+  }, [message, errorText])
 
   async function tryAuth() {
     try {

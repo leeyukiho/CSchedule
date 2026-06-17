@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Taro from '@tarojs/taro'
 import { Button, Input, Text, Textarea, View } from '@tarojs/components'
 import { submitSchoolAccess } from '../../shared/api/submissions'
 import { PageShell } from '../../shared/layout'
+
+const STATUS_CLEAR_DELAY_MS = 3000
 
 function decodeRouteParam(value?: string) {
   if (!value) return ''
@@ -26,6 +28,19 @@ export default function SubmissionPage() {
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!message && !errorText) {
+      return undefined
+    }
+
+    const timer = setTimeout(() => {
+      setMessage('')
+      setErrorText('')
+    }, STATUS_CLEAR_DELAY_MS)
+
+    return () => clearTimeout(timer)
+  }, [message, errorText])
 
   async function submit() {
     if (!schoolName.trim()) {

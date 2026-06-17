@@ -46,13 +46,13 @@ const EDIT_FIELDS: EditField[] = [
     key: 'studentId',
     label: '学号',
     readonly: true,
-    getValue: (source) => getText(source.maskedStudentId || source.studentId),
+    getValue: (source) => getText(source.studentId || source.maskedStudentId),
   },
-  { key: 'gender', label: '性别' },
   { key: 'phone', label: '手机号' },
 ]
 const SYNC_POLL_INTERVAL_MS = 1500
 const SYNC_POLL_TIMEOUT_MS = 120000
+const STATUS_CLEAR_DELAY_MS = 3000
 
 function formatAccountStatus(status?: StudentAccountSummary['status']) {
   if (status === 'unbound' || status === 'disabled') {
@@ -85,11 +85,11 @@ function buildEditRows(source: Record<string, unknown>, fields: EditField[]): Ed
   }))
 }
 
-function rowsToProfile(rows: EditRow[]): ProfileData {
+function rowsToProfile(rows: EditRow[], baseProfile: ProfileData = {}): ProfileData {
   return rows.filter((row) => !row.readonly).reduce<ProfileData>((profile, row) => {
     profile[row.key] = row.value.trim()
     return profile
-  }, {})
+  }, { ...baseProfile })
 }
 
 function delay(ms: number) {
@@ -195,8 +195,25 @@ export default function ProfilePage() {
     return () => clearTimeout(timer)
   }, [hasStoredAccount, keyword])
 
+  useEffect(() => {
+    if (!message && !errorText) {
+      return undefined
+    }
+
+    const timer = setTimeout(() => {
+      setMessage('')
+      setErrorText('')
+    }, STATUS_CLEAR_DELAY_MS)
+
+    return () => clearTimeout(timer)
+  }, [message, errorText])
+
   const accountDisplayName = account ? account.displayName : undefined
   const hasSavedPassword = account?.credentialSaveMode === 'password_vault'
+  const canAutoSyncCourse =
+    hasSavedPassword &&
+    account?.syncStrategy?.syncMode === 'cloud_worker' &&
+    account.syncStrategy.scheduledSyncSupported
   const profileSource = useMemo(
     () => ({
       ...profile,
@@ -211,7 +228,7 @@ export default function ProfilePage() {
   const student = useMemo(
     () => ({
       name: getText(profileSource.name || profileSource.displayName, '课表用户'),
-      number: getText(profileSource.maskedStudentId || profileSource.studentId, '暂无学号'),
+      number: getText(profileSource.studentId || profileSource.maskedStudentId, '暂无学号'),
       major: getText(profileSource.major, '暂无专业信息'),
       className: getText(profileSource.className, ''),
       level: getText(profileSource.level || profileSource.grade, '暂无层次信息'),
@@ -287,6 +304,14 @@ export default function ProfilePage() {
     Taro.navigateTo({ url: `/pages/bind/index?${params}` })
   }
 
+  function openSchoolAccount() {
+    if (loading) {
+      return
+    }
+
+    void handleSync()
+  }
+
   function openSchoolSubmission() {
     const query = keyword.trim() ? `?schoolName=${encodeURIComponent(keyword.trim())}` : ''
     Taro.navigateTo({ url: `/pages/submission/index${query}` })
@@ -324,7 +349,7 @@ export default function ProfilePage() {
     setErrorText('')
 
     try {
-      const response = await saveProfile(account.id, rowsToProfile(editRows))
+      const response = await saveProfile(account.id, rowsToProfile(editRows, profile))
       setProfile(response.data || {})
       setEditVisible(false)
       setMessage('个人信息已保存')
@@ -343,8 +368,8 @@ export default function ProfilePage() {
       return
     }
 
-    if (!hasSavedPassword) {
-      setMessage('请通过学校页面重新导入课表。')
+    if (!canAutoSyncCourse) {
+      setMessage('请重新导入课表。')
       Taro.navigateTo({ url: getBindUrl(account) })
       return
     }
@@ -367,13 +392,22 @@ export default function ProfilePage() {
       }
 
       if (finalJob.status === 'need_webview_fetch') {
-        setMessage('该学校需要通过前端导入更新课表。')
+        setMessage('请重新导入课表。')
         Taro.navigateTo({ url: getBindUrl(account) })
         return
       }
 
-      setMessage(finalJob.status === 'success' ? '课表已同步' : `同步状态：${finalJob.status}`)
-      await loadAccount(account.id, true)
+      if (finalJob.status === 'success') {
+        setMessage('课表已同步')
+        setAccount((current) =>
+          current && current.id === account.id
+            ? { ...current, lastCachedAt: finalJob.finishedAt || finalJob.startedAt || finalJob.createdAt }
+            : current,
+        )
+        return
+      }
+
+      setMessage(`同步状态：${finalJob.status}`)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '同步失败')
     } finally {
@@ -494,45 +528,16 @@ export default function ProfilePage() {
         ))}
       </View>
 
-      {account && account.id && (
-        <View className='soft-card feedback-card card-gap'>
-          <Text className='item-title'>{hasSavedPassword ? '一键更新课表' : '手动同步课表'}</Text>
-          <Text className='item-meta'>
-            {hasSavedPassword
-              ? '将使用已加密保存的教务账号密码更新全部学期课表。'
-              : '像登录学校官网一样输入教务系统账号密码。'}
-          </Text>
-          {false && !hasSavedPassword && (
-            <View>
-              <View className='field field-gap'>
-                <Input
-                  className='input'
-                  value=''
-                  placeholder='教务系统账号'
-                  onInput={() => undefined}
-                />
-              </View>
-              <View className='field field-gap'>
-                <Input
-                  className='input'
-                  password
-                  value=''
-                  placeholder='教务系统密码'
-                  onInput={() => undefined}
-                />
-              </View>
-            </View>
-          )}
-          <Button className='button' loading={loading} onClick={handleSync}>
-            {hasSavedPassword ? '一键更新课表' : '同步课表'}
-          </Button>
-        </View>
-      )}
-
       <View className='soft-card action-panel'>
-        <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/bind/index' })}>
+        <View className='action-row' onClick={openSchoolAccount}>
           <View className='action-icon action-refresh' />
-          <Text>登录学校账号</Text>
+          <View className='action-text'>
+            <Text className='action-title'>登录学校账号</Text>
+            <Text className='action-desc'>
+              {canAutoSyncCourse ? '更新课表' : '登录后导入课表'}
+            </Text>
+          </View>
+          {loading && <Text className='action-loading'>更新中</Text>}
           <View className='row-arrow' />
         </View>
         <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/feedback/index' })}>

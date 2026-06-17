@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Taro, { useRouter } from '@tarojs/taro'
 import { Button, Text, View, WebView } from '@tarojs/components'
 
@@ -28,6 +28,8 @@ interface WebviewPayload {
 
 const DEFAULT_TARGETS: DataTarget[] = ['course']
 const BACKEND_JSON_TARGETS = new Set(['course', 'score', 'exam', 'profile'])
+const INITIAL_MESSAGE = '请在学校页面完成登录，数据同步完成后会自动返回小程序。'
+const STATUS_CLEAR_DELAY_MS = 3000
 
 function parseTargets(value?: string) {
   const targets = String(value || '')
@@ -152,8 +154,21 @@ export default function WebviewSyncPage() {
   )
   const [completedTargets, setCompletedTargets] = useState<DataTarget[]>([])
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('请在学校页面完成登录，数据同步完成后会自动返回小程序。')
+  const [message, setMessage] = useState(INITIAL_MESSAGE)
   const [errorText, setErrorText] = useState('')
+
+  useEffect(() => {
+    if (!message && !errorText) {
+      return undefined
+    }
+
+    const timer = setTimeout(() => {
+      setMessage('')
+      setErrorText('')
+    }, STATUS_CLEAR_DELAY_MS)
+
+    return () => clearTimeout(timer)
+  }, [message, errorText])
 
   async function handleMessage(event: { detail?: { data?: unknown[] } }) {
     const data = event.detail ? event.detail.data : undefined
@@ -180,7 +195,7 @@ export default function WebviewSyncPage() {
     }
 
     if (contentType !== 'json') {
-      setErrorText('当前架构只接受学校页面返回的结构化 JSON 数据。')
+      setErrorText('当前数据暂时无法导入。')
       return
     }
 

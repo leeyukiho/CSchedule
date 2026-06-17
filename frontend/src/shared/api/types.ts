@@ -240,6 +240,7 @@ export interface StudentAccountSummary {
   sessionExpireAt?: string
   lastLoginAt?: string
   lastCachedAt?: string
+  syncStrategy?: SchoolSyncStrategy
   school?: {
     id: string
     name: string

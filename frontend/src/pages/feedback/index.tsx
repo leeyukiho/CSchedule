@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Input, Text, Textarea, View } from '@tarojs/components'
 
 import { submitFeedback } from '../../shared/api/feedback'
 import { PageShell } from '../../shared/layout'
 import { getStoredAccountId } from '../../shared/storage'
+
+const STATUS_CLEAR_DELAY_MS = 3000
 
 export default function FeedbackPage() {
   const [content, setContent] = useState('')
@@ -11,6 +13,19 @@ export default function FeedbackPage() {
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!message && !errorText) {
+      return undefined
+    }
+
+    const timer = setTimeout(() => {
+      setMessage('')
+      setErrorText('')
+    }, STATUS_CLEAR_DELAY_MS)
+
+    return () => clearTimeout(timer)
+  }, [message, errorText])
 
   async function submit() {
     setLoading(true)

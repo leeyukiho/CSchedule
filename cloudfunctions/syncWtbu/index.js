@@ -601,31 +601,140 @@ function stripTags(value) {
   return cleanText(String(value || '').replace(/<[^>]+>/g, ' '))
 }
 
+function getSemesterSelectSource(html) {
+  const match = String(html || '').match(
+    /<select\b(?=[^>]*(?:name|id)\s*=\s*["']semester\.id["'])[^>]*>([\s\S]*?)<\/select>/i,
+  )
+
+  return match ? match[1] : ''
+}
+
+function toSemesterNumber(value) {
+  const text = cleanText(value)
+
+  if (text === '2' || text === '二' || text === '两' || text === '下') {
+    return '2'
+  }
+
+  return '1'
+}
+
+function getAcademicTermLabel(value) {
+  const text = cleanText(String(value || '').replace(/&nbsp;/gi, ' '))
+  const compactText = text.replace(/\s+/g, '')
+  const patterns = [
+    /(20\d{2})\s*[-~—至]\s*(20\d{2})\s*学年\s*第?\s*([一二两12])\s*学期/,
+    /(20\d{2})\s*[-~—至]\s*(20\d{2})[\s_-]*第?\s*([一二两12])\s*学期/,
+    /(20\d{2})\s*[-~—至]\s*(20\d{2})[\s._-]+([12])(?:\s*学期)?/,
+    /(20\d{2})\s*[-~—至]\s*(20\d{2}).*?([上下])\s*学期/,
+  ]
+
+  for (const source of [text, compactText]) {
+    for (const pattern of patterns) {
+      const match = source.match(pattern)
+
+      if (match) {
+        return `${match[1]}-${match[2]}学年第${toSemesterNumber(match[3])}学期`
+      }
+    }
+  }
+
+  return ''
+}
+
+function getAcademicTermKey(value) {
+  const label = getAcademicTermLabel(value)
+  const match = label.match(/(20\d{2})-(20\d{2})学年第([12])学期/)
+
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : ''
+}
+
+function cleanScheduleTermTitle(value) {
+  const text = cleanText(String(value || '').replace(/&nbsp;/gi, ' '))
+  const academicLabel = getAcademicTermLabel(text)
+
+  if (academicLabel) {
+    return academicLabel
+  }
+
+  return text
+    .replace(/\s*学生课表\s*/g, ' ')
+    .replace(/\s*第\s*[\d一二三四五六七八九十]+\s*周\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizeSemesterRecord(semester) {
+  const id = cleanText(semester.id)
+  const rawLabel = semester.label || semester.title || (id ? `term ${id}` : '')
+  const label = cleanScheduleTermTitle(rawLabel) || rawLabel
+
+  return {
+    ...semester,
+    id,
+    title: label,
+    label,
+  }
+}
+
+function findSemesterByTermText(semesters, value) {
+  const key = getAcademicTermKey(value)
+
+  if (!key) {
+    return null
+  }
+
+  return semesters.find((semester) => {
+    return (
+      getAcademicTermKey(semester.label) === key ||
+      getAcademicTermKey(semester.title) === key ||
+      getAcademicTermKey(semester.id) === key
+    )
+  }) || null
+}
+
+function resolveScheduleSemesterId(semesters, requestedId, currentId) {
+  const requested = cleanText(requestedId)
+
+  if (requested && semesters.some((semester) => semester.id === requested)) {
+    return requested
+  }
+
+  const requestedSemester = findSemesterByTermText(semesters, requested)
+
+  if (requestedSemester?.id) {
+    return requestedSemester.id
+  }
+
+  if (currentId) {
+    return currentId
+  }
+
+  return requested && !getAcademicTermKey(requested) ? requested : ''
+}
+
 function parseSemesters(indexHtml) {
   const html = String(indexHtml || '')
   const semesters = []
-  const selectMatch = html.match(
-    /<select\b[^>]*(?:name|id)=["']semester\.id["'][^>]*>([\s\S]*?)<\/select>/i,
-  )
-  const source = selectMatch ? selectMatch[1] : html
+  const source = getSemesterSelectSource(html)
   const optionRegex = /<option\b([^>]*)>([\s\S]*?)<\/option>/gi
   let option
 
   while ((option = optionRegex.exec(source)) !== null) {
     const attr = option[1] || ''
-    const id = (attr.match(/\bvalue=["']?([^"'\s>]*)/i) || [])[1] || ''
+    const id = (attr.match(/\bvalue\s*=\s*["']?([^"'\s>]*)/i) || [])[1] || ''
     const label = stripTags(option[2])
 
     if (!id && !label) {
       continue
     }
 
-    semesters.push({
+    semesters.push(normalizeSemesterRecord({
       id,
       title: label || `term ${id}`,
       label: label || `term ${id}`,
       selected: /\bselected\b/i.test(attr),
-    })
+    }))
   }
 
   return semesters
@@ -633,9 +742,10 @@ function parseSemesters(indexHtml) {
 
 function getCurrentSemesterId(indexHtml) {
   const html = String(indexHtml || '')
+  const source = getSemesterSelectSource(html)
   const selectedOption =
-    (html.match(/<option\b[^>]*selected[^>]*\bvalue=["']?([^"'\s>]*)/i) || [])[1] ||
-    (html.match(/<option\b[^>]*\bvalue=["']?([^"'\s>]*)[^>]*selected/i) || [])[1]
+    (source.match(/<option\b[^>]*selected[^>]*\bvalue\s*=\s*["']?([^"'\s>]*)/i) || [])[1] ||
+    (source.match(/<option\b[^>]*\bvalue\s*=\s*["']?([^"'\s>]*)[^>]*selected/i) || [])[1]
   const inputValue =
     (html.match(/name=["']semester\.id["'][^>]*value=["']([^"']*)["']/i) || [])[1] ||
     (html.match(/value=["']([^"']*)["'][^>]*name=["']semester\.id["']/i) || [])[1]
@@ -647,14 +757,10 @@ function getCurrentSemesterId(indexHtml) {
 
 function createFallbackSemesterId(term) {
   const text = cleanText(term)
-  const yearMatch = text.match(/(20\d{2})\s*[-~\u2014\u81f3]\s*(20\d{2})/)
-  const secondSemester =
-    text.includes('\u7b2c\u4e8c\u5b66\u671f') ||
-    text.includes('\u4e0b\u5b66\u671f') ||
-    /[. -]?2$/.test(text)
+  const academicKey = getAcademicTermKey(text)
 
-  if (yearMatch) {
-    return `${yearMatch[1]}-${yearMatch[2]}-${secondSemester ? '2' : '1'}`
+  if (academicKey) {
+    return academicKey
   }
 
   return text
@@ -667,7 +773,7 @@ function parseSchedule(scheduleHtml) {
   const titleMatch =
     html.match(/<h3[^>]*align=["']center["'][^>]*>([\s\S]*?)<\/h3>/i) ||
     html.match(/<h3[^>]*>([\s\S]*?)<\/h3>/i)
-  const term = titleMatch ? stripTags(titleMatch[1]) : ''
+  const term = titleMatch ? cleanScheduleTermTitle(stripTags(titleMatch[1])) : ''
   const marshalMatch = html.match(
     /\.marshalTable\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\)/,
   )
@@ -762,7 +868,7 @@ async function fetchWtbuSchedule(client, config, semesterId) {
 
   let semesters = parseSemesters(indexHtml)
   const currentSemesterId = getCurrentSemesterId(indexHtml)
-  const selectedSemesterId = String(semesterId || '').trim() || currentSemesterId
+  const selectedSemesterId = resolveScheduleSemesterId(semesters, semesterId, currentSemesterId)
   const tablePayload = new URLSearchParams({
     ids: idsMatch[1],
     'semester.id': selectedSemesterId,
@@ -778,29 +884,43 @@ async function fetchWtbuSchedule(client, config, semesterId) {
   )
   const parsedSchedule = parseSchedule(response.data)
   const fallbackSemesterId = createFallbackSemesterId(parsedSchedule.term)
-  const normalizedSemesterId = selectedSemesterId || fallbackSemesterId
+  const matchedParsedSemester = findSemesterByTermText(semesters, parsedSchedule.term)
+  const normalizedSemesterId = matchedParsedSemester?.id || selectedSemesterId || fallbackSemesterId
 
   if (
     (normalizedSemesterId || parsedSchedule.term) &&
     !semesters.some((semester) => semester.id === normalizedSemesterId)
   ) {
     semesters = [
-      {
+      normalizeSemesterRecord({
         id: normalizedSemesterId || '',
         title: parsedSchedule.term || 'current term',
         label: parsedSchedule.term || 'current term',
         selected: true,
-      },
+      }),
       ...semesters,
     ]
   }
 
+  const selectedSemester =
+    semesters.find((semester) => semester.id === normalizedSemesterId) ||
+    semesters.find((semester) => semester.selected) ||
+    semesters[0]
+
   return {
     ...parsedSchedule,
-    semesters: semesters.map((semester) => ({
-      ...semester,
-      selected: semester.id === normalizedSemesterId,
-    })),
+    semesters: selectedSemester
+      ? [
+          {
+            ...normalizeSemesterRecord({
+              ...selectedSemester,
+              title: selectedSemester.title || selectedSemester.label || parsedSchedule.term,
+              label: selectedSemester.label || selectedSemester.title || parsedSchedule.term,
+            }),
+            selected: true,
+          },
+        ]
+      : [],
     selectedSemesterId: normalizedSemesterId,
   }
 }
@@ -1583,33 +1703,6 @@ function countScoreItems(data) {
   }, 0)
 }
 
-function createSession() {
-  return {
-    sessionReusable: false,
-    sessionRefreshable: false,
-    accountStatus: 'cached_only',
-  }
-}
-
-function isBackendAutoSync(event) {
-  return event.source === 'backend_auto_sync'
-}
-
-function withClientCacheFields(event, cacheData, extra = {}) {
-  if (isBackendAutoSync(event)) {
-    return cacheData
-  }
-
-  return {
-    ...cacheData,
-    ...extra,
-    accountId: '',
-    schoolId: event.schoolId,
-    providerId: event.providerId,
-    session: createSession(),
-  }
-}
-
 function createFeatureCacheData(event, target, data, syncedAt, options = {}) {
   const sourceHash = createSourceHash({
     providerId: event.providerId,
@@ -1618,17 +1711,18 @@ function createFeatureCacheData(event, target, data, syncedAt, options = {}) {
     data,
   })
 
-  return withClientCacheFields(event, {
-    target,
-    termId: options.termId,
-    data,
-    meta: {
-      source: 'cloud_worker',
-      ...(options.meta || {}),
+  return {
+    cacheData: {
+      data,
+      meta: {
+        source: 'cloud_worker',
+        ...(options.meta || {}),
+      },
     },
+    termId: options.termId,
     sourceHash,
     syncedAt,
-  })
+  }
 }
 
 function createSourceHash(input) {
@@ -1667,14 +1761,11 @@ async function runWtbuProviderSync(event) {
       termId,
       courses: schedule.courses,
     })
-    const cacheData = withClientCacheFields(event, {
-      termId,
+    const cacheData = {
       courses: schedule.courses,
       terms: schedule.semesters || [],
       sectionTimes: schedule.sectionTimes || [],
-      sourceHash,
-      syncedAt,
-    })
+    }
     const cacheResults = [
       {
         target: 'course',
@@ -1682,18 +1773,11 @@ async function runWtbuProviderSync(event) {
         cacheData,
         parsedCount: schedule.courses.length,
         sourceHash,
-        warnings: [],
+        syncedAt,
       },
     ]
 
-    return ok({
-      target: event.target,
-      termId,
-      cacheResults,
-      parsedCount: schedule.courses.length,
-      sourceHash,
-      warnings: [],
-    })
+    return ok({ cacheResults })
   }
 
   if (event.target === 'profile') {
@@ -1701,24 +1785,19 @@ async function runWtbuProviderSync(event) {
       console.warn('fetch WTBU profile failed', error.message || '')
       return parseProfile(homeHtml, event.username)
     })
-    const cacheData = createFeatureCacheData(event, 'profile', profile, syncedAt)
+    const cache = createFeatureCacheData(event, 'profile', profile, syncedAt)
     const cacheResults = [
       {
         target: 'profile',
-        cacheData,
+        termId: cache.termId,
+        cacheData: cache.cacheData,
         parsedCount: Object.keys(profile).filter((key) => profile[key]).length,
-        sourceHash: cacheData.sourceHash,
-        warnings: [],
+        sourceHash: cache.sourceHash,
+        syncedAt: cache.syncedAt,
       },
     ]
 
-    return ok({
-      target: event.target,
-      cacheResults,
-      parsedCount: cacheResults[0].parsedCount,
-      sourceHash: cacheData.sourceHash,
-      warnings: [],
-    })
+    return ok({ cacheResults })
   }
 
   if (event.target === 'score') {
@@ -1726,27 +1805,22 @@ async function runWtbuProviderSync(event) {
       console.warn('fetch WTBU grades failed', error.message || '')
       return emptyGrades()
     })
-    const cacheData = createFeatureCacheData(event, 'score', score, syncedAt)
+    const cache = createFeatureCacheData(event, 'score', score, syncedAt)
     const cacheResults = [
       {
         target: 'score',
-        cacheData,
+        termId: cache.termId,
+        cacheData: cache.cacheData,
         parsedCount: countScoreItems(score),
-        sourceHash: cacheData.sourceHash,
-        warnings: [],
+        sourceHash: cache.sourceHash,
+        syncedAt: cache.syncedAt,
       },
     ]
 
-    return ok({
-      target: event.target,
-      cacheResults,
-      parsedCount: cacheResults[0].parsedCount,
-      sourceHash: cacheData.sourceHash,
-      warnings: [],
-    })
+    return ok({ cacheResults })
   }
 
-  const cacheData = createFeatureCacheData(event, 'exam', [], syncedAt, {
+  const cache = createFeatureCacheData(event, 'exam', [], syncedAt, {
     meta: {
       unsupported: true,
       warning: 'WTBU exam parser is not implemented yet.',
@@ -1755,20 +1829,16 @@ async function runWtbuProviderSync(event) {
   const cacheResults = [
     {
       target: 'exam',
-      cacheData,
+      termId: cache.termId,
+      cacheData: cache.cacheData,
       parsedCount: 0,
-      sourceHash: cacheData.sourceHash,
+      sourceHash: cache.sourceHash,
+      syncedAt: cache.syncedAt,
       warnings: ['WTBU_EXAM_SYNC_NOT_IMPLEMENTED'],
     },
   ]
 
-  return ok({
-    target: event.target,
-    cacheResults,
-    parsedCount: 0,
-    sourceHash: cacheData.sourceHash,
-    warnings: ['WTBU_EXAM_SYNC_NOT_IMPLEMENTED'],
-  })
+  return ok({ cacheResults })
 }
 
 async function handleEvent(event) {

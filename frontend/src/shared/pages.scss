@@ -147,7 +147,12 @@
 }
 
 .status {
-  margin: 18rpx 0;
+  position: fixed;
+  left: 32rpx;
+  right: 32rpx;
+  top: calc(36rpx + env(safe-area-inset-top));
+  z-index: 120;
+  box-shadow: 0 18rpx 42rpx rgba(16, 24, 40, 0.14);
   padding: 22rpx 24rpx;
   border: 1rpx solid #dbeafe;
   border-radius: 16rpx;
@@ -155,6 +160,10 @@
   color: #1d4ed8;
   font-size: 25rpx;
   line-height: 1.45;
+}
+
+.status + .status {
+  top: calc(140rpx + env(safe-area-inset-top));
 }
 
 .status-error,
@@ -1437,6 +1446,42 @@
 .action-row text {
   flex: 1;
   padding-left: 16rpx;
+}
+
+.action-text {
+  flex: 1;
+  min-width: 0;
+  padding-left: 16rpx;
+}
+
+.action-row .action-title,
+.action-row .action-desc {
+  flex: none;
+  display: block;
+  padding-left: 0;
+}
+
+.action-row .action-title {
+  color: #101828;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.action-row .action-desc {
+  margin-top: 6rpx;
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 1.25;
+}
+
+.action-row .action-loading {
+  flex: 0 0 auto;
+  padding-left: 0;
+  margin-right: 18rpx;
+  color: #2f7bff;
+  font-size: 22rpx;
+  font-weight: 700;
 }
 
 .action-settings::before {

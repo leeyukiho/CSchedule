@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { Button, Text, View } from '@tarojs/components'
 
@@ -16,12 +16,24 @@ import { PageShell } from '../../shared/layout'
 import { getStoredAccountId, getStoredTermStarts } from '../../shared/storage'
 import { buildTermOptions, courseRunsInWeek, getTeachingWeekForDate } from '../../shared/term'
 
+const STATUS_CLEAR_DELAY_MS = 3000
+
 export default function HomePage() {
   const [accountId, setAccountId] = useState('')
   const [timetable, setTimetable] = useState<TimetableCacheResponse | null>(null)
   const [termStarts, setTermStarts] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [errorText, setErrorText] = useState('')
+
+  useEffect(() => {
+    if (!errorText) {
+      return undefined
+    }
+
+    const timer = setTimeout(() => setErrorText(''), STATUS_CLEAR_DELAY_MS)
+
+    return () => clearTimeout(timer)
+  }, [errorText])
 
   const todayCourses = useMemo(() => {
     const weekday = getWeekday()

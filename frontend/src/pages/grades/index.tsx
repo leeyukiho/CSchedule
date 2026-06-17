@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useDidShow } from '@tarojs/taro'
 import { Text, View } from '@tarojs/components'
 
@@ -23,6 +23,7 @@ const DEFAULT_SCORE_ITEM_FIELDS: FeatureDisplayField[] = [
   { key: 'score', label: '成绩', primary: true },
   { key: 'gpa', label: '绩点' },
 ]
+const STATUS_CLEAR_DELAY_MS = 3000
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -121,6 +122,16 @@ export default function GradesPage() {
   const [loading, setLoading] = useState(false)
   const [errorText, setErrorText] = useState('')
   const [collapsedSemesters, setCollapsedSemesters] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    if (!errorText) {
+      return undefined
+    }
+
+    const timer = setTimeout(() => setErrorText(''), STATUS_CLEAR_DELAY_MS)
+
+    return () => clearTimeout(timer)
+  }, [errorText])
 
   useDidShow(() => {
     const accountId = getStoredAccountId()

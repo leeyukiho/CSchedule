@@ -1,9 +1,5 @@
 import { requestApi } from './client'
-import {
-  DataTarget,
-  FeatureCacheResponse,
-  TimetableCacheResponse,
-} from './types'
+import { DataTarget } from './types'
 
 export interface LoginSubmitRequest {
   accountId?: string
@@ -15,15 +11,13 @@ export interface LoginSubmitRequest {
   verifiedByCloud?: boolean
   cacheResults?: Array<{
     target: DataTarget
-    cacheData: TimetableCacheResponse | FeatureCacheResponse
+    cacheData: Record<string, unknown>
     parsedCount?: number
     termId?: string
     sourceHash?: string
+    syncedAt?: string
     warnings?: string[]
   }>
-  parsedCount?: number
-  termId?: string
-  sourceHash?: string
   cloudWarnings?: string[]
   extra?: Record<string, unknown>
 }
@@ -37,7 +31,6 @@ export interface LoginSubmitResponse {
   requiredFetchTargets?: DataTarget[]
   cacheId?: string
   parsedCount?: number
-  cacheResults?: LoginSubmitRequest['cacheResults']
   savedTargets?: DataTarget[]
 }
 

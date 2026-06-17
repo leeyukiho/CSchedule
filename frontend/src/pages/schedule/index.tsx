@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDidShow } from '@tarojs/taro'
 import { Picker, Text, View, type ITouchEvent } from '@tarojs/components'
 
@@ -25,6 +25,7 @@ const HEADER_HEIGHT = 84
 const ROW_HEIGHT = 88
 const LESSON_GAP = 4
 const WEEK_SWIPE_THRESHOLD = 48
+const STATUS_CLEAR_DELAY_MS = 3000
 const DEFAULT_COURSE_FIELDS: FeatureDisplayField[] = [
   { key: 'name', label: '课程', primary: true },
   { key: 'classroom', label: '教室', fallbackKeys: ['location'] },
@@ -132,6 +133,16 @@ export default function SchedulePage() {
   const [selectedLesson, setSelectedLesson] = useState<PositionedLesson | null>(null)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
+  useEffect(() => {
+    if (!errorText) {
+      return undefined
+    }
+
+    const timer = setTimeout(() => setErrorText(''), STATUS_CLEAR_DELAY_MS)
+
+    return () => clearTimeout(timer)
+  }, [errorText])
+
   const periods = useMemo(
     () =>
       Array.from({ length: TOTAL_SECTIONS }, (_, index) => {
@@ -160,8 +171,6 @@ export default function SchedulePage() {
     0,
   )
   const selectedTermLabel = termOptions[selectedTermIndex]?.label || timetable?.termId || '当前学期'
-  const selectedWeekLabel = weekOptions[selectedWeekIndex]?.label || '第1周'
-  const termWeekLabel = `${selectedTermLabel}${selectedWeekLabel}`
   const termWeekRange = useMemo(
     () => [
       termOptions.length > 0 ? termOptions.map((term) => term.label) : [selectedTermLabel],
@@ -404,7 +413,7 @@ export default function SchedulePage() {
           onChange={(event) => handleTermWeekChange(event.detail.value)}
         >
           <View className='filter-select term-week-select'>
-            <Text>{termWeekLabel}</Text>
+            <Text>{selectedTermLabel}</Text>
             <View className='chevron-down' />
           </View>
         </Picker>

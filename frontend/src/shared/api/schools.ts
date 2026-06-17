@@ -1,5 +1,5 @@
 import { requestApi } from './client'
-import { LoginContextResponse, SchoolListItem, SchoolListResponse } from './types'
+import { LoginContextResponse, SchoolListResponse } from './types'
 
 export interface ListSchoolsOptions {
   keyword?: string
