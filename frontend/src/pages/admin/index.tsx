@@ -54,6 +54,14 @@ interface FeedbackItem {
       shortName: string | null
     }
   } | null
+  student?: {
+    name?: string | null
+    studentNo?: string | null
+    grade?: string | null
+    major?: string | null
+    className?: string | null
+    level?: string | null
+  } | null
 }
 
 const ADMIN_KEY_STORAGE = 'cschedule.adminKey'
@@ -65,6 +73,10 @@ function getStoredAdminKey(): string {
 
 function setStoredAdminKey(key: string) {
   Taro.setStorageSync(ADMIN_KEY_STORAGE, key)
+}
+
+function joinFilled(values: Array<string | null | undefined>) {
+  return values.filter((value): value is string => Boolean(value && value.trim())).join(' / ')
 }
 
 export default function AdminPage() {
@@ -448,14 +460,32 @@ export default function AdminPage() {
         <View>
           {feedbackItems.map((item) => (
             <View className='card' key={item.id}>
-              <View className='row'>
-                <Text className='item-title'>{item.type || '反馈'} · {item.status}</Text>
-                <Text className='item-meta'>{new Date(item.createdAt).toLocaleDateString('zh-CN')}</Text>
-              </View>
-              <Text className='item-meta'>账号：{item.account?.displayName || item.accountId || '未关联'}</Text>
-              <Text className='item-meta'>学校：{item.account?.school?.name || item.schoolId || '--'}</Text>
-              {item.contact && <Text className='item-meta'>联系方式：{item.contact}</Text>}
-              <Text className='admin-feedback-content'>{item.content}</Text>
+              {(() => {
+                const schoolName = item.account?.school?.name || item.schoolId || '--'
+                const studentName = item.student?.name || item.account?.displayName || item.accountId || '未关联'
+                const studentNo = item.student?.studentNo || '--'
+                const studentMeta = joinFilled([
+                  item.student?.grade,
+                  item.student?.major,
+                  item.student?.className,
+                  item.student?.level,
+                ])
+
+                return (
+                  <>
+                    <View className='row'>
+                      <Text className='item-title'>{item.type || '反馈'} · {item.status}</Text>
+                      <Text className='item-meta'>{new Date(item.createdAt).toLocaleDateString('zh-CN')}</Text>
+                    </View>
+                    <Text className='item-meta'>学校：{schoolName}</Text>
+                    <Text className='item-meta'>学生：{studentName}</Text>
+                    <Text className='item-meta'>学号：{studentNo}</Text>
+                    {studentMeta && <Text className='item-meta'>年级/专业：{studentMeta}</Text>}
+                    {item.contact && <Text className='item-meta'>联系方式：{item.contact}</Text>}
+                    <Text className='admin-feedback-content'>{item.content}</Text>
+                  </>
+                )
+              })()}
             </View>
           ))}
           {!loading && feedbackItems.length === 0 && <View className='empty'>暂无反馈</View>}

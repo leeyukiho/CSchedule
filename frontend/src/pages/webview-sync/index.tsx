@@ -12,6 +12,7 @@ import {
 } from '../../shared/api/types'
 import { PageShell } from '../../shared/layout'
 import {
+  clearStoredDataCacheTerms,
   setStoredAccountId,
   setStoredAccountSummary,
   setStoredDataCache,
@@ -281,14 +282,7 @@ function persistUploadCache(
       sourceHash: timetable.sourceHash,
       syncedAt: timetable.syncedAt,
     })
-
-    if (timetable.termId) {
-      setStoredDataCache(accountId, 'timetable', timetable, {
-        termId: timetable.termId,
-        sourceHash: timetable.sourceHash,
-        syncedAt: timetable.syncedAt,
-      })
-    }
+    clearStoredDataCacheTerms(accountId, 'timetable')
 
     return
   }

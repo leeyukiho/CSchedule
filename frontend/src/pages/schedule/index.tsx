@@ -322,6 +322,7 @@ export default function SchedulePage() {
   const [timetable, setTimetable] = useState<TimetableCacheResponse | null>(null)
   const [termOptions, setTermOptions] = useState<TermOption[]>([])
   const [selectedTermId, setSelectedTermId] = useState('')
+  const [latestTermId, setLatestTermId] = useState('')
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null)
   const [termStarts, setTermStarts] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
@@ -440,6 +441,7 @@ export default function SchedulePage() {
       setTimetable(null)
       setTermOptions([])
       setSelectedTermId('')
+      setLatestTermId('')
       setSelectedWeek(null)
       setLoading(false)
       setErrorText('')
@@ -468,6 +470,10 @@ export default function SchedulePage() {
       const nextTermOptions = buildTermOptions(nextTimetable)
       const todayTerm = termId ? null : getTodayTermOption(nextTermOptions)
 
+      if (!termId && nextTimetable.termId) {
+        setLatestTermId(nextTimetable.termId)
+      }
+
       if (todayTerm && nextTimetable.termId !== todayTerm.id) {
         const todayTimetable = await getTimetable(id, todayTerm.id)
         const todayTermOptions = buildTermOptions(todayTimetable)
@@ -489,9 +495,15 @@ export default function SchedulePage() {
 
       const nextSelectedTerm =
         nextTermOptions.find((term) => term.id === (nextTimetable.termId || termId)) || null
+      const nextSelectedTermId = nextTimetable.termId || termId || ''
+
+      if (!termId && nextSelectedTermId) {
+        setLatestTermId(nextSelectedTermId)
+      }
+
       setTimetable(nextTimetable)
       setTermOptions((current) => mergeTermOptions(current, nextTermOptions))
-      setSelectedTermId(nextTimetable.termId || termId || '')
+      setSelectedTermId(nextSelectedTermId)
       setSelectedWeek((current) =>
         current === null
           ? getCurrentTeachingWeek(
@@ -519,7 +531,7 @@ export default function SchedulePage() {
 
     if (term.id !== selectedTermId) {
       setSelectedTermId(term.id)
-      void loadTimetable(accountId, term.id === '__current__' ? '' : term.id)
+      void loadTimetable(accountId, term.id === '__current__' || term.id === latestTermId ? '' : term.id)
     }
 
     setSelectedLesson(null)
@@ -579,7 +591,7 @@ export default function SchedulePage() {
 
     if (todayTerm && todayTerm.id !== selectedTermId) {
       setSelectedTermId(todayTerm.id)
-      void loadTimetable(accountId, todayTerm.id === '__current__' ? '' : todayTerm.id)
+      void loadTimetable(accountId, todayTerm.id === '__current__' || todayTerm.id === latestTermId ? '' : todayTerm.id)
     }
 
     setSelectedLesson(null)

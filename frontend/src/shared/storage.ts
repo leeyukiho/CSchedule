@@ -313,6 +313,22 @@ export function setStoredDataCache<TData>(
   }
 }
 
+export function clearStoredDataCacheTerms(accountId: string, target: DataCacheTarget) {
+  if (!accountId) {
+    return
+  }
+
+  const prefix = `${DATA_CACHE_PREFIX}${accountId}.${target}.`
+  const latestKey = getDataCacheKey(accountId, target)
+  const info = Taro.getStorageInfoSync()
+
+  for (const key of info.keys || []) {
+    if (key.startsWith(prefix) && key !== latestKey) {
+      Taro.removeStorageSync(key)
+    }
+  }
+}
+
 export function clearStoredDataCaches(accountId?: string) {
   const prefix = accountId ? `${DATA_CACHE_PREFIX}${accountId}.` : DATA_CACHE_PREFIX
   const info = Taro.getStorageInfoSync()

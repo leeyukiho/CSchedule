@@ -16,6 +16,7 @@ import {
 import { formatTime } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
 import {
+  clearStoredDataCacheTerms,
   getStoredAccountId,
   setStoredDataCache,
 } from '../../shared/storage'
@@ -145,7 +146,8 @@ function isCredentialSyncError(error: unknown) {
     message.includes('INVALID_CREDENTIAL') ||
     message.includes('SAVED_CREDENTIAL_REQUIRED') ||
     message.includes('SESSION_EXPIRED') ||
-    message.includes('WTBU_INVALID_CREDENTIALS')
+    message.includes('WTBU_INVALID_CREDENTIALS') ||
+    message.includes('WHHXIT_INVALID_CREDENTIALS')
   )
 }
 
@@ -156,6 +158,7 @@ function getBindUrl(account?: StudentAccountSummary | null) {
 
   const school = account.school
   const params = [
+    ['accountId', account.id],
     ['schoolId', school?.id || account.schoolId],
     ['schoolName', school?.name || account.schoolId],
     ['shortName', school?.shortName],
@@ -241,14 +244,7 @@ function persistSyncCache(accountId: string, job: SyncJobResponse) {
         sourceHash: timetable.sourceHash,
         syncedAt: timetable.syncedAt,
       })
-
-      if (timetable.termId) {
-        setStoredDataCache(accountId, 'timetable', timetable, {
-          termId: timetable.termId,
-          sourceHash: timetable.sourceHash,
-          syncedAt: timetable.syncedAt,
-        })
-      }
+      clearStoredDataCacheTerms(accountId, 'timetable')
 
       persisted = true
       continue

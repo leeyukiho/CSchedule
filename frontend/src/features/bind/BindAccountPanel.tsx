@@ -26,6 +26,7 @@ import {
 import { formatSchoolMeta } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
 import {
+  clearStoredDataCacheTerms,
   setStoredAccountId,
   setStoredAccountSummary,
   setStoredDataCache,
@@ -60,13 +61,6 @@ function getVisibleFields(loginContext: LoginContextResponse | null) {
   const contextFields = loginContext ? loginContext.fields : undefined
   const fields = contextFields && contextFields.length ? contextFields : DEFAULT_LOGIN_FIELDS
   return fields.filter((field) => field.type !== 'hidden' && !HIDDEN_FIELD_NAMES.has(field.name))
-}
-
-function formatLoginMode(mode?: string) {
-  if (mode === 'cas_webview' || mode === 'oauth_webview') return '网页授权'
-  if (mode === 'password_captcha') return '账号密码 + 验证码'
-  if (mode === 'qrcode') return '扫码登录'
-  return '账号密码'
 }
 
 function decodeRouteParam(value?: string) {
@@ -106,6 +100,11 @@ function getInitialSchoolFromRoute(): SchoolListItem | null {
       profile: false,
     },
   }
+}
+
+function getInitialAccountIdFromRoute() {
+  const params = Taro.getCurrentInstance().router?.params || {}
+  return decodeRouteParam(params.accountId)
 }
 
 function getSchoolBindUrl(school: SchoolListItem) {
@@ -254,14 +253,7 @@ function persistLoginCache(
       sourceHash: timetable.sourceHash,
       syncedAt: timetable.syncedAt,
     })
-
-    if (timetable.termId) {
-      setStoredDataCache(accountId, 'timetable', timetable, {
-        termId: timetable.termId,
-        sourceHash: timetable.sourceHash,
-        syncedAt: timetable.syncedAt,
-      })
-    }
+    clearStoredDataCacheTerms(accountId, 'timetable')
 
     return
   }
@@ -376,6 +368,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
   const contextSeq = useRef(0)
   const initialSchoolApplied = useRef(false)
   const initialSchool = useRef<SchoolListItem | null>(getInitialSchoolFromRoute())
+  const initialAccountId = useRef(getInitialAccountIdFromRoute())
 
   const visibleFields = useMemo(() => getVisibleFields(loginContext), [loginContext])
   const loginMode = loginContext?.mode || selectedSchool?.loginMode
@@ -592,6 +585,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
 
         const cloudWarnings = cloudResult.cacheResults.flatMap((item) => item.warnings || [])
         const result = await submitLogin(selectedSchool.id, {
+          accountId: initialAccountId.current || undefined,
           contextId: context.contextId,
           username: form.username,
           password: wantsPasswordVault ? form.password : undefined,
@@ -637,6 +631,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
       }
 
       const result = await submitLogin(selectedSchool.id, {
+        accountId: initialAccountId.current || undefined,
         contextId: context.contextId,
         username: shouldCollectCredentials ? form.username : undefined,
         password: wantsPasswordVault ? form.password : undefined,

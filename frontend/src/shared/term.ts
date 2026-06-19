@@ -9,6 +9,12 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 const MAX_TEACHING_WEEK = 20
 const ACADEMIC_YEAR_PATTERN = /(20\d{2})\s*[-~—至]\s*(20\d{2})/
 const ACADEMIC_YEAR_COMPACT_PATTERN = /(20\d{2})[-~—至]?(20\d{2})/
+const ENCODED_TERM_PATTERN = /^(20\d{2})-(3|12|16)$/
+const ENCODED_TERM_SEMESTERS: Record<string, number> = {
+  '3': 1,
+  '12': 2,
+  '16': 3,
+}
 
 export function formatTermLabel(id: string, label: string) {
   const text = label || id
@@ -18,7 +24,7 @@ export function formatTermLabel(id: string, label: string) {
     return text
   }
 
-  return `${parsed.yearStart}-${parsed.yearEnd}学年${parsed.secondSemester ? '第2学期' : '第1学期'}`
+  return `${parsed.yearStart}-${parsed.yearEnd}学年第${parsed.semester}学期`
 }
 
 export function normalizeTerm(term: unknown): TermOption | null {
@@ -184,7 +190,7 @@ function getTermKey(term: TermOption) {
     return `${term.label || ''} ${term.id || ''}`.replace(/\s+/g, '')
   }
 
-  return `${parsed.yearStart}-${parsed.yearEnd}-${parsed.secondSemester ? '2' : '1'}`
+  return `${parsed.yearStart}-${parsed.yearEnd}-${parsed.semester}`
 }
 
 function isScheduleArtifactTerm(id: string, rawLabel: string, label: string) {
@@ -211,13 +217,13 @@ function stripScheduleTermNoise(value: string) {
 }
 
 function getTermSortKey(term: TermOption) {
-  const match = getTermKey(term).match(/^(20\d{2})-(20\d{2})-([12])$/)
+  const match = getTermKey(term).match(/^(20\d{2})-(20\d{2})-([123])$/)
 
   return match ? Number(match[1]) * 10 + Number(match[3]) : Number.NEGATIVE_INFINITY
 }
 
 function isFutureAcademicYear(term: TermOption) {
-  const match = getTermKey(term).match(/^(20\d{2})-(20\d{2})-([12])$/)
+  const match = getTermKey(term).match(/^(20\d{2})-(20\d{2})-([123])$/)
 
   if (!match) {
     return false
@@ -228,6 +234,7 @@ function isFutureAcademicYear(term: TermOption) {
 
 function parseTermDescriptor(term: Pick<TermOption, 'id' | 'label'> | null, fallbackTermId = '') {
   const textParts = [term?.label || '', term?.id || '', fallbackTermId].filter(Boolean)
+  const encodedTerm = textParts.map(parseEncodedTermId).find(Boolean)
   const normalizedText = textParts.join(' ').replace(/\s+/g, ' ').trim()
   const normalizedCompactText = normalizedText.replace(/\s+/g, '')
   const yearMatch =
@@ -235,11 +242,29 @@ function parseTermDescriptor(term: Pick<TermOption, 'id' | 'label'> | null, fall
     normalizedCompactText.match(ACADEMIC_YEAR_COMPACT_PATTERN)
 
   const semesterToken = detectSemesterToken(normalizedText, normalizedCompactText)
+  const semester = Number(encodedTerm?.semester ?? semesterToken ?? 1)
 
   return {
-    yearStart: yearMatch ? Number(yearMatch[1]) : undefined,
-    yearEnd: yearMatch ? Number(yearMatch[2]) : undefined,
-    secondSemester: semesterToken === '2',
+    yearStart: yearMatch ? Number(yearMatch[1]) : encodedTerm?.yearStart,
+    yearEnd: yearMatch ? Number(yearMatch[2]) : encodedTerm?.yearEnd,
+    semester,
+    secondSemester: semester === 2,
+  }
+}
+
+function parseEncodedTermId(value: string) {
+  const match = value.trim().match(ENCODED_TERM_PATTERN)
+
+  if (!match) {
+    return null
+  }
+
+  const yearStart = Number(match[1])
+
+  return {
+    yearStart,
+    yearEnd: yearStart + 1,
+    semester: ENCODED_TERM_SEMESTERS[match[2]],
   }
 }
 
@@ -247,7 +272,7 @@ function detectSemesterToken(text: string, compactText: string) {
   const explicitMatch =
     text.match(/第?\s*([一二三四五六七八九十1-9])\s*学期/) ||
     text.match(/([上下])\s*学期/) ||
-    text.match(/学期\s*([12])/)
+    text.match(/学期\s*([123])/)
 
   if (explicitMatch) {
     return toSemesterToken(explicitMatch[1])
@@ -261,10 +286,14 @@ function detectSemesterToken(text: string, compactText: string) {
     return '1'
   }
 
-  return '1'
+  return undefined
 }
 
 function toSemesterToken(value: string) {
+  if (value === '3' || value === '三') {
+    return '3'
+  }
+
   return value === '2' || value === '二' || value === '下' ? '2' : '1'
 }
 

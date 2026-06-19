@@ -140,6 +140,25 @@ function formatSemesterTitle(title: unknown, fallback: string) {
   return text || fallback
 }
 
+function getSemesterSortKey(group: Record<string, unknown>, index: number) {
+  const text = [group.title, group.label, group.id]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+  const academicYearMatch = text.match(/(20\d{2})\s*[-~—至]\s*(20\d{2})/)
+  const semesterMatch =
+    text.match(/第?\s*([一二两12])\s*学期/) ||
+    text.match(/([上下])\s*学期/) ||
+    text.match(/学期\s*([12])/)
+  const semesterText = semesterMatch?.[1]
+  const semester =
+    semesterText === '2' || semesterText === '二' || semesterText === '两' || semesterText === '下'
+      ? 2
+      : 1
+
+  return academicYearMatch ? Number(academicYearMatch[1]) * 10 + semester : -index
+}
+
 function buildScoreGroups(data: unknown, display?: FeatureDisplayConfig): ScoreGroup[] {
   const groupPath = display?.groupPath || 'semesters'
   const itemPath = display?.itemPath || 'grades'
@@ -153,14 +172,18 @@ function buildScoreGroups(data: unknown, display?: FeatureDisplayConfig): ScoreG
       : []
   }
 
-  return groups.map((group, index) => ({
-    id: String(group.id || `group-${index + 1}`),
-    title: formatSemesterTitle(group.title || group.label, `第${index + 1}学期`),
-    credit: typeof group.credit === 'string' ? group.credit : undefined,
-    average: typeof group.average === 'string' ? group.average : undefined,
-    gpa: typeof group.gpa === 'string' ? group.gpa : undefined,
-    items: asArray(getByPath(group, itemPath)).map(asRecord),
-  }))
+  return groups
+    .map((group, index) => ({
+      id: String(group.id || `group-${index + 1}`),
+      title: formatSemesterTitle(group.title || group.label, `第${index + 1}学期`),
+      credit: typeof group.credit === 'string' ? group.credit : undefined,
+      average: typeof group.average === 'string' ? group.average : undefined,
+      gpa: typeof group.gpa === 'string' ? group.gpa : undefined,
+      items: asArray(getByPath(group, itemPath)).map(asRecord),
+      sortKey: getSemesterSortKey(group, index),
+    }))
+    .sort((left, right) => right.sortKey - left.sortKey)
+    .map(({ sortKey, ...group }) => group)
 }
 
 function countScoreItems(groups: ScoreGroup[]) {

@@ -1,6 +1,6 @@
 import { requestApi } from './client'
 import { CourseItem, TimetableCacheResponse } from './types'
-import { getStoredDataCache, setStoredDataCache } from '../storage'
+import { clearStoredDataCacheTerms, getStoredDataCache, setStoredDataCache } from '../storage'
 
 const timetableRequests = new Map<string, Promise<TimetableCacheResponse>>()
 
@@ -26,11 +26,10 @@ export async function getTimetable(
   termId?: string,
   options: CacheOptions = {},
 ) {
-  const cached = getStoredDataCache<TimetableCacheResponse>(
-    accountId,
-    'timetable',
-    termId,
-  )
+  const shouldUseLocalCache = !termId
+  const cached = shouldUseLocalCache
+    ? getStoredDataCache<TimetableCacheResponse>(accountId, 'timetable')
+    : null
 
   if (!options.forceRefresh && cached) {
     return cached.data
@@ -61,26 +60,20 @@ export async function getTimetable(
           termStarts: response.termStarts || cached.data.termStarts,
         }
         setStoredDataCache(accountId, 'timetable', timetable, {
-          termId,
           sourceHash: cached.sourceHash,
           syncedAt: cached.syncedAt,
         })
+        clearStoredDataCacheTerms(accountId, 'timetable')
         return timetable
       }
 
       const timetable = normalizeTimetable(response)
-      setStoredDataCache(accountId, 'timetable', timetable, {
-        termId,
-        sourceHash: timetable.sourceHash,
-        syncedAt: timetable.syncedAt,
-      })
-
-      if (!termId && timetable.termId) {
+      if (shouldUseLocalCache) {
         setStoredDataCache(accountId, 'timetable', timetable, {
-          termId: timetable.termId,
           sourceHash: timetable.sourceHash,
           syncedAt: timetable.syncedAt,
         })
+        clearStoredDataCacheTerms(accountId, 'timetable')
       }
 
       return timetable
