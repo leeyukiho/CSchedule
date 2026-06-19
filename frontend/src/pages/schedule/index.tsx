@@ -4,7 +4,7 @@ import { Picker, Text, View, type ITouchEvent } from '@tarojs/components'
 
 import { getTimetable } from '../../shared/api/timetable'
 import { CourseItem, FeatureDisplayField, TimetableCacheResponse } from '../../shared/api/types'
-import { SECTION_TIMES, getCourseSections } from '../../shared/format'
+import { getCourseSections, getSectionTimeMap } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
 import { getStoredAccountId, getStoredTermStarts } from '../../shared/storage'
 import {
@@ -18,12 +18,12 @@ import {
 } from '../../shared/term'
 
 const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
-const TOTAL_SECTIONS = 12
+const TOTAL_SECTIONS = 14
 const MAX_WEEK = 20
 const LEFT_WIDTH = 54
 const DAY_WIDTH = 90
 const HEADER_HEIGHT = 80
-const ROW_HEIGHT = 92
+const ROW_HEIGHT = 98
 const LESSON_GAP = 2
 const WEEK_SWIPE_THRESHOLD = 48
 const STATUS_CLEAR_DELAY_MS = 3000
@@ -130,7 +130,38 @@ function getStablePaletteIndex(key: string, fallbackIndex = 0) {
 function getPaletteStyle(index: number) {
   const palette = LESSON_PALETTES[index % LESSON_PALETTES.length]
 
-  return `background:${palette.background};border-color:${palette.border};color:${palette.text}`
+  return getGlassPaletteStyle(palette.background, palette.border, palette.text)
+}
+
+function hexToRgb(hex: string) {
+  const normalized = hex.replace('#', '')
+  const value = Number.parseInt(
+    normalized.length === 3
+      ? normalized.split('').map((char) => char + char).join('')
+      : normalized,
+    16,
+  )
+
+  return {
+    red: (value >> 16) & 255,
+    green: (value >> 8) & 255,
+    blue: value & 255,
+  }
+}
+
+function rgba(hex: string, alpha: number) {
+  const color = hexToRgb(hex)
+
+  return `rgba(${color.red}, ${color.green}, ${color.blue}, ${alpha})`
+}
+
+function getGlassPaletteStyle(background: string, border: string, text: string) {
+  return [
+    `background:linear-gradient(145deg, rgba(255, 255, 255, 0.58) 0%, ${rgba(background, 0.78)} 42%, ${rgba(background, 0.48)} 100%)`,
+    `border-color:${rgba(border, 0.42)}`,
+    `color:${text}`,
+    `box-shadow:inset 0 1rpx 0 rgba(255, 255, 255, 0.72), 0 8rpx 18rpx ${rgba(border, 0.12)}`,
+  ].join(';')
 }
 
 function hslToHex(hue: number, saturation: number, lightness: number) {
@@ -194,7 +225,11 @@ function getGeneratedPaletteStyle(key: string) {
   )
   const hue = (hueSeed + (hueShift % 24) * 13) % 360
 
-  return `background:${hslToHex(hue, variant.backgroundS, variant.backgroundL)};border-color:${hslToHex((hue + 8) % 360, variant.borderS, variant.borderL)};color:${hslToHex((hue + 8) % 360, variant.textS, variant.textL)}`
+  return getGlassPaletteStyle(
+    hslToHex(hue, variant.backgroundS, variant.backgroundL),
+    hslToHex((hue + 8) % 360, variant.borderS, variant.borderL),
+    hslToHex((hue + 8) % 360, variant.textS, variant.textL),
+  )
 }
 
 function buildCoursePaletteMap(courses: CourseItem[], primaryField: FeatureDisplayField) {
@@ -223,6 +258,13 @@ function buildCoursePaletteMap(courses: CourseItem[], primaryField: FeatureDispl
 
 function mergeTermOptions(current: TermOption[], next: TermOption[]) {
   return dedupeAndSortTerms([...current, ...next])
+}
+
+function mergeTermStarts(defaultStarts: Record<string, string> | undefined, localStarts: Record<string, string>) {
+  return {
+    ...(defaultStarts || {}),
+    ...localStarts,
+  }
 }
 
 function buildWeekOptions(): WeekOption[] {
@@ -298,10 +340,12 @@ export default function SchedulePage() {
   }, [errorText])
 
   const periods = useMemo(
-    () =>
-      Array.from({ length: TOTAL_SECTIONS }, (_, index) => {
+    () => {
+      const sectionTimeMap = getSectionTimeMap(timetable?.sectionTimes, timetable?.providerId)
+
+      return Array.from({ length: TOTAL_SECTIONS }, (_, index) => {
         const section = index + 1
-        const time = SECTION_TIMES[section]
+        const time = sectionTimeMap[section]
         const top = HEADER_HEIGHT + index * ROW_HEIGHT
 
         return {
@@ -310,7 +354,16 @@ export default function SchedulePage() {
           end: time ? time.end : '',
           style: `left:0rpx;top:${top}rpx;width:${LEFT_WIDTH}rpx;height:${ROW_HEIGHT}rpx;`,
         }
-      }),
+      })
+    },
+    [timetable?.providerId, timetable?.sectionTimes],
+  )
+  const rowLines = useMemo(
+    () =>
+      Array.from({ length: TOTAL_SECTIONS }, (_, index) => ({
+        section: index + 1,
+        style: `left:0rpx;top:${HEADER_HEIGHT + index * ROW_HEIGHT}rpx;width:100%;height:1rpx;`,
+      })),
     [],
   )
 
@@ -343,9 +396,13 @@ export default function SchedulePage() {
     () => buildCoursePaletteMap(timetable ? timetable.courses : [], primaryCourseField),
     [primaryCourseField, timetable],
   )
+  const effectiveTermStarts = useMemo(
+    () => mergeTermStarts(timetable?.termStarts, termStarts),
+    [termStarts, timetable?.termStarts],
+  )
   const weekdays = useMemo<WeekdayColumn[]>(() => {
     const today = new Date()
-    const startDate = getWeekStartDate(selectedTerm, selectedWeek, timetable?.termId, termStarts)
+    const startDate = getWeekStartDate(selectedTerm, selectedWeek, timetable?.termId, effectiveTermStarts)
 
     return WEEKDAYS.map((weekday, index) => {
       const date = new Date(startDate)
@@ -358,7 +415,7 @@ export default function SchedulePage() {
         style: `left:${LEFT_WIDTH + DAY_WIDTH * index}rpx;top:0rpx;width:${DAY_WIDTH}rpx;height:${HEADER_HEIGHT}rpx;`,
       }
     })
-  }, [selectedTerm, selectedWeek, termStarts, timetable?.termId])
+  }, [effectiveTermStarts, selectedTerm, selectedWeek, timetable?.termId])
 
   const lessons = useMemo<PositionedLesson[]>(() => {
     return (timetable ? timetable.courses : [])
@@ -422,7 +479,11 @@ export default function SchedulePage() {
         setTimetable(todayTimetable)
         setTermOptions((current) => mergeTermOptions(current, mergedTermOptions))
         setSelectedTermId(todayTimetable.termId || todayTerm.id)
-        setSelectedWeek(getCurrentTeachingWeek(todaySelectedTerm, todayTimetable.termId || todayTerm.id, starts))
+        setSelectedWeek(getCurrentTeachingWeek(
+          todaySelectedTerm,
+          todayTimetable.termId || todayTerm.id,
+          mergeTermStarts(todayTimetable.termStarts, starts),
+        ))
         return
       }
 
@@ -432,7 +493,13 @@ export default function SchedulePage() {
       setTermOptions((current) => mergeTermOptions(current, nextTermOptions))
       setSelectedTermId(nextTimetable.termId || termId || '')
       setSelectedWeek((current) =>
-        current === null ? getCurrentTeachingWeek(nextSelectedTerm, nextTimetable.termId, starts) : current,
+        current === null
+          ? getCurrentTeachingWeek(
+            nextSelectedTerm,
+            nextTimetable.termId,
+            mergeTermStarts(nextTimetable.termStarts, starts),
+          )
+          : current,
       )
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '课表读取失败')
@@ -508,7 +575,7 @@ export default function SchedulePage() {
 
   function handleBackToday() {
     const todayTerm = getTodayTermOption(termOptions) || selectedTerm
-    const todayWeek = getCurrentTeachingWeek(todayTerm, todayTerm?.id || timetable?.termId, termStarts)
+    const todayWeek = getCurrentTeachingWeek(todayTerm, todayTerm?.id || timetable?.termId, effectiveTermStarts)
 
     if (todayTerm && todayTerm.id !== selectedTermId) {
       setSelectedTermId(todayTerm.id)
@@ -558,8 +625,9 @@ export default function SchedulePage() {
     ].join(';')
     const detailStart = Number(sections[0] || start)
     const detailEnd = Number(sections[sections.length - 1] || end)
-    const startTime = SECTION_TIMES[detailStart]?.start || ''
-    const endTime = SECTION_TIMES[detailEnd]?.end || ''
+    const sectionTimeMap = getSectionTimeMap(timetable?.sectionTimes, timetable?.providerId)
+    const startTime = sectionTimeMap[detailStart]?.start || ''
+    const endTime = sectionTimeMap[detailEnd]?.end || ''
 
     return {
       id: course.id || `${weekday}-${start}-${course.name || index}`,
@@ -601,6 +669,10 @@ export default function SchedulePage() {
         onTouchEnd={handleScheduleTouchEnd}
         onTouchCancel={handleScheduleTouchCancel}
       >
+        {rowLines.map((item) => (
+          <View className='timetable-row-line' key={item.section} style={item.style} />
+        ))}
+
         {weekdays.map((item) => (
           <View
             className={'weekday ' + (item.isToday ? 'weekday-active' : '')}

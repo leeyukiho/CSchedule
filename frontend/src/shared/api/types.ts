@@ -183,6 +183,7 @@ export interface TimetableCacheResponse {
   termId?: string
   courses: CourseItem[]
   terms: unknown[]
+  termStarts?: Record<string, string>
   sectionTimes: unknown[]
   display?: FeatureDisplayConfig
   sourceHash?: string
@@ -268,7 +269,10 @@ export interface SyncJobResponse {
   runningAhead?: number
   errorCode?: string
   errorMessage?: string
-  cacheData?: TimetableCacheResponse | FeatureCacheResponse
+  cacheResults?: Array<{
+    target: DataTarget
+    cacheData: TimetableCacheResponse | FeatureCacheResponse
+  }>
 }
 
 export interface SubmitFeedbackResponse {

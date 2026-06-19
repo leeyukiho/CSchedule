@@ -12,6 +12,7 @@ const WTBU_CONFIG = {
 }
 const WTBU_LOGIN_MAX_ATTEMPTS = 2
 const WTBU_SCHEDULE_FETCH_MAX_ATTEMPTS = 3
+const WTBU_EXAM_BATCH_REQUEST_DELAY_MS = 1200
 
 function ok(result) {
   return { ok: true, result }
@@ -634,7 +635,7 @@ function getAcademicTermLabel(value) {
       const match = source.match(pattern)
 
       if (match) {
-        return `${match[1]}-${match[2]}学年第${toSemesterNumber(match[3])}学期`
+        return `${match[1]}-${match[2]} 第${toSemesterNumber(match[3])}学期`
       }
     }
   }
@@ -644,7 +645,7 @@ function getAcademicTermLabel(value) {
 
 function getAcademicTermKey(value) {
   const label = getAcademicTermLabel(value)
-  const match = label.match(/(20\d{2})-(20\d{2})学年第([12])学期/)
+  const match = label.match(/(20\d{2})-(20\d{2})\s*第([12])学期/)
 
   return match ? `${match[1]}-${match[2]}-${match[3]}` : ''
 }
@@ -684,12 +685,13 @@ function cleanScheduleTermTitle(value) {
 
 function normalizeSemesterRecord(semester) {
   const id = cleanText(semester.id)
-  const rawLabel = semester.label || semester.title || (id ? `term ${id}` : '')
+  const rawLabel = cleanText(semester.rawLabel || semester.label || semester.title || (id ? `term ${id}` : ''))
   const label = cleanScheduleTermTitle(rawLabel)
 
   return {
     ...semester,
     id,
+    rawLabel,
     title: label,
     label,
   }
@@ -804,8 +806,6 @@ function parseSchedule(scheduleHtml) {
   const from = marshalMatch ? Number(marshalMatch[1]) : 1
   const startWeek = marshalMatch ? Number(marshalMatch[2]) : 1
   const endWeek = marshalMatch ? Number(marshalMatch[3]) : 25
-  const unitCountMatch = html.match(/var\s+unitCount\s*=\s*(\d+)/)
-  const unitCount = unitCountMatch ? Number(unitCountMatch[1]) : 13
   const courses = []
   const activityRegex =
     /activity\s*=\s*new\s+TaskActivity\(([\s\S]*?)\);\s*((?:\s*index\s*=\s*\d+\s*\*\s*unitCount\s*\+\s*\d+\s*;\s*table\d+\.activities\[index\]\[table\d+\.activities\[index\]\.length\]\s*=\s*activity\s*;\s*)+)/g
@@ -1420,6 +1420,231 @@ function extractTableRows(html) {
   return rows
 }
 
+function getTableCell(row, labels) {
+  return getStrictCellByLabels(row, labels) ||
+    getGradeCellByLabels(row, labels) ||
+    ''
+}
+
+function parseExamTimeRange(value) {
+  const text = cleanText(value)
+  const match = text.match(/(\d{1,2})\s*:\s*(\d{2})\s*[~\-—至]\s*(\d{1,2})\s*:\s*(\d{2})/)
+
+  if (!match) {
+    return null
+  }
+
+  return {
+    startHour: match[1].padStart(2, '0'),
+    startMinute: match[2],
+    endHour: match[3].padStart(2, '0'),
+    endMinute: match[4],
+    text: `${match[1].padStart(2, '0')}:${match[2]}~${match[3].padStart(2, '0')}:${match[4]}`,
+  }
+}
+
+function toChinaIso(date, hour, minute) {
+  return `${date}T${hour}:${minute}:00+08:00`
+}
+
+function parseChinaTimestamp(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})\+08:00$/)
+
+  if (!match) {
+    return 0
+  }
+
+  return Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4]) - 8,
+    Number(match[5]),
+    Number(match[6]),
+  )
+}
+
+function isUnscheduledText(value) {
+  return /未安排|待安排|暂无|无/.test(cleanText(value))
+}
+
+function parseExamRecords(examHtml, now = new Date()) {
+  const rows = extractTableRows(examHtml)
+  const records = []
+  const nowTime = now.getTime()
+
+  for (const row of rows) {
+    const cells = Array.isArray(row.__cells) ? row.__cells : []
+    const courseCode = getTableCell(row, ['课程序号', '课程代码', '课程编号']) || cleanText(cells[0])
+    const courseName = getTableCell(row, ['课程名称', '课程名', '科目']) || cleanText(cells[1])
+    const examType = getTableCell(row, ['考试类别', '考试类型']) || cleanText(cells[2])
+    const rawDate = getTableCell(row, ['考试日期', '日期']) || cleanText(cells[3])
+    const rawTime = getTableCell(row, ['考试安排', '考试时间', '时间']) || cleanText(cells[4])
+    const rawLocation = getTableCell(row, ['考试地点', '考场', '地点']) || cleanText(cells[5])
+    const rawSeatNo = getTableCell(row, ['考场座位号', '座位号', '座位']) || cleanText(cells[6])
+    const rawStatus = getTableCell(row, ['考试情况', '状态']) || cleanText(cells[7])
+    const remark = getTableCell(row, ['其它说明', '备注', '说明']) || cleanText(cells[8])
+    const dateMatch = cleanText(rawDate).match(/20\d{2}-\d{2}-\d{2}/)
+    const date = dateMatch ? dateMatch[0] : ''
+    const timeRange = parseExamTimeRange(rawTime)
+
+    if (!courseName || /课程名称|考试类别|考试日期/.test(courseName)) {
+      continue
+    }
+
+    const startAt = date && timeRange
+      ? toChinaIso(date, timeRange.startHour, timeRange.startMinute)
+      : ''
+    const endAt = date && timeRange
+      ? toChinaIso(date, timeRange.endHour, timeRange.endMinute)
+      : ''
+    const unscheduled =
+      !date ||
+      !timeRange ||
+      isUnscheduledText(rawDate) ||
+      isUnscheduledText(rawTime)
+    const finished = Boolean(endAt && parseChinaTimestamp(endAt) < nowTime)
+    const status = unscheduled ? 'unscheduled' : finished ? 'finished' : 'upcoming'
+
+    records.push({
+      courseCode,
+      courseName,
+      examType,
+      date,
+      time: timeRange ? timeRange.text : '',
+      startAt,
+      endAt,
+      location: isUnscheduledText(rawLocation) ? '' : cleanText(rawLocation),
+      seatNo: isUnscheduledText(rawSeatNo) ? '' : cleanText(rawSeatNo),
+      status,
+      rawStatus,
+      remark: remark || (unscheduled ? '时间未安排' : ''),
+    })
+  }
+
+  return records
+}
+
+function parseExamBatchCandidates(...htmlSources) {
+  const candidates = []
+
+  for (const html of htmlSources) {
+    const source = String(html || '')
+
+    for (const select of source.matchAll(/<select\b[^>]*name=["']examBatch\.id["'][^>]*>([\s\S]*?)<\/select>/gi)) {
+      for (const option of select[1].matchAll(/<option\b[^>]*value=["']?(\d+)/gi)) {
+        candidates.push(option[1])
+      }
+    }
+
+    for (const match of source.matchAll(/examBatch\.id\s*=\s*["']?(\d+)/g)) {
+      candidates.push(match[1])
+    }
+
+    for (const match of source.matchAll(/[?&]examBatch\.id=(\d+)/g)) {
+      candidates.push(match[1])
+    }
+  }
+
+  return [...new Set(candidates)]
+    .sort((left, right) => Number(right) - Number(left))
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function buildExamResult(examHtml, batchId, now = new Date()) {
+  const records = parseExamRecords(examHtml, now)
+  const rawLabel = getAcademicTermLabel(examHtml)
+  const title = rawLabel ? cleanScheduleTermTitle(rawLabel) : ''
+  const upcoming = records
+    .filter((record) => record.status !== 'finished')
+    .sort((left, right) => {
+      const leftTime = parseChinaTimestamp(left.startAt) || Number.MAX_SAFE_INTEGER
+      const rightTime = parseChinaTimestamp(right.startAt) || Number.MAX_SAFE_INTEGER
+      return leftTime - rightTime || left.courseName.localeCompare(right.courseName, 'zh-Hans-CN')
+    })
+  const finished = records
+    .filter((record) => record.status === 'finished')
+    .sort((left, right) => (parseChinaTimestamp(right.startAt) || 0) - (parseChinaTimestamp(left.startAt) || 0))
+
+  return {
+    term: {
+      id: batchId || '',
+      rawLabel,
+      title,
+      label: title,
+      selected: true,
+    },
+    upcoming,
+    finished,
+  }
+}
+
+function getEmptyExamResult() {
+  return {
+    term: {
+      id: '',
+      rawLabel: '',
+      title: '',
+      label: '',
+      selected: true,
+    },
+    upcoming: [],
+    finished: [],
+  }
+}
+
+function getExamRecordKey(record) {
+  return [
+    record.courseCode,
+    record.courseName,
+    record.examType,
+    record.date,
+    record.time,
+    record.location,
+    record.seatNo,
+  ].map((value) => String(value || '').trim()).join('|')
+}
+
+function mergeExamResults(results) {
+  const merged = getEmptyExamResult()
+  const seen = new Set()
+
+  for (const result of results) {
+    if (!merged.term.id && result.term) {
+      merged.term = result.term
+    }
+
+    for (const status of ['upcoming', 'finished']) {
+      for (const record of Array.isArray(result[status]) ? result[status] : []) {
+        const key = getExamRecordKey(record)
+
+        if (seen.has(key)) {
+          continue
+        }
+
+        seen.add(key)
+        merged[status].push(record)
+      }
+    }
+  }
+
+  merged.upcoming.sort((left, right) => {
+    const leftTime = parseChinaTimestamp(left.startAt) || Number.MAX_SAFE_INTEGER
+    const rightTime = parseChinaTimestamp(right.startAt) || Number.MAX_SAFE_INTEGER
+    return leftTime - rightTime || left.courseName.localeCompare(right.courseName, 'zh-Hans-CN')
+  })
+  merged.finished.sort((left, right) => {
+    const leftTime = parseChinaTimestamp(left.startAt) || 0
+    const rightTime = parseChinaTimestamp(right.startAt) || 0
+    return rightTime - leftTime || left.courseName.localeCompare(right.courseName, 'zh-Hans-CN')
+  })
+
+  return merged
+}
+
 function toNumber(value) {
   const match = String(value || '').match(/\d+(?:\.\d+)?/)
   return match ? Number(match[0]) : 0
@@ -1472,6 +1697,42 @@ function calculateGpa(score, sourceGpa) {
   return { value: gpa, text: formatNumber(gpa, 1) }
 }
 
+function toSemesterDisplayName(value) {
+  const semester = toSemesterNumber(value)
+
+  return semester === '2' ? '二' : '一'
+}
+
+function normalizeGradeTermTitle(value) {
+  const text = cleanText(String(value || '').replace(/&nbsp;/gi, ' '))
+
+  if (!text || text === '未分组学期') {
+    return text
+  }
+
+  const academicLabel = getAcademicTermLabel(text)
+
+  if (academicLabel) {
+    return academicLabel.replace(/第([12])学期/, (_, semester) => `第${toSemesterDisplayName(semester)}学期`)
+  }
+
+  const academicMatch = text.match(
+    /^(20\d{2})\s*[-~—至]\s*(20\d{2})(?:\s*学年)?[\s._-]*(?:第)?([一二两12上下])(?:\s*学期)?$/,
+  )
+
+  if (academicMatch) {
+    return `${academicMatch[1]}-${academicMatch[2]} 第${toSemesterDisplayName(academicMatch[3])}学期`
+  }
+
+  const semesterOnlyMatch = text.match(/^第?\s*([一二两12上下])\s*学期?$/)
+
+  if (semesterOnlyMatch) {
+    return `第${toSemesterDisplayName(semesterOnlyMatch[1])}学期`
+  }
+
+  return text
+}
+
 function extractGradeRecords(gradesHtml, defaultTerm = '') {
   const rows = extractTableRows(gradesHtml)
   const records = []
@@ -1490,9 +1751,11 @@ function extractGradeRecords(gradesHtml, defaultTerm = '') {
 
     records.push({
       term:
-        getStrictCellByLabels(row, ['学年学期', '开课学期', '学期', '学年']) ||
-        defaultTerm ||
-        '未分组学期',
+        normalizeGradeTermTitle(
+          getStrictCellByLabels(row, ['学年学期', '开课学期', '学期', '学年']) ||
+          defaultTerm ||
+          '未分组学期',
+        ),
       name,
       credit: getGradeCellByLabels(row, ['学分', '课程学分'], {
         exclude: '成绩|绩点',
@@ -1727,6 +1990,63 @@ function countScoreItems(data) {
   }, 0)
 }
 
+async function fetchExams(client, config, homeHtml) {
+  const examIndexHtml = await fetchEduPageByKeywords(
+    client,
+    homeHtml,
+    ['考试安排', '考试查询', '考试'],
+    [
+      '/eams/stdExamTable.action',
+      '/eams/stdExamTable!examTable.action?examBatch.id=1428',
+    ],
+    config.baseUrl,
+  )
+  const batchIds = parseExamBatchCandidates(examIndexHtml, homeHtml)
+  const paths = [
+    ...batchIds.map((batchId) => `/eams/stdExamTable!examTable.action?examBatch.id=${encodeURIComponent(batchId)}`),
+    '/eams/stdExamTable!examTable.action?examBatch.id=1428',
+  ]
+  const seenPaths = new Set()
+  const results = []
+  let requestedPathCount = 0
+
+  for (const path of paths) {
+    if (seenPaths.has(path)) {
+      continue
+    }
+
+    seenPaths.add(path)
+
+    try {
+      if (requestedPathCount > 0) {
+        await delay(WTBU_EXAM_BATCH_REQUEST_DELAY_MS)
+      }
+
+      requestedPathCount += 1
+      const html = await fetchEduPath(client, path, config.baseUrl)
+      const records = parseExamRecords(html)
+
+      if (!records.length) {
+        continue
+      }
+
+      const batchId = (path.match(/[?&]examBatch\.id=([^&#]*)/) || [])[1] || ''
+      results.push(buildExamResult(html, decodeURIComponent(batchId)))
+    } catch (error) {
+      console.warn('fetch WTBU exams page failed', path, error.message || '')
+    }
+  }
+
+  return results.length ? mergeExamResults(results) : getEmptyExamResult()
+}
+
+function countExamItems(data) {
+  return (
+    (Array.isArray(data.upcoming) ? data.upcoming.length : 0) +
+    (Array.isArray(data.finished) ? data.finished.length : 0)
+  )
+}
+
 function createFeatureCacheData(event, target, data, syncedAt, options = {}) {
   const sourceHash = createSourceHash({
     providerId: event.providerId,
@@ -1756,22 +2076,20 @@ function createSourceHash(input) {
     .digest('hex')
 }
 
-async function runWtbuProviderSync(event) {
-  if (!['course', 'score', 'exam', 'profile'].includes(event.target)) {
-    return fail(
-      'TARGET_UNSUPPORTED',
-      'WTBU cloud sync supports course, score, exam and profile targets only.',
-      { unsupported: true },
-    )
+function normalizeTargets(value) {
+  if (!Array.isArray(value)) {
+    return []
   }
 
-  const config = WTBU_CONFIG
-  const client = createHttpClient(config.baseUrl)
+  return [...new Set(
+    value
+      .map((item) => String(item || '').trim())
+      .filter((item) => ['course', 'score', 'exam', 'profile'].includes(item)),
+  )]
+}
 
-  const homeHtml = await loginToWtbu(client, config, event.username, event.password)
-  const syncedAt = new Date().toISOString()
-
-  if (event.target === 'course') {
+async function fetchTargetCacheResult(target, event, client, config, homeHtml, syncedAt) {
+  if (target === 'course') {
     const schedule = await fetchWtbuSchedule(client, config, event.semesterId)
 
     if (!schedule.courses.length) {
@@ -1781,86 +2099,103 @@ async function runWtbuProviderSync(event) {
     const termId = schedule.selectedSemesterId
     const sourceHash = createSourceHash({
       providerId: event.providerId,
-      target: event.target,
+      target,
       termId,
       courses: schedule.courses,
     })
     const cacheData = {
       courses: schedule.courses,
       terms: schedule.semesters || [],
-      sectionTimes: schedule.sectionTimes || [],
     }
-    const cacheResults = [
-      {
-        target: 'course',
-        termId,
-        cacheData,
-        parsedCount: schedule.courses.length,
-        sourceHash,
-        syncedAt,
-      },
-    ]
 
-    return ok({ cacheResults })
+    return {
+      target: 'course',
+      termId,
+      cacheData,
+      parsedCount: schedule.courses.length,
+      sourceHash,
+      syncedAt,
+    }
   }
 
-  if (event.target === 'profile') {
+  if (target === 'profile') {
     const profile = await fetchProfile(client, config, homeHtml, event.username).catch((error) => {
       console.warn('fetch WTBU profile failed', error.message || '')
       return parseProfile(homeHtml, event.username)
     })
     const cache = createFeatureCacheData(event, 'profile', profile, syncedAt)
-    const cacheResults = [
-      {
-        target: 'profile',
-        termId: cache.termId,
-        cacheData: cache.cacheData,
-        parsedCount: Object.keys(profile).filter((key) => profile[key]).length,
-        sourceHash: cache.sourceHash,
-        syncedAt: cache.syncedAt,
-      },
-    ]
 
-    return ok({ cacheResults })
+    return {
+      target: 'profile',
+      termId: cache.termId,
+      cacheData: cache.cacheData,
+      parsedCount: Object.keys(profile).filter((key) => profile[key]).length,
+      sourceHash: cache.sourceHash,
+      syncedAt: cache.syncedAt,
+    }
   }
 
-  if (event.target === 'score') {
+  if (target === 'score') {
     const score = await fetchGrades(client, config, homeHtml).catch((error) => {
       console.warn('fetch WTBU grades failed', error.message || '')
       return emptyGrades()
     })
     const cache = createFeatureCacheData(event, 'score', score, syncedAt)
-    const cacheResults = [
-      {
-        target: 'score',
-        termId: cache.termId,
-        cacheData: cache.cacheData,
-        parsedCount: countScoreItems(score),
-        sourceHash: cache.sourceHash,
-        syncedAt: cache.syncedAt,
-      },
-    ]
 
-    return ok({ cacheResults })
-  }
-
-  const cache = createFeatureCacheData(event, 'exam', [], syncedAt, {
-    meta: {
-      unsupported: true,
-      warning: 'WTBU exam parser is not implemented yet.',
-    },
-  })
-  const cacheResults = [
-    {
-      target: 'exam',
+    return {
+      target: 'score',
       termId: cache.termId,
       cacheData: cache.cacheData,
-      parsedCount: 0,
+      parsedCount: countScoreItems(score),
       sourceHash: cache.sourceHash,
       syncedAt: cache.syncedAt,
-      warnings: ['WTBU_EXAM_SYNC_NOT_IMPLEMENTED'],
+    }
+  }
+
+  const exam = await fetchExams(client, config, homeHtml).catch((error) => {
+    console.warn('fetch WTBU exams failed', error.message || '')
+    return getEmptyExamResult()
+  })
+  const cache = createFeatureCacheData(event, 'exam', exam, syncedAt, {
+    termId: exam.term?.id,
+    meta: {
+      scope: 'current_term_only',
     },
-  ]
+  })
+
+  return {
+    target: 'exam',
+    termId: cache.termId,
+    cacheData: cache.cacheData,
+    parsedCount: countExamItems(exam),
+    sourceHash: cache.sourceHash,
+    syncedAt: cache.syncedAt,
+  }
+}
+
+async function runWtbuProviderSync(event) {
+  const targets = normalizeTargets(event.targets)
+
+  if (!targets.length) {
+    return fail(
+      'TARGET_UNSUPPORTED',
+      'WTBU cloud sync supports targets course, score, exam and profile only.',
+      { unsupported: true },
+    )
+  }
+
+  const config = WTBU_CONFIG
+  const client = createHttpClient(config.baseUrl)
+
+  const homeHtml = await loginToWtbu(client, config, event.username, event.password)
+  const syncedAt = new Date().toISOString()
+  const cacheResults = []
+
+  for (const target of targets) {
+    cacheResults.push(
+      await fetchTargetCacheResult(target, event, client, config, homeHtml, syncedAt),
+    )
+  }
 
   return ok({ cacheResults })
 }
@@ -1869,10 +2204,10 @@ async function handleEvent(event) {
   try {
     assertAuthorized(event || {})
 
-    if (!event || !event.providerId || !event.target || !event.username || !event.password) {
+    if (!event || !event.providerId || !Array.isArray(event.targets) || !event.username || !event.password) {
       return fail(
         'SYNC_INPUT_INVALID',
-        'providerId, target, username and password are required',
+        'providerId, targets, username and password are required',
       )
     }
 

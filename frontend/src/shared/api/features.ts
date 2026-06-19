@@ -80,7 +80,9 @@ async function getFeatureWithCache<TData = unknown>(
 
   const queryParts = [
     termId ? `termId=${encodeURIComponent(termId)}` : '',
-    cached?.sourceHash ? `knownHash=${encodeURIComponent(cached.sourceHash)}` : '',
+    !options.forceRefresh && cached?.sourceHash
+      ? `knownHash=${encodeURIComponent(cached.sourceHash)}`
+      : '',
   ].filter(Boolean)
   const query = queryParts.length ? `?${queryParts.join('&')}` : ''
 
@@ -131,21 +133,31 @@ async function getFeatureWithCache<TData = unknown>(
   return request
 }
 
-export async function getScores(accountId: string, termId?: string) {
+export async function getScores(
+  accountId: string,
+  termId?: string,
+  options: CacheOptions = {},
+) {
   return getFeatureWithCache(
     accountId,
     'score',
     `/account/${encodeURIComponent(accountId)}/scores`,
     termId,
+    options,
   )
 }
 
-export async function getExams(accountId: string, termId?: string) {
+export async function getExams(
+  accountId: string,
+  termId?: string,
+  options: CacheOptions = {},
+) {
   return getFeatureWithCache(
     accountId,
     'exam',
     `/account/${encodeURIComponent(accountId)}/exams`,
     termId,
+    options,
   )
 }
 

@@ -1,15 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { Button, Image, Input, ScrollView, Text, View } from '@tarojs/components'
 
 import { getAccount } from '../../shared/api/accounts'
 import { getProfile, saveProfile } from '../../shared/api/features'
-import { listSchools } from '../../shared/api/schools'
 import { createManualSync, getSyncJob } from '../../shared/api/sync'
 import { getTimetable } from '../../shared/api/timetable'
 import {
   ProfileData,
-  SchoolListItem,
+  FeatureCacheResponse,
   SyncJobResponse,
   StudentAccountSummary,
   TimetableCacheResponse,
@@ -20,6 +19,7 @@ import {
   getStoredAccountId,
   setStoredDataCache,
 } from '../../shared/storage'
+import { BindAccountPanel } from '../../features/bind/BindAccountPanel'
 
 type EditField = {
   key: keyof ProfileData
@@ -47,7 +47,7 @@ const EDIT_FIELDS: EditField[] = [
   },
   { key: 'phone', label: '手机号' },
 ]
-const SYNC_POLL_INTERVAL_MS = 1500
+const SYNC_POLL_INTERVAL_MS = 2500
 const SYNC_POLL_TIMEOUT_MS = 120000
 const STATUS_CLEAR_DELAY_MS = 3000
 
@@ -69,6 +69,10 @@ function getText(value: unknown, fallback = '暂无') {
 
 function getEditableFields(): EditField[] {
   return EDIT_FIELDS
+}
+
+function needsSchoolLogin(account: StudentAccountSummary | null, hasStoredAccount: boolean) {
+  return !hasStoredAccount || account?.status === 'unbound' || account?.status === 'disabled'
 }
 
 function buildEditRows(source: Record<string, unknown>, fields: EditField[]): EditRow[] {
@@ -113,6 +117,92 @@ function getSyncResultMessage(status: SyncJobResponse['status']) {
   return '同步未完成，请稍后再试。'
 }
 
+function getUserSyncResultMessage(status: SyncJobResponse['status'], errorCode?: string) {
+  if (status === 'success') {
+    return '同步完成'
+  }
+
+  if (
+    status === 'need_login' ||
+    errorCode === 'INVALID_CREDENTIAL' ||
+    errorCode === 'SAVED_CREDENTIAL_REQUIRED' ||
+    errorCode === 'SESSION_EXPIRED'
+  ) {
+    return '账号密码有问题，请重新登录并保存账号信息'
+  }
+
+  if (status === 'rate_limited') {
+    return '同步太频繁，请稍后再试'
+  }
+
+  return '系统错误，请稍后再试'
+}
+
+function isCredentialSyncError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || '')
+
+  return (
+    message.includes('INVALID_CREDENTIAL') ||
+    message.includes('SAVED_CREDENTIAL_REQUIRED') ||
+    message.includes('SESSION_EXPIRED') ||
+    message.includes('WTBU_INVALID_CREDENTIALS')
+  )
+}
+
+function getBindUrl(account?: StudentAccountSummary | null) {
+  if (!account) {
+    return '/pages/bind/index'
+  }
+
+  const school = account.school
+  const params = [
+    ['schoolId', school?.id || account.schoolId],
+    ['schoolName', school?.name || account.schoolId],
+    ['shortName', school?.shortName],
+    ['providerId', account.providerId],
+  ]
+    .filter((item): item is [string, string] => Boolean(item[1]))
+    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+    .join('&')
+
+  return params ? `/pages/bind/index?${params}` : '/pages/bind/index'
+}
+
+function shouldOpenBindForManualSync(account: StudentAccountSummary) {
+  return (
+    account.credentialSaveMode !== 'password_vault' ||
+    account.syncStrategy?.manualSyncRequired ||
+    account.syncStrategy?.passwordVaultRequired
+  )
+}
+
+function shouldOpenBindForSyncJob(job: SyncJobResponse) {
+  return (
+    job.status === 'need_login' ||
+    job.status === 'need_webview_fetch' ||
+    job.errorCode === 'INVALID_CREDENTIAL' ||
+    job.errorCode === 'SAVED_CREDENTIAL_REQUIRED' ||
+    job.errorCode === 'SESSION_EXPIRED' ||
+    job.errorCode === 'CLOUD_SYNC_UNSUPPORTED'
+  )
+}
+
+function logSyncFailure(job: SyncJobResponse) {
+  if (job.status === 'success') {
+    return
+  }
+
+  console.warn('[sync] job did not complete successfully', {
+    status: job.status,
+    errorCode: job.errorCode,
+    errorMessage: job.errorMessage,
+    legacyMessage: getSyncResultMessage(job.status),
+    jobId: job.jobId,
+    accountId: job.accountId,
+    target: job.target,
+  })
+}
+
 async function waitForSyncJob(job: SyncJobResponse) {
   let currentJob = job
   const startedAt = Date.now()
@@ -122,55 +212,79 @@ async function waitForSyncJob(job: SyncJobResponse) {
     Date.now() - startedAt < SYNC_POLL_TIMEOUT_MS
   ) {
     await delay(SYNC_POLL_INTERVAL_MS)
-    currentJob = await getSyncJob(job.jobId, { includeCache: true })
+    currentJob = await getSyncJob(job.jobId)
+  }
+
+  if (currentJob.status === 'success' && !Array.isArray(currentJob.cacheResults)) {
+    return getSyncJob(job.jobId, { includeCache: true })
   }
 
   return currentJob
 }
 
 function persistSyncCache(accountId: string, job: SyncJobResponse) {
-  if (job.target !== 'course' || !job.cacheData) {
-    return false
-  }
+  const cacheResults = Array.isArray(job.cacheResults) ? job.cacheResults : []
+  let persisted = false
 
-  const timetable = {
-    ...(job.cacheData as TimetableCacheResponse),
-    accountId,
-  }
+  for (const item of cacheResults) {
+    if (item.target === 'course') {
+      const timetable = {
+        ...(item.cacheData as TimetableCacheResponse),
+        accountId,
+      }
 
-  setStoredDataCache(accountId, 'timetable', timetable, {
-    sourceHash: timetable.sourceHash,
-    syncedAt: timetable.syncedAt,
-  })
+      if (!Array.isArray(timetable.courses)) {
+        continue
+      }
 
-  if (timetable.termId) {
-    setStoredDataCache(accountId, 'timetable', timetable, {
-      termId: timetable.termId,
-      sourceHash: timetable.sourceHash,
-      syncedAt: timetable.syncedAt,
+      setStoredDataCache(accountId, 'timetable', timetable, {
+        sourceHash: timetable.sourceHash,
+        syncedAt: timetable.syncedAt,
+      })
+
+      if (timetable.termId) {
+        setStoredDataCache(accountId, 'timetable', timetable, {
+          termId: timetable.termId,
+          sourceHash: timetable.sourceHash,
+          syncedAt: timetable.syncedAt,
+        })
+      }
+
+      persisted = true
+      continue
+    }
+
+    if (!['profile', 'score', 'exam'].includes(item.target)) {
+      continue
+    }
+
+    const feature = {
+      ...(item.cacheData as FeatureCacheResponse),
+      accountId,
+    }
+
+    setStoredDataCache(accountId, item.target, feature, {
+      sourceHash: feature.sourceHash,
+      syncedAt: feature.syncedAt,
     })
+
+    if (feature.termId) {
+      setStoredDataCache(accountId, item.target, feature, {
+        termId: feature.termId,
+        sourceHash: feature.sourceHash,
+        syncedAt: feature.syncedAt,
+      })
+    }
+
+    persisted = true
   }
 
-  return true
-}
-
-function getBindUrl(account: StudentAccountSummary) {
-  const params = new URLSearchParams({
-    schoolId: account.schoolId,
-    schoolName: account.school?.name || '',
-    shortName: account.school?.shortName || '',
-    providerId: account.providerId,
-  })
-
-  return `/pages/bind/index?${params.toString()}`
+  return persisted
 }
 
 export default function ProfilePage() {
   const [account, setAccount] = useState<StudentAccountSummary | null>(null)
   const [hasStoredAccount, setHasStoredAccount] = useState(() => Boolean(getStoredAccountId()))
-  const [schools, setSchools] = useState<SchoolListItem[]>([])
-  const [keyword, setKeyword] = useState('')
-  const [searching, setSearching] = useState(false)
   const [profile, setProfile] = useState<ProfileData>({})
   const [loading, setLoading] = useState(false)
   const [savingProfile, setSavingProfile] = useState(false)
@@ -178,7 +292,7 @@ export default function ProfilePage() {
   const [editRows, setEditRows] = useState<EditRow[]>([])
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
-  const requestSeq = useRef(0)
+  const shouldShowSchoolLogin = needsSchoolLogin(account, hasStoredAccount)
 
   useDidShow(() => {
     const accountId = getStoredAccountId()
@@ -197,18 +311,6 @@ export default function ProfilePage() {
   })
 
   useEffect(() => {
-    if (hasStoredAccount) {
-      return undefined
-    }
-
-    const timer = setTimeout(() => {
-      void searchSchools(keyword)
-    }, 220)
-
-    return () => clearTimeout(timer)
-  }, [hasStoredAccount, keyword])
-
-  useEffect(() => {
     if (!message && !errorText) {
       return undefined
     }
@@ -222,11 +324,6 @@ export default function ProfilePage() {
   }, [message, errorText])
 
   const accountDisplayName = account ? account.displayName : undefined
-  const hasSavedPassword = account?.credentialSaveMode === 'password_vault'
-  const canAutoSyncCourse =
-    hasSavedPassword &&
-    account?.syncStrategy?.syncMode === 'cloud_worker' &&
-    account.syncStrategy.scheduledSyncSupported
   const profileSource = useMemo(
     () => ({
       ...profile,
@@ -244,7 +341,8 @@ export default function ProfilePage() {
       number: getText(profileSource.studentId || profileSource.maskedStudentId, '暂无学号'),
       major: getText(profileSource.major, '暂无专业信息'),
       className: getText(profileSource.className, ''),
-      level: getText(profileSource.level || profileSource.grade, '暂无层次信息'),
+      grade: getText(profileSource.grade, ''),
+      level: getText(profileSource.level, '暂无层次信息'),
       avatarUrl: getText(profileSource.avatarUrl, ''),
     }),
     [profileSource],
@@ -277,62 +375,12 @@ export default function ProfilePage() {
     }
   }
 
-  async function searchSchools(value: string) {
-    const text = value.trim()
-
-    const seq = requestSeq.current + 1
-    requestSeq.current = seq
-    setSearching(true)
-    setErrorText('')
-
-    try {
-      const result = await listSchools({
-        keyword: text,
-        limit: 30,
-        enabledOnly: true,
-        fields: 'summary',
-      })
-      if (seq !== requestSeq.current) return
-      setSchools(result.items.filter((school) => school.enabled))
-    } catch (error) {
-      if (seq === requestSeq.current) {
-        setErrorText(error instanceof Error ? error.message : '学校列表加载失败')
-      }
-    } finally {
-      if (seq === requestSeq.current) setSearching(false)
-    }
-  }
-
-  function selectSchoolForLogin(school: SchoolListItem) {
-    const params = [
-      ['schoolId', school.id],
-      ['schoolName', school.name],
-      ['shortName', school.shortName],
-      ['providerId', school.providerId],
-      ['city', school.city],
-      ['province', school.province],
-      ['level', school.level],
-      ['status', school.status],
-      ['enabled', String(school.enabled)],
-    ]
-      .filter((item): item is [string, string] => Boolean(item[1]))
-      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
-      .join('&')
-
-    Taro.navigateTo({ url: `/pages/bind/index?${params}` })
-  }
-
   function openSchoolAccount() {
     if (loading) {
       return
     }
 
     void handleSync()
-  }
-
-  function openSchoolSubmission() {
-    const query = keyword.trim() ? `?schoolName=${encodeURIComponent(keyword.trim())}` : ''
-    Taro.navigateTo({ url: `/pages/submission/index${query}` })
   }
 
   function openProfileEditor() {
@@ -381,13 +429,14 @@ export default function ProfilePage() {
 
   async function handleSync() {
     if (!(account && account.id)) {
-      Taro.navigateTo({ url: '/pages/bind/index' })
+      Taro.navigateTo({ url: getBindUrl(account) })
       return
     }
 
-    if (!canAutoSyncCourse) {
-      setMessage('请重新导入课表。')
-      Taro.navigateTo({ url: getBindUrl(account) })
+    const syncAccount = account
+
+    if (shouldOpenBindForManualSync(syncAccount)) {
+      Taro.navigateTo({ url: getBindUrl(syncAccount) })
       return
     }
 
@@ -396,96 +445,53 @@ export default function ProfilePage() {
     setErrorText('')
 
     try {
-      const job = await createManualSync(account.id, 'course')
+      const job = await createManualSync(syncAccount.id, { targets: ['course', 'profile', 'score', 'exam'] })
       const finalJob = await waitForSyncJob(job)
 
       if (finalJob.status === 'success') {
-        const cachePersisted = persistSyncCache(account.id, finalJob)
+        const cachePersisted = persistSyncCache(syncAccount.id, finalJob)
 
         if (!cachePersisted) {
-          await getTimetable(account.id, undefined, { forceRefresh: true })
+          await getTimetable(syncAccount.id, undefined, { forceRefresh: true })
         }
       }
 
-      if (finalJob.status === 'need_webview_fetch') {
-        setMessage(getSyncResultMessage(finalJob.status))
-        Taro.navigateTo({ url: getBindUrl(account) })
+      if (finalJob.status !== 'success') {
+        logSyncFailure(finalJob)
+        if (shouldOpenBindForSyncJob(finalJob)) {
+          Taro.navigateTo({ url: getBindUrl(syncAccount) })
+        } else {
+          setMessage(getUserSyncResultMessage(finalJob.status, finalJob.errorCode))
+        }
         return
       }
 
       if (finalJob.status === 'success') {
-        setMessage(getSyncResultMessage(finalJob.status))
+        setMessage(getUserSyncResultMessage(finalJob.status, finalJob.errorCode))
         setAccount((current) =>
-          current && current.id === account.id
+          current && current.id === syncAccount.id
             ? { ...current, lastCachedAt: finalJob.finishedAt || finalJob.startedAt || finalJob.createdAt }
             : current,
         )
         return
       }
 
-      setMessage(getSyncResultMessage(finalJob.status))
+      logSyncFailure(finalJob)
+      setMessage(getUserSyncResultMessage(finalJob.status, finalJob.errorCode))
     } catch (error) {
-      setErrorText(error instanceof Error ? error.message : '同步失败')
+      console.warn('[sync] request failed', error)
+      if (isCredentialSyncError(error)) {
+        Taro.navigateTo({ url: getBindUrl(syncAccount) })
+      } else {
+        setMessage(getUserSyncResultMessage('failed'))
+      }
     } finally {
       setLoading(false)
     }
   }
 
-  if (!hasStoredAccount) {
-    return (
-      <PageShell title='个人' activeTab='profile' contentClassName='login-content'>
-        <View className='login-hero'>
-          <View className='hero-icon'>
-            <View className='hero-icon-book' />
-          </View>
-          <View className='title'>选择学校</View>
-          <View className='subtitle'>选择你的学校后，将进入对应的教务认证流程。</View>
-        </View>
-
-        {errorText && <View className='status status-error'>{errorText}</View>}
-
-        <View className='panel'>
-          <View className='field school-field'>
-            <View className='label-row'>
-              <Text className='label'>学校</Text>
-              <Text className='field-hint'>{searching ? '正在搜索' : '可选择学校'}</Text>
-            </View>
-            <Input
-              className='input'
-              value={keyword}
-              placeholder='搜索或选择学校'
-              onInput={(event) => setKeyword(event.detail.value)}
-            />
-            <View className='school-list'>
-              {schools.map((school) => (
-                <View
-                  className='school-option'
-                  key={school.id}
-                  onClick={() => selectSchoolForLogin(school)}
-                >
-                  <View className='school-option-main'>
-                    <Text className='school-name'>{school.name}</Text>
-                  </View>
-                  <View className='row-arrow' />
-                </View>
-              ))}
-              {!searching && schools.length === 0 && (
-                <View className='empty-state'>
-                  <Text className='empty-title'>未找到匹配学校</Text>
-                  <Text className='empty-desc'>可以提交学校接入申请</Text>
-                </View>
-              )}
-            </View>
-          </View>
-          <View className='card-gap'>
-            <Button className='button button-secondary' onClick={openSchoolSubmission}>
-              申请添加学校
-            </Button>
-            <Text className='item-meta'>留下联系方式后，管理员会主动联系你。</Text>
-          </View>
-        </View>
-      </PageShell>
-    )
+  if (shouldShowSchoolLogin) {
+    return <BindAccountPanel subPage={false} />
   }
 
   return (
@@ -508,7 +514,7 @@ export default function ProfilePage() {
             <Text className='profile-meta'>{student.major}</Text>
             {student.className && <Text className='profile-meta'>{student.className}</Text>}
           </View>
-          <View className='profile-line'>{student.level}</View>
+          <View className='profile-line'>{[student.grade, student.level].filter(Boolean).join(' ')}</View>
         </View>
         <View className='profile-arrow' />
       </View>
@@ -529,9 +535,7 @@ export default function ProfilePage() {
           <View className='action-icon action-refresh' />
           <View className='action-text'>
             <Text className='action-title'>同步最新教务系统数据</Text>
-            <Text className='action-desc'>
-              {canAutoSyncCourse ? '刷新课表、成绩等信息' : '需要重新认证后同步'}
-            </Text>
+            <Text className='action-desc'>刷新课表、成绩等信息</Text>
           </View>
           {loading && <Text className='action-loading'>同步中</Text>}
           <View className='row-arrow' />

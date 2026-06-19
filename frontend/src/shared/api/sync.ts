@@ -7,12 +7,11 @@ interface SyncJobOptions {
 
 export function createManualSync(
   accountId: string,
-  target: DataTarget,
-  data?: { username?: string; password?: string; semesterId?: string },
+  data: { targets: DataTarget[]; username?: string; password?: string; semesterId?: string },
 ) {
   return requestApi<SyncJobResponse, typeof data>({
     method: 'POST',
-    path: `/account/${encodeURIComponent(accountId)}/sync/${target}`,
+    path: `/account/${encodeURIComponent(accountId)}/sync`,
     data,
   })
 }

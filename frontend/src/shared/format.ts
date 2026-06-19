@@ -1,19 +1,79 @@
 import { CourseItem, SchoolListItem, SchoolStatus } from './api/types'
 
-export const SECTION_TIMES: Record<number, { start: string; end: string }> = {
-  1: { start: '08:20', end: '09:05' },
-  2: { start: '09:15', end: '10:00' },
-  3: { start: '10:20', end: '11:05' },
-  4: { start: '11:15', end: '12:00' },
-  5: { start: '12:10', end: '12:55' },
-  6: { start: '13:05', end: '13:50' },
-  7: { start: '14:10', end: '14:55' },
-  8: { start: '15:05', end: '15:50' },
-  9: { start: '16:10', end: '16:55' },
-  10: { start: '17:05', end: '17:50' },
-  11: { start: '18:30', end: '19:15' },
-  12: { start: '19:20', end: '20:10' },
-  13: { start: '20:20', end: '21:05' },
+export type SectionTimeMap = Record<number, { start: string; end: string }>
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
+function getText(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+function getSectionNumber(value: unknown) {
+  const numeric = Number(value)
+
+  return Number.isInteger(numeric) && numeric > 0 ? numeric : 0
+}
+
+function normalizeSectionTimeItem(value: unknown, fallbackSection: number) {
+  const item = asRecord(value)
+  const section = getSectionNumber(
+    item.section ??
+      item.index ??
+      item.no ??
+      item.id ??
+      item.lesson ??
+      item.period ??
+      fallbackSection,
+  )
+  const start = getText(item.start) || getText(item.startTime) || getText(item.begin)
+  const end = getText(item.end) || getText(item.endTime) || getText(item.finish)
+
+  return section && start && end ? { section, start, end } : null
+}
+
+export function getSectionTimeMap(
+  sectionTimes: unknown,
+  providerId?: string,
+): SectionTimeMap {
+  void providerId
+  const result: SectionTimeMap = {}
+
+  if (Array.isArray(sectionTimes)) {
+    sectionTimes.forEach((item, index) => {
+      const normalized = normalizeSectionTimeItem(item, index + 1)
+
+      if (normalized) {
+        result[normalized.section] = {
+          start: normalized.start,
+          end: normalized.end,
+        }
+      }
+    })
+  } else {
+    const record = asRecord(sectionTimes)
+
+    for (const [key, value] of Object.entries(record)) {
+      const section = getSectionNumber(key)
+      const normalized = normalizeSectionTimeItem(value, section)
+
+      if (normalized) {
+        result[normalized.section] = {
+          start: normalized.start,
+          end: normalized.end,
+        }
+      }
+    }
+  }
+
+  if (Object.keys(result).length > 0) {
+    return result
+  }
+
+  return {}
 }
 
 export function getWeekday() {
@@ -58,10 +118,15 @@ export function formatSections(course: CourseItem) {
   return sections.length > 1 ? `${sections[0]}-${sections[sections.length - 1]}节` : `${sections[0]}节`
 }
 
-export function formatCourseTime(course: CourseItem) {
+export function formatCourseTime(
+  course: CourseItem,
+  sectionTimes?: unknown,
+  providerId?: string,
+) {
   const sections = getCourseSections(course)
-  const first = SECTION_TIMES[sections[0]]
-  const last = SECTION_TIMES[sections[sections.length - 1]]
+  const timeMap = getSectionTimeMap(sectionTimes, providerId)
+  const first = timeMap[sections[0]]
+  const last = timeMap[sections[sections.length - 1]]
 
   return first && last ? `${first.start}-${last.end}` : ''
 }

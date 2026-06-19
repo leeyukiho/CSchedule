@@ -1,239 +1,287 @@
-# WTBU Provider 适配记录
+# WTBU 入参和数据示例
 
-## 基本信息
-
-```text
-schoolId: wtbu
-学校名称: 武汉工商学院
-教务系统: EAMS
-入口地址: https://jxgl.wtbu.edu.cn/eams/home.action
-当前实现: wxapp/cloudfunctions/getSchedule/index.js
-最近本地验证: 2026-06-12
-```
-
-当前 `wxapp` 已经通过微信云函数完成 WTBU 适配。后续迁移到 NestJS 时，应优先把这份实现拆成 `wtbuProvider`，不要重写业务假设。
-
-## 支持能力
+## syncWtbu 入参
 
 ```json
 {
-  "id": "wtbu",
-  "name": "武汉工商学院",
+  "source": "backend_auto_sync",
+  "schoolId": "wtbu",
   "providerId": "wtbu",
-  "loginMode": "direct_password",
-  "capabilities": {
-    "course": true,
-    "score": true,
-    "exam": true,
-    "profile": true
+  "targets": ["course", "profile", "score", "exam"],
+  "username": "2023000000",
+  "password": "password",
+  "semesterId": "12345",
+  "workerSecret": "optional-secret"
+}
+```
+
+字段说明：
+
+| 字段 | 必填 | 示例 | 说明 |
+| --- | --- | --- | --- |
+| `providerId` | 是 | `wtbu` | 当前云函数只接受 `wtbu` |
+| `targets` | 是 | `["course", "profile", "score", "exam"]` | 一次登录后按数组顺序抓取多个数据 |
+| `username` | 是 | `2023000000` | WTBU 教务系统账号，通常是学号 |
+| `password` | 是 | `password` | WTBU 教务系统密码 |
+| `schoolId` | 否 | `wtbu` | 学校 ID |
+| `source` | 否 | `backend_auto_sync` | 来源，前端首次导入可为 `frontend_first_import` |
+| `semesterId` | 否 | `12345` | 只对课表指定学期有用，不传则取当前学期 |
+| `workerSecret` | 否 | `optional-secret` | 后端自动同步时可用于云函数鉴权 |
+
+前端首次导入示例：
+
+```json
+{
+  "source": "frontend_first_import",
+  "schoolId": "wtbu",
+  "providerId": "wtbu",
+  "targets": ["course", "profile", "score", "exam"],
+  "username": "2023000000",
+  "password": "password"
+}
+```
+
+## 成功返回示例
+
+```json
+{
+  "ok": true,
+  "result": {
+    "cacheResults": [
+      {
+        "target": "course",
+        "termId": "12345",
+        "cacheData": {
+          "courses": [
+            {
+              "id": "1",
+              "name": "高等数学",
+              "teacher": "张三",
+              "location": "教学楼 A101",
+              "classroom": "教学楼 A101",
+              "weekday": 1,
+              "sections": [1, 2],
+              "startSection": 1,
+              "endSection": 2,
+              "weeks": [1, 2, 3, 4, 5, 6, 7, 8]
+            }
+          ],
+          "terms": [
+            {
+              "id": "12345",
+              "rawLabel": "2025-2026 学年第二学期",
+              "title": "2025-2026 第2学期",
+              "label": "2025-2026 第2学期",
+              "selected": true
+            }
+          ],
+          "sectionTimes": []
+        },
+        "parsedCount": 1,
+        "sourceHash": "sha256-hex",
+        "syncedAt": "2026-06-18T00:00:00.000Z"
+      },
+      {
+        "target": "profile",
+        "cacheData": {
+          "data": {
+            "name": "张三",
+            "studentId": "2023000000",
+            "role": "学生",
+            "maskedStudentId": "20****00",
+            "major": "计算机科学与技术",
+            "grade": "2023",
+            "level": "本科",
+            "className": "计科2301",
+            "gender": "男",
+            "birthDate": "",
+            "politicalStatus": "",
+            "phone": "",
+            "email": "",
+            "nativePlace": "",
+            "enrollmentDate": "",
+            "studentStatus": "",
+            "dormitory": "",
+            "counselor": "",
+            "updatedAt": "2026-06-18T00:00:00.000Z"
+          },
+          "meta": {
+            "source": "cloud_worker"
+          }
+        },
+        "parsedCount": 20,
+        "sourceHash": "sha256-hex",
+        "syncedAt": "2026-06-18T00:00:00.000Z"
+      },
+      {
+        "target": "score",
+        "cacheData": {
+          "data": {
+            "summary": [
+              { "label": "总学分", "value": "42" },
+              { "label": "平均分", "value": "83.25" },
+              { "label": "绩点", "value": "3.32" }
+            ],
+            "semesters": [
+              {
+                "id": "semester-1",
+                "title": "2025-2026 第1学期",
+                "credit": "20",
+                "average": "83.5",
+                "gpa": "3.3",
+                "expanded": true,
+                "grades": [
+                  {
+                    "name": "大学英语",
+                    "credit": "2",
+                    "score": "88",
+                    "scoreLow": false,
+                    "gpa": "3.8"
+                  }
+                ]
+              }
+            ]
+          },
+          "meta": {
+            "source": "cloud_worker"
+          }
+        },
+        "parsedCount": 1,
+        "sourceHash": "sha256-hex",
+        "syncedAt": "2026-06-18T00:00:00.000Z"
+      },
+      {
+        "target": "exam",
+        "cacheData": {
+          "data": {
+            "term": {
+              "id": "1428",
+              "rawLabel": "2025-2026 学年第二学期",
+              "title": "2025-2026 第2学期",
+              "label": "2025-2026 第2学期",
+              "selected": true
+            },
+            "upcoming": [
+              {
+                "courseCode": "01311004.31",
+                "courseName": "大学英语（4）",
+                "examType": "期末考试",
+                "date": "2026-07-03",
+                "time": "13:10~14:50",
+                "startAt": "2026-07-03T13:10:00+08:00",
+                "endAt": "2026-07-03T14:50:00+08:00",
+                "location": "弘德楼（原综合楼）608",
+                "seatNo": "8",
+                "status": "upcoming",
+                "rawStatus": "正常",
+                "remark": ""
+              },
+              {
+                "courseCode": "09334003.02",
+                "courseName": "解剖与透视",
+                "examType": "期末考试",
+                "date": "",
+                "time": "",
+                "startAt": "",
+                "endAt": "",
+                "location": "",
+                "seatNo": "",
+                "status": "unscheduled",
+                "rawStatus": "正常",
+                "remark": "时间未安排"
+              }
+            ],
+            "finished": []
+          },
+          "meta": {
+            "source": "cloud_worker",
+            "scope": "current_term_only",
+            "sourcePath": "/eams/stdExamTable!examTable.action?examBatch.id=1428",
+            "observedAt": "2026-06-18T00:00:00.000+08:00"
+          }
+        },
+        "parsedCount": 2,
+        "sourceHash": "sha256-hex",
+        "syncedAt": "2026-06-18T00:00:00.000Z"
+      }
+    ]
   }
 }
 ```
 
-说明：
+## 学期标题解析
 
-- 当前登录不需要图形验证码。
-- 当前登录属于 `direct_password`，但提交逻辑是 WTBU EAMS 专用实现：需要提取动态 salt，并提交 `SHA1(salt + password)`。
-- 当前课表通过 EAMS `TaskActivity` 脚本解析。
-- 当前成绩、考试、个人信息通过页面关键词发现和表格解析获取。
-- 当前实现会加密保存教务系统密码，用于后续自动刷新。
+WTBU 教务系统里的学期原始文案会保留在 `rawLabel`，例如：
 
-## 当前 wxapp 数据流
-
-```text
-pages/login
-  -> utils/api.callGetSchedule({ action: "bind" })
-  -> cloudfunctions/getSchedule.bindAccount()
-  -> loginToEduSystem()
-  -> fetchScheduleByCredentials()
-  -> parseSchedule()
-  -> saveBinding()
-  -> pages/schedule 展示缓存
-```
-
-已绑定用户打开课表：
-
-```text
-pages/home 或 pages/schedule
-  -> utils/dataStore.loadSchedule()
-  -> cloudfunctions/getSchedule 默认 refresh
-  -> readBinding(openid)
-  -> decryptPassword()
-  -> fetchScheduleByCredentials()
-  -> updateScheduleCache()
-  -> 前端本地 storage 缓存
-```
-
-当前云数据库集合：
-
-```text
-eduAccountBindings
-  docId: openid
-  studentId
-  passwordCipher
-  profile
-  lastSchedule
-  lastExams
-  lastGrades
-  lastFetchedAt
-  createdAt
-  updatedAt
-```
-
-迁移到后端后建议拆分为：
-
-```text
-User
-UserSchoolBinding
-CourseCache
-FeatureCache
-SyncRecord
-```
-
-## WTBU 登录流程
-
-当前实现位置：
-
-```text
-wxapp/cloudfunctions/getSchedule/index.js
-  createEduClient()
-  loginToEduSystem()
-```
-
-关键点：
-
-- 固定 `baseUrl` 为 `https://jxgl.wtbu.edu.cn`
-- 先请求 `/eams/home.action` 获取登录页
-- 从登录页脚本中提取动态 salt
-- 使用 `SHA1(salt + password)` 提交
-- POST `/eams/login.action`
-- 登录后再次请求 `/eams/home.action` 判断是否仍在登录页
-
-迁移时建议拆成：
-
-```text
-wtbu.login.ts
-  createLoginContext()
-  submitLogin()
-  validateSession()
-```
-
-注意：
-
-- 当前学校 HTTPS 证书链在 Node.js 下不完整，现有实现对 WTBU 专用 HTTP client 设置了 `rejectUnauthorized: false`。
-- 这个 TLS 兼容配置必须限定在 WTBU 域名，不能作为全局 HTTP client 默认行为。
-- 日志不能输出账号、密码、Cookie、salt、token。
-
-## WTBU 课表流程
-
-当前实现位置：
-
-```text
-wxapp/cloudfunctions/getSchedule/index.js
-  fetchSchedule()
-  parseSchedule()
-  parseWeekRange()
-  getWeekNumbers()
-  splitContinuousSections()
-```
-
-请求路径：
-
-```text
-GET  /eams/courseTableForStd.action
-POST /eams/courseTableForStd!courseTable.action
-```
-
-关键参数：
-
-- `ids`
-- `semester.id`
-- `setting.kind=std`
-- `startWeek`
-
-当前解析方式：
-
-- 从课表首页提取 `ids` 和当前学期。
-- 请求课程表页面。
-- 从返回 HTML/JS 中解析 `TaskActivity`。
-- 解析课程名、教师、教室、星期、节次和周次。
-- 输出前端可直接渲染的课程数组。
-
-迁移后建议统一模型：
-
-```ts
-interface Course {
-  id?: string
-  name: string
-  teacher?: string
-  classroom?: string
-  weekday: number
-  startSection: number
-  endSection: number
-  weeks: number[]
-  rawWeeks?: string
-  campus?: string
-  remark?: string
-  source?: unknown
+```json
+{
+  "rawLabel": "2025-2026 学年第二学期",
+  "title": "2025-2026 第2学期",
+  "label": "2025-2026 第2学期"
 }
 ```
 
-## 成绩、考试、个人信息
+`rawLabel` 是教务系统返回的原始数据，用于调试和追溯；前端展示、缓存归并和学期匹配应使用规范化后的 `title` / `label`。解析规则应直接从原始文案提取学年和中文序数学期：
 
-当前实现已经有成绩、考试、个人信息解析，但多学校扩展时应把它们放在课表之后处理。
+| 原始文案 | 展示标题 |
+| --- | --- |
+| `2025-2026 学年第一学期` | `2025-2026 第1学期` |
+| `2025-2026 学年第二学期` | `2025-2026 第2学期` |
 
-当前相关函数：
+## WTBU 考试解析
 
-```text
-fetchGrades()
-parseGrades()
-mergeGradePages()
-parseExams()
-fetchProfile()
-mergeProfile()
-```
-
-迁移建议：
-
-- `course` 作为第一阶段强能力。
-- `score` 和 `exam` 可以保留接口设计，但实现顺序排在课表稳定之后。
-- 前端能力展示应读取后端 `capabilities`，不要写死所有学校都有成绩和考试。
-
-## 已知风险
-
-- WTBU EAMS 登录页脚本变化后，动态 salt 提取可能失败。
-- 课表页面 `TaskActivity` 脚本结构变化后，解析可能失败。
-- 学校证书链问题需要专用 TLS 兼容处理。
-- 当前请求式刷新会在用户打开或下拉刷新时直连学校系统，用户多时容易不稳定。
-- 当前长期保存教务密码，虽然已加密；迁移后第一版默认不长期保存学校密码，优先保存 `CourseCache`，失效时提示重新登录。
-- 当前 `eduAccountBindings` 以 `openid` 为文档 ID，只支持一个微信用户绑定一个学校账号；多学校时必须引入 `bindingId`。
-
-## 迁移检查清单
+考试只展示当前/最新学期，不抓取历史学期考试安排。当前学期由教务系统当前考试批次或当前学期接口确定，考试页面形如：
 
 ```text
-[ ] 把 WTBU 常量从云函数中提取到 provider 配置
-[ ] 把 HTTP client、CookieJar、TLS 兼容配置封装为 WTBU 专用 client
-[ ] 把 loginToEduSystem 拆成登录上下文、提交登录、Session 校验
-[ ] 把 fetchSchedule 和 parseSchedule 拆成抓取层和 Parser 层
-[ ] 为 parseSchedule 增加样例 HTML 或 JS 片段测试
-[ ] 把 openid 单绑定模型迁移为 UserSchoolBinding
-[ ] 课表读取优先返回 CourseCache
-[ ] 手动同步改成创建 SyncRecord，并完成 Provider 抓取、解析和 CourseCache 写入
-[ ] Provider 错误转换成统一错误码
-[ ] 前端学校列表从 GET /schools 获取
+/eams/stdExamTable!examTable.action?examBatch.id=1428
 ```
 
-## 增加下一所学校时的对照项
+2026-06-18 访问该页面时，登录后返回的是 EAMS 表格，列结构如下：
 
-新增学校前先复制本文件模板，并至少确认：
+| 列名 | 输出字段 | 说明 |
+| --- | --- | --- |
+| 课程序号 | `courseCode` | 课程教学班号 |
+| 课程名称 | `courseName` | 考试课程名 |
+| 考试类别 | `examType` | 例如 `期末考试` |
+| 考试日期 | `date` | `YYYY-MM-DD`；`时间未安排` 记为空 |
+| 考试安排 | `time` | 例如 `13:10~14:50`；`时间未安排` 记为空 |
+| 考试地点 | `location` | `地点未安排` 记为空 |
+| 考场座位号 | `seatNo` | `地点未安排` 记为空 |
+| 考试情况 | `rawStatus` | 例如 `正常` |
+| 其它说明 | `remark` | 额外说明；无内容为空字符串 |
 
-- 登录地址
-- 教务系统类型
-- 是否需要验证码
-- 是否支持后端账号密码登录
-- 是否必须 WebView
-- 课表入口和参数
-- 原始课表格式是 HTML、JSON、JS 还是 Excel
-- 学期参数如何获取
-- Session 是否容易过期
-- 是否存在证书、IP、UA、设备指纹限制
+解析结果按当前时间分为两个列表：
+
+| 分组 | 条件 |
+| --- | --- |
+| `upcoming` | 当前学期内未结束的考试。包含已安排未来时间的考试，也包含 `时间未安排` 的待安排考试。 |
+| `finished` | 当前学期内已经结束的考试，即 `endAt` 早于当前时间。 |
+
+状态字段建议：
+
+| `status` | 含义 |
+| --- | --- |
+| `upcoming` | 已安排时间，尚未结束 |
+| `unscheduled` | 当前学期考试存在，但时间或地点未安排 |
+| `finished` | 已结束 |
+
+`date` 和 `time` 都可解析时，应生成东八区时间的 `startAt` / `endAt`。例如 `2026-07-03` + `13:10~14:50` 解析为：
+
+```json
+{
+  "startAt": "2026-07-03T13:10:00+08:00",
+  "endAt": "2026-07-03T14:50:00+08:00"
+}
+```
+
+截至 2026-06-18，`examBatch.id=1428` 中已经安排到 `2026-07-03` 的考试应归入 `upcoming`，没有已结束考试；`时间未安排` 的当前学期记录也保留在 `upcoming`，并标记为 `status: "unscheduled"`。
+
+## 失败返回示例
+
+```json
+{
+  "ok": false,
+  "errorCode": "WTBU_INVALID_CREDENTIALS",
+  "errorMessage": "WTBU_INVALID_CREDENTIALS"
+}
+```

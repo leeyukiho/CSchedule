@@ -8,7 +8,7 @@ import {
 export interface CloudCredentialSyncRequest {
   schoolId: string
   providerId: string
-  target: DataTarget
+  targets: DataTarget[]
   username: string
   password: string
   semesterId?: string

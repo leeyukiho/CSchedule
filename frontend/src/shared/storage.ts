@@ -176,6 +176,44 @@ function getDataCacheKey(accountId: string, target: DataCacheTarget, termId = ''
   return `${DATA_CACHE_PREFIX}${accountId}.${target}.${termId || 'latest'}`
 }
 
+function getCacheTermId(data: unknown) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return ''
+  }
+
+  const termId = (data as { termId?: unknown }).termId
+
+  return typeof termId === 'string' ? termId : ''
+}
+
+function hasMatchingCacheVersion(
+  left: Pick<StoredDataCache, 'sourceHash' | 'syncedAt'>,
+  right: Pick<StoredDataCache, 'sourceHash' | 'syncedAt'>,
+) {
+  if (left.sourceHash && right.sourceHash) {
+    return left.sourceHash === right.sourceHash
+  }
+
+  if (left.syncedAt && right.syncedAt) {
+    return left.syncedAt === right.syncedAt
+  }
+
+  return false
+}
+
+function isSameTermCache<TData>(
+  cache: StoredDataCache<TData> | null,
+  termId: string,
+  comparison: StoredDataCache<TData> | null,
+) {
+  return (
+    Boolean(cache && comparison) &&
+    getCacheTermId(cache?.data) === termId &&
+    getCacheTermId(comparison?.data) === termId &&
+    hasMatchingCacheVersion(cache as StoredDataCache<TData>, comparison as StoredDataCache<TData>)
+  )
+}
+
 function normalizeDataCache<TData>(value: unknown): StoredDataCache<TData> | null {
   const cache = value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Partial<StoredDataCache<TData>>)
@@ -202,9 +240,28 @@ export function getStoredDataCache<TData>(
     return null
   }
 
-  return normalizeDataCache<TData>(
+  const cached = normalizeDataCache<TData>(
     Taro.getStorageSync(getDataCacheKey(accountId, target, termId)),
   )
+
+  if (!termId) {
+    return cached
+  }
+
+  const latest = normalizeDataCache<TData>(
+    Taro.getStorageSync(getDataCacheKey(accountId, target)),
+  )
+
+  if (isSameTermCache(cached, termId, latest)) {
+    Taro.removeStorageSync(getDataCacheKey(accountId, target, termId))
+    return latest
+  }
+
+  if (cached) {
+    return cached
+  }
+
+  return latest && getCacheTermId(latest.data) === termId ? latest : null
 }
 
 export function setStoredDataCache<TData>(
@@ -217,12 +274,43 @@ export function setStoredDataCache<TData>(
     return
   }
 
-  Taro.setStorageSync(getDataCacheKey(accountId, target, options.termId), {
+  const termId = options.termId || ''
+  const cache: StoredDataCache<TData> = {
     data,
     sourceHash: options.sourceHash,
     syncedAt: options.syncedAt,
     cachedAt: new Date().toISOString(),
-  })
+  }
+
+  if (termId) {
+    const latest = normalizeDataCache<TData>(
+      Taro.getStorageSync(getDataCacheKey(accountId, target)),
+    )
+
+    if (isSameTermCache(latest, termId, cache)) {
+      Taro.removeStorageSync(getDataCacheKey(accountId, target, termId))
+      return
+    }
+
+    Taro.setStorageSync(getDataCacheKey(accountId, target, termId), cache)
+    return
+  }
+
+  Taro.setStorageSync(getDataCacheKey(accountId, target), cache)
+
+  const dataTermId = getCacheTermId(data)
+
+  if (!dataTermId) {
+    return
+  }
+
+  const termCache = normalizeDataCache<TData>(
+    Taro.getStorageSync(getDataCacheKey(accountId, target, dataTermId)),
+  )
+
+  if (isSameTermCache(termCache, dataTermId, cache)) {
+    Taro.removeStorageSync(getDataCacheKey(accountId, target, dataTermId))
+  }
 }
 
 export function clearStoredDataCaches(accountId?: string) {

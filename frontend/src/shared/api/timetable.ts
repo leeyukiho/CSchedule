@@ -56,12 +56,16 @@ export async function getTimetable(
       })
 
       if (response.notModified && cached) {
-        setStoredDataCache(accountId, 'timetable', cached.data, {
+        const timetable = {
+          ...cached.data,
+          termStarts: response.termStarts || cached.data.termStarts,
+        }
+        setStoredDataCache(accountId, 'timetable', timetable, {
           termId,
           sourceHash: cached.sourceHash,
           syncedAt: cached.syncedAt,
         })
-        return cached.data
+        return timetable
       }
 
       const timetable = normalizeTimetable(response)

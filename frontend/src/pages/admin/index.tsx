@@ -21,6 +21,7 @@ interface SchoolItem {
   enabled: boolean
   status: string
   loginMode: string | null
+  termStarts?: Record<string, string>
 }
 
 interface SubmissionItem {
@@ -30,6 +31,29 @@ interface SubmissionItem {
   city: string | null
   status: string
   createdAt: string
+}
+
+interface FeedbackItem {
+  id: string
+  accountId: string | null
+  schoolId: string | null
+  type: string
+  content: string
+  contact: string | null
+  status: string
+  createdAt: string
+  account?: {
+    id: string
+    schoolId: string
+    providerId: string
+    displayName: string | null
+    status: string
+    school?: {
+      id: string
+      name: string
+      shortName: string | null
+    }
+  } | null
 }
 
 const ADMIN_KEY_STORAGE = 'cschedule.adminKey'
@@ -47,11 +71,13 @@ export default function AdminPage() {
   const [adminKey, setAdminKey] = useState(getStoredAdminKey)
   const [keyInput, setKeyInput] = useState('')
   const [authed, setAuthed] = useState(false)
-  const [tab, setTab] = useState<'stats' | 'schools' | 'submissions'>('stats')
+  const [tab, setTab] = useState<'stats' | 'schools' | 'submissions' | 'feedback'>('stats')
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [schools, setSchools] = useState<SchoolItem[]>([])
   const [submissions, setSubmissions] = useState<SubmissionItem[]>([])
+  const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([])
   const [schoolKeyword, setSchoolKeyword] = useState('')
+  const [schoolTermInputs, setSchoolTermInputs] = useState<Record<string, { termId: string; startDate: string }>>({})
   const [loading, setLoading] = useState(false)
   const [errorText, setErrorText] = useState('')
   const [message, setMessage] = useState('')
@@ -98,6 +124,7 @@ export default function AdminPage() {
     setStats(null)
     setSchools([])
     setSubmissions([])
+    setFeedbackItems([])
   }
 
   async function loadStats() {
@@ -128,6 +155,22 @@ export default function AdminPage() {
         header: { 'x-admin-api-key': adminKey },
       })
       setSchools(data.items)
+      setSchoolTermInputs((current) => {
+        const next = { ...current }
+
+        for (const school of data.items) {
+          const firstTermStart = Object.entries(school.termStarts || {})[0]
+
+          if (!next[school.id]) {
+            next[school.id] = {
+              termId: firstTermStart?.[0] || '',
+              startDate: firstTermStart?.[1] || '',
+            }
+          }
+        }
+
+        return next
+      })
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '加载失败')
     } finally {
@@ -144,6 +187,22 @@ export default function AdminPage() {
         header: { 'x-admin-api-key': adminKey },
       })
       setSubmissions(data.items)
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : '加载失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function loadFeedback() {
+    setLoading(true)
+    setErrorText('')
+    try {
+      const data = await requestApi<{ items: FeedbackItem[] }>({
+        path: '/admin/feedback?limit=100',
+        header: { 'x-admin-api-key': adminKey },
+      })
+      setFeedbackItems(data.items)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '加载失败')
     } finally {
@@ -181,13 +240,55 @@ export default function AdminPage() {
     }
   }
 
-  function switchTab(nextTab: 'stats' | 'schools' | 'submissions') {
+  function updateSchoolTermInput(schoolId: string, field: 'termId' | 'startDate', value: string) {
+    setSchoolTermInputs((current) => ({
+      ...current,
+      [schoolId]: {
+        termId: '',
+        startDate: '',
+        ...(current[schoolId] || {}),
+        [field]: value,
+      },
+    }))
+  }
+
+  async function saveSchoolTermStart(school: SchoolItem) {
+    const input = schoolTermInputs[school.id] || { termId: '', startDate: '' }
+    const termId = input.termId.trim()
+    const startDate = input.startDate.trim()
+
+    if (!termId || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      setErrorText('请填写学期 ID 和 YYYY-MM-DD 格式的首周日期')
+      return
+    }
+
+    try {
+      await requestApi({
+        method: 'PATCH',
+        path: `/admin/schools/${encodeURIComponent(school.id)}`,
+        header: { 'x-admin-api-key': adminKey },
+        data: {
+          termStarts: {
+            ...(school.termStarts || {}),
+            [termId]: startDate,
+          },
+        },
+      })
+      setMessage('已保存默认首周')
+      void loadSchools()
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : '保存失败')
+    }
+  }
+
+  function switchTab(nextTab: 'stats' | 'schools' | 'submissions' | 'feedback') {
     setTab(nextTab)
     setErrorText('')
     setMessage('')
     if (nextTab === 'stats') void loadStats()
     if (nextTab === 'schools') void loadSchools()
     if (nextTab === 'submissions') void loadSubmissions()
+    if (nextTab === 'feedback') void loadFeedback()
   }
 
   if (!authed) {
@@ -254,6 +355,9 @@ export default function AdminPage() {
         <View className={'segment-item ' + (tab === 'submissions' ? 'segment-active' : '')} onClick={() => switchTab('submissions')}>
           <Text>申请</Text>
         </View>
+        <View className={'segment-item ' + (tab === 'feedback' ? 'segment-active' : '')} onClick={() => switchTab('feedback')}>
+          <Text>反馈</Text>
+        </View>
       </View>
 
       {tab === 'stats' && stats && (
@@ -291,6 +395,29 @@ export default function AdminPage() {
                   <Text>{school.enabled ? '停用' : '启用'}</Text>
                 </View>
               </View>
+              <View className='admin-term-config'>
+                <View className='admin-term-title'>默认首周</View>
+                {Object.entries(school.termStarts || {}).map(([termId, startDate]) => (
+                  <Text className='item-meta' key={termId}>{termId}: {startDate}</Text>
+                ))}
+                <View className='admin-term-row'>
+                  <Input
+                    className='input admin-term-input'
+                    value={schoolTermInputs[school.id]?.termId || ''}
+                    placeholder='学期 ID'
+                    onInput={(event) => updateSchoolTermInput(school.id, 'termId', event.detail.value)}
+                  />
+                  <Input
+                    className='input admin-date-input'
+                    value={schoolTermInputs[school.id]?.startDate || ''}
+                    placeholder='YYYY-MM-DD'
+                    onInput={(event) => updateSchoolTermInput(school.id, 'startDate', event.detail.value)}
+                  />
+                  <View className='button-secondary admin-save-btn' onClick={() => saveSchoolTermStart(school)}>
+                    <Text>保存</Text>
+                  </View>
+                </View>
+              </View>
             </View>
           ))}
           {!loading && schools.length === 0 && <View className='empty'>无匹配学校</View>}
@@ -315,6 +442,23 @@ export default function AdminPage() {
             </View>
           ))}
           {!loading && submissions.length === 0 && <View className='empty'>无待处理申请</View>}
+        </View>
+      )}
+      {tab === 'feedback' && (
+        <View>
+          {feedbackItems.map((item) => (
+            <View className='card' key={item.id}>
+              <View className='row'>
+                <Text className='item-title'>{item.type || '反馈'} · {item.status}</Text>
+                <Text className='item-meta'>{new Date(item.createdAt).toLocaleDateString('zh-CN')}</Text>
+              </View>
+              <Text className='item-meta'>账号：{item.account?.displayName || item.accountId || '未关联'}</Text>
+              <Text className='item-meta'>学校：{item.account?.school?.name || item.schoolId || '--'}</Text>
+              {item.contact && <Text className='item-meta'>联系方式：{item.contact}</Text>}
+              <Text className='admin-feedback-content'>{item.content}</Text>
+            </View>
+          ))}
+          {!loading && feedbackItems.length === 0 && <View className='empty'>暂无反馈</View>}
         </View>
       )}
       {loading && <View className='empty'>加载中...</View>}
