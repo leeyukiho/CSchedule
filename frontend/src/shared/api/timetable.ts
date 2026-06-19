@@ -26,10 +26,12 @@ export async function getTimetable(
   termId?: string,
   options: CacheOptions = {},
 ) {
-  const shouldUseLocalCache = !termId
-  const cached = shouldUseLocalCache
-    ? getStoredDataCache<TimetableCacheResponse>(accountId, 'timetable')
-    : null
+  const isLatestRequest = !termId
+  const cached = getStoredDataCache<TimetableCacheResponse>(
+    accountId,
+    'timetable',
+    termId,
+  )
 
   if (!options.forceRefresh && cached) {
     return cached.data
@@ -60,19 +62,26 @@ export async function getTimetable(
           termStarts: response.termStarts || cached.data.termStarts,
         }
         setStoredDataCache(accountId, 'timetable', timetable, {
+          termId,
           sourceHash: cached.sourceHash,
           syncedAt: cached.syncedAt,
         })
-        clearStoredDataCacheTerms(accountId, 'timetable')
+
+        if (isLatestRequest && options.forceRefresh) {
+          clearStoredDataCacheTerms(accountId, 'timetable')
+        }
+
         return timetable
       }
 
       const timetable = normalizeTimetable(response)
-      if (shouldUseLocalCache) {
-        setStoredDataCache(accountId, 'timetable', timetable, {
-          sourceHash: timetable.sourceHash,
-          syncedAt: timetable.syncedAt,
-        })
+      setStoredDataCache(accountId, 'timetable', timetable, {
+        termId,
+        sourceHash: timetable.sourceHash,
+        syncedAt: timetable.syncedAt,
+      })
+
+      if (isLatestRequest && options.forceRefresh) {
         clearStoredDataCacheTerms(accountId, 'timetable')
       }
 

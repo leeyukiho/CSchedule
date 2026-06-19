@@ -10,7 +10,6 @@ import {
   runCredentialSyncWithCloud,
 } from '../../shared/api/cloud-sync'
 import { createLoginContext, listSchools } from '../../shared/api/schools'
-import { getTimetable } from '../../shared/api/timetable'
 import {
   FeatureCacheResponse,
   LoginContextResponse,
@@ -604,12 +603,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
         )
         const savedCourseCache = getSavedCacheData(savedCaches, 'course')
         const savedProfileCache = getSavedCacheData(savedCaches, 'profile')
-        const backendCourseCache = await getTimetable(
-          result.accountId,
-          undefined,
-          { forceRefresh: true },
-        ).catch(() => null)
-        const courseCache = backendCourseCache || savedCourseCache
+        const courseCache = savedCourseCache
 
         if (!courseCache) {
           throw new Error('课表导入失败，请稍后再试。')
