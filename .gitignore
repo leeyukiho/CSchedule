@@ -26,6 +26,7 @@ wxapp/
 
 # Local assistant/index artifacts
 **/.claude/
+**/.codex-logs/
 **/.gitnexus/
 **/.firecrawl/
 **/firecrawl/
