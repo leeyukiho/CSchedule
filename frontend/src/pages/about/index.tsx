@@ -14,24 +14,46 @@ export default function AboutPage() {
           <View className='about-version'>Version 1.0.0</View>
         </View>
       </View>
-      <View className='soft-card about-card'>
-        <View className='about-section-title'>服务说明</View>
+
+      <View className='soft-card about-card about-security-card'>
+        <View className='about-section-title'>安全与隐私</View>
         <View className='about-text'>
-          项目通过学校 Provider 获取原始教务数据，解析为统一模型后在小程序内展示。小程序页面不直接依赖学校系统页面持续打开。
+          我们只在你授权后同步课表、成绩、考试等教务数据，并尽量减少不必要的数据传输。
+        </View>
+
+        <View className='about-security-list'>
+          <View className='about-security-item'>
+            <View className='about-security-icon about-security-icon-lock' />
+            <View>
+              <View className='about-security-title'>加密保护</View>
+              <View className='about-security-desc'>保存的敏感凭据会加密处理，不明文展示。</View>
+            </View>
+          </View>
+          <View className='about-security-item'>
+            <View className='about-security-icon about-security-icon-shield' />
+            <View>
+              <View className='about-security-title'>按需使用</View>
+              <View className='about-security-desc'>账号信息仅用于登录教务系统和同步学习数据。</View>
+            </View>
+          </View>
+          <View className='about-security-item'>
+            <View className='about-security-icon about-security-icon-eye' />
+            <View>
+              <View className='about-security-title'>隐私优先</View>
+              <View className='about-security-desc'>不主动公开、出售或用于无关用途。</View>
+            </View>
+          </View>
         </View>
       </View>
-      <View className='soft-card about-card'>
-        <View className='about-section-title'>数据安全</View>
-        <View className='about-text'>账号密码仅用于登录学校教务系统获取数据，绑定信息由后端统一管理。</View>
-      </View>
+
       <View className='soft-card about-list'>
         <View className='about-row'>
-          <Text>适配学校</Text>
-          <Text>持续扩展</Text>
+          <Text>数据来源</Text>
+          <Text>学校教务系统</Text>
         </View>
         <View className='about-row'>
-          <Text>数据来源</Text>
-          <Text>教务管理系统</Text>
+          <Text>同步方式</Text>
+          <Text>用户授权后执行</Text>
         </View>
         <View className='about-row'>
           <Text>当前状态</Text>

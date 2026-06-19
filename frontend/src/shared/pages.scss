@@ -2277,6 +2277,120 @@
   line-height: 1.65;
 }
 
+.about-security-card {
+  border-color: #cfe0ff;
+  background: #f8fbff;
+}
+
+.about-security-list {
+  margin-top: 26rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.about-security-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 18rpx;
+}
+
+.about-security-icon {
+  flex: 0 0 48rpx;
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 14rpx;
+  background: #e7f0ff;
+  color: #2f7bff;
+  position: relative;
+}
+
+.about-security-icon-lock::before {
+  content: "";
+  position: absolute;
+  left: 13rpx;
+  top: 20rpx;
+  width: 22rpx;
+  height: 18rpx;
+  border: 4rpx solid currentColor;
+  border-radius: 5rpx;
+  box-sizing: border-box;
+}
+
+.about-security-icon-lock::after {
+  content: "";
+  position: absolute;
+  left: 16rpx;
+  top: 9rpx;
+  width: 16rpx;
+  height: 17rpx;
+  border: 4rpx solid currentColor;
+  border-bottom: 0;
+  border-radius: 14rpx 14rpx 0 0;
+  box-sizing: border-box;
+}
+
+.about-security-icon-shield::before {
+  content: "";
+  position: absolute;
+  left: 13rpx;
+  top: 9rpx;
+  width: 22rpx;
+  height: 28rpx;
+  border: 4rpx solid currentColor;
+  border-radius: 12rpx 12rpx 16rpx 16rpx;
+  box-sizing: border-box;
+}
+
+.about-security-icon-shield::after {
+  content: "";
+  position: absolute;
+  left: 19rpx;
+  top: 21rpx;
+  width: 11rpx;
+  height: 6rpx;
+  border-left: 4rpx solid currentColor;
+  border-bottom: 4rpx solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.about-security-icon-eye::before {
+  content: "";
+  position: absolute;
+  left: 10rpx;
+  top: 16rpx;
+  width: 28rpx;
+  height: 16rpx;
+  border: 4rpx solid currentColor;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.about-security-icon-eye::after {
+  content: "";
+  position: absolute;
+  left: 21rpx;
+  top: 21rpx;
+  width: 6rpx;
+  height: 6rpx;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.about-security-title {
+  margin-bottom: 8rpx;
+  color: #101828;
+  font-size: 26rpx;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.about-security-desc {
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
 .about-list,
 .history-card {
   overflow: hidden;
