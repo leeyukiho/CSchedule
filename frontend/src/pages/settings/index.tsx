@@ -3,7 +3,6 @@ import Taro from '@tarojs/taro'
 import { useDidShow } from '@tarojs/taro'
 import { Button, Picker, View } from '@tarojs/components'
 
-import { deactivateAccount } from '../../shared/api/accounts'
 import { getTimetable } from '../../shared/api/timetable'
 import { PageShell } from '../../shared/layout'
 import {
@@ -61,26 +60,15 @@ export default function SettingsPage() {
   )
   const selectedTerm = terms[selectedTermIndex] || null
 
-  async function clearCache() {
+  function clearCache() {
     const accountId = getStoredAccountId()
 
-    try {
-      if (accountId) {
-        await deactivateAccount(accountId)
-      }
-
-      clearStoredAccountId()
-      clearStoredAccountSummary(accountId || undefined)
-      clearStoredDataCaches(accountId || undefined)
-      clearStoredTermStarts()
-      Taro.showToast({ title: '已退出登录', icon: 'success' })
-      Taro.switchTab({ url: '/pages/profile/index' })
-    } catch (error) {
-      Taro.showToast({
-        title: error instanceof Error ? error.message : '退出失败',
-        icon: 'none',
-      })
-    }
+    clearStoredAccountId()
+    clearStoredAccountSummary(accountId || undefined)
+    clearStoredDataCaches(accountId || undefined)
+    clearStoredTermStarts()
+    Taro.showToast({ title: '已退出登录', icon: 'success' })
+    Taro.switchTab({ url: '/pages/profile/index' })
   }
 
   return (

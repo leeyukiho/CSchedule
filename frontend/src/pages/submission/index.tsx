@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import Taro from '@tarojs/taro'
-import { Button, Input, Text, Textarea, View } from '@tarojs/components'
+import { Button, Input, Picker, Text, Textarea, View } from '@tarojs/components'
 import { submitSchoolAccess } from '../../shared/api/submissions'
 import { PageShell } from '../../shared/layout'
 
 const STATUS_CLEAR_DELAY_MS = 3000
+const EXTRA_VERIFICATION_OPTIONS = ['不确定', '不需要', '需要验证码或短信', '需要扫码或校内验证']
+const ADAPTATION_HELP_OPTIONS = ['愿意沟通', '需要先了解', '暂不方便']
 
 function decodeRouteParam(value?: string) {
   if (!value) return ''
@@ -19,11 +21,10 @@ function decodeRouteParam(value?: string) {
 export default function SubmissionPage() {
   const routeParams = Taro.getCurrentInstance().router?.params || {}
   const [schoolName, setSchoolName] = useState(() => decodeRouteParam(routeParams.schoolName))
-  const [province, setProvince] = useState('')
-  const [city, setCity] = useState('')
-  const [loginUrl, setLoginUrl] = useState('')
   const [eduSystemWebsite, setEduSystemWebsite] = useState('')
   const [contact, setContact] = useState('')
+  const [extraVerificationIndex, setExtraVerificationIndex] = useState(0)
+  const [adaptationHelpIndex, setAdaptationHelpIndex] = useState(0)
   const [note, setNote] = useState('')
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
@@ -53,23 +54,22 @@ export default function SubmissionPage() {
     try {
       const result = await submitSchoolAccess({
         schoolName: schoolName.trim(),
-        province: province.trim() || undefined,
-        city: city.trim() || undefined,
-        loginUrl: loginUrl.trim() || undefined,
         eduSystemWebsite: eduSystemWebsite.trim() || undefined,
         note: [
+          eduSystemWebsite.trim() ? `教务系统网址：${eduSystemWebsite.trim()}` : '',
           contact.trim() ? `联系方式：${contact.trim()}` : '',
+          `除账号密码外的验证：${EXTRA_VERIFICATION_OPTIONS[extraVerificationIndex]}`,
+          `是否愿意协助首个接入适配：${ADAPTATION_HELP_OPTIONS[adaptationHelpIndex]}（不需要在此填写真实账号密码）`,
           note.trim() ? `备注：${note.trim()}` : '',
         ].filter(Boolean).join('\n') || undefined,
         requestedTargets: ['course'],
       })
       setMessage('已提交：' + result.id)
       setSchoolName('')
-      setProvince('')
-      setCity('')
-      setLoginUrl('')
       setEduSystemWebsite('')
       setContact('')
+      setExtraVerificationIndex(0)
+      setAdaptationHelpIndex(0)
       setNote('')
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '提交失败')
@@ -80,7 +80,7 @@ export default function SubmissionPage() {
 
   return (
     <PageShell title='学校接入申请' back subPage>
-      <Text className='page-subtitle'>提交学校和联系方式，管理员会主动联系你确认接入信息。</Text>
+      <Text className='page-subtitle'>提交学校和教务系统信息，方便后续评估接入。</Text>
       {message && <View className='status'>{message}</View>}
       {errorText && <View className='status status-error'>{errorText}</View>}
       <View className='panel'>
@@ -90,27 +90,6 @@ export default function SubmissionPage() {
             <Text className='field-hint'>必填</Text>
           </View>
           <Input className='input' value={schoolName} placeholder='请输入学校全称' onInput={(e) => setSchoolName(e.detail.value)} />
-        </View>
-        <View className='field'>
-          <View className='label-row'>
-            <Text className='label'>省份</Text>
-            <Text className='field-hint'>选填</Text>
-          </View>
-          <Input className='input' value={province} placeholder='如：北京市' onInput={(e) => setProvince(e.detail.value)} />
-        </View>
-        <View className='field'>
-          <View className='label-row'>
-            <Text className='label'>城市</Text>
-            <Text className='field-hint'>选填</Text>
-          </View>
-          <Input className='input' value={city} placeholder='如：北京市' onInput={(e) => setCity(e.detail.value)} />
-        </View>
-        <View className='field'>
-          <View className='label-row'>
-            <Text className='label'>教务系统登录网址</Text>
-            <Text className='field-hint'>选填</Text>
-          </View>
-          <Input className='input' value={loginUrl} placeholder='如：https://jwxt.example.edu.cn' onInput={(e) => setLoginUrl(e.detail.value)} />
         </View>
         <View className='field'>
           <View className='label-row'>
@@ -128,10 +107,52 @@ export default function SubmissionPage() {
         </View>
         <View className='field'>
           <View className='label-row'>
+            <Text className='label'>除账号密码外是否需要验证</Text>
+            <Text className='field-hint'>选填</Text>
+          </View>
+          <Picker
+            mode='selector'
+            range={EXTRA_VERIFICATION_OPTIONS}
+            value={extraVerificationIndex}
+            onChange={(e) => setExtraVerificationIndex(Number(e.detail.value))}
+          >
+            <View className='submission-picker'>
+              <Text>{EXTRA_VERIFICATION_OPTIONS[extraVerificationIndex]}</Text>
+              <View className='submission-picker-arrow' />
+            </View>
+          </Picker>
+        </View>
+        <View className='field'>
+          <View className='label-row'>
+            <Text className='label'>是否愿意协助首个适配</Text>
+            <Text className='field-hint'>不填账号密码</Text>
+          </View>
+          <Picker
+            mode='selector'
+            range={ADAPTATION_HELP_OPTIONS}
+            value={adaptationHelpIndex}
+            onChange={(e) => setAdaptationHelpIndex(Number(e.detail.value))}
+          >
+            <View className='submission-picker'>
+              <Text>{ADAPTATION_HELP_OPTIONS[adaptationHelpIndex]}</Text>
+              <View className='submission-picker-arrow' />
+            </View>
+          </Picker>
+          <Text className='submission-tip'>这里只记录意向，后续如需协助会再联系确认。</Text>
+        </View>
+        <View className='field'>
+          <View className='label-row'>
             <Text className='label'>备注说明</Text>
             <Text className='field-hint'>选填</Text>
           </View>
-          <Textarea className='textarea' value={note} placeholder='登录方式、教务系统类型等补充信息' onInput={(e) => setNote(e.detail.value)} />
+          <Textarea
+            className='textarea submission-note-textarea'
+            value={note}
+            placeholder='可补充申请原因、已知限制或其他说明'
+            placeholderClass='submission-note-placeholder'
+            maxlength={300}
+            onInput={(e) => setNote(e.detail.value)}
+          />
         </View>
         <Button className='button' loading={loading} disabled={!schoolName.trim()} onClick={submit}>
           提交申请

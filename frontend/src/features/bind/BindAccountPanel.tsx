@@ -126,6 +126,10 @@ function getSchoolBindUrl(school: SchoolListItem) {
   return `/pages/bind/index?${params}`
 }
 
+function openSchoolSubmission() {
+  Taro.navigateTo({ url: '/pages/submission/index' })
+}
+
 function getBindErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : ''
 
@@ -744,6 +748,10 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
                   )}
                 </View>
               )}
+              </View>
+              <View className='school-request-link' onClick={openSchoolSubmission}>
+                <Text className='school-request-title'>没有找到学校？申请添加新学校</Text>
+                <View className='school-request-arrow' />
               </View>
             </View>
           )}

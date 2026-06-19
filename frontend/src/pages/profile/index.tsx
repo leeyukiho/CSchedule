@@ -171,6 +171,10 @@ function getBindUrl(account?: StudentAccountSummary | null) {
   return params ? `/pages/bind/index?${params}` : '/pages/bind/index'
 }
 
+function openSchoolSubmission() {
+  Taro.navigateTo({ url: '/pages/submission/index' })
+}
+
 function shouldOpenBindForManualSync(account: StudentAccountSummary) {
   return (
     account.credentialSaveMode !== 'password_vault' ||
@@ -539,6 +543,14 @@ export default function ProfilePage() {
         <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/feedback/index' })}>
           <View className='action-icon action-feedback' />
           <Text>意见反馈</Text>
+          <View className='row-arrow' />
+        </View>
+        <View className='action-row' onClick={openSchoolSubmission}>
+          <View className='action-icon action-school' />
+          <View className='action-text'>
+            <Text className='action-title'>申请添加新学校</Text>
+            <Text className='action-desc'>提交学校和教务系统信息</Text>
+          </View>
           <View className='row-arrow' />
         </View>
         <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/settings/index' })}>
