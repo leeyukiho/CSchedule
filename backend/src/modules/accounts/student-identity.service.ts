@@ -183,6 +183,8 @@ export class StudentIdentityService {
             temporaryAccount.lastLoginAt ?? existingAccount.lastLoginAt,
           lastCachedAt:
             temporaryAccount.lastCachedAt ?? existingAccount.lastCachedAt,
+          wechatOpenid:
+            temporaryAccount.wechatOpenid ?? existingAccount.wechatOpenid,
           studentNoEncrypted: this.maskStudentNo(rawStudentNo || studentNo),
           studentNoHash,
           displayName:

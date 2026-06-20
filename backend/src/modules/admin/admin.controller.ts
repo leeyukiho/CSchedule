@@ -52,11 +52,13 @@ export class AdminController {
 
   @Get('submissions')
   listSubmissions(
+    @Query('keyword') keyword?: string,
     @Query('status') status?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
     return this.adminService.listSubmissions({
+      keyword,
       status,
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,

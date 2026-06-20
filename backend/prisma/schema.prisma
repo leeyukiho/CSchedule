@@ -65,121 +65,142 @@ enum SyncStatus {
   cancelled
 }
 
-model School {
-  id                  String                @id
-  name                String
-  shortName           String?
-  province            String?
-  city                String?
-  aliases             Json                  @default("[]")
-  providerId          String?
-  loginMode           LoginMode?
-  dataAccess          Json?
-  featureCapabilities Json?
-  eduSystemType       String?
-  homepageUrl         String?
-  authUrl             String?
-  enabled             Boolean               @default(false)
-  status              SchoolStatus          @default(catalog_only)
-  capabilities        Json                  @default("{}")
-  config              Json                  @default("{}")
-  verifiedAt          DateTime?
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
+enum ReminderType {
+  daily_course
+  exam
+}
 
-  accounts            StudentAccount[]
+enum ReminderStatus {
+  enabled
+  disabled
+  blocked
+}
+
+enum ReminderDeliveryStatus {
+  pending
+  skipped
+  sent
+  failed
+}
+
+model School {
+  id            String       @id
+  name          String
+  shortName     String?
+  province      String?
+  city          String?
+  aliases       Json         @default("[]")
+  providerId    String?
+  loginMode     LoginMode?
+  dataAccess    Json?
+  eduSystemType String?
+  homepageUrl   String?
+  authUrl       String?
+  enabled       Boolean      @default(false)
+  status        SchoolStatus @default(catalog_only)
+  capabilities  Json         @default("{}")
+  config        Json         @default("{}")
+  verifiedAt    DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  accounts StudentAccount[]
 
   @@index([name])
   @@index([providerId])
 }
 
 model StudentAccount {
-  id                  String          @id @default(cuid())
-  schoolId            String
-  providerId          String
-  studentNoEncrypted  String?
-  studentNoHash       String?
-  displayName         String?
-  status              AccountStatus    @default(unbound)
-  authState           Json?
-  cacheState          Json?
-  sessionReusable     Boolean          @default(false)
-  sessionRefreshable  Boolean          @default(false)
-  sessionExpireAt     DateTime?
+  id                     String             @id @default(cuid())
+  schoolId               String
+  providerId             String
+  studentNoEncrypted     String?
+  studentNoHash          String?
+  displayName            String?
+  wechatOpenid           String?
+  status                 AccountStatus      @default(unbound)
+  authState              Json?
+  cacheState             Json?
+  sessionReusable        Boolean            @default(false)
+  sessionRefreshable     Boolean            @default(false)
+  sessionExpireAt        DateTime?
   lastSessionValidatedAt DateTime?
-  credentialSaveMode  CredentialSaveMode @default(none)
-  lastAuthErrorCode   String?
-  lastAuthErrorAt     DateTime?
-  lastLoginAt         DateTime?
-  lastCachedAt        DateTime?
-  school              School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  credentialSaveMode     CredentialSaveMode @default(none)
+  lastAuthErrorCode      String?
+  lastAuthErrorAt        DateTime?
+  lastLoginAt            DateTime?
+  lastCachedAt           DateTime?
+  school                 School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 
-  courseCaches        CourseCache[]
-  featureCaches       FeatureCache[]
-  syncRecords         SyncRecord[]
+  courseCaches          CourseCache[]
+  featureCaches         FeatureCache[]
+  syncRecords           SyncRecord[]
+  reminderSubscriptions ReminderSubscription[]
+  reminderDeliveries    ReminderDelivery[]
 
+  @@unique([schoolId, studentNoHash])
   @@index([schoolId])
   @@index([providerId])
-  @@unique([schoolId, studentNoHash])
+  @@index([wechatOpenid])
 }
 
 model CourseCache {
-  id             String          @id @default(cuid())
-  accountId      String
-  schoolId       String
-  providerId     String
-  termId         String?
-  coursesJson    Json
-  termsJson      Json
+  id               String         @id @default(cuid())
+  accountId        String
+  schoolId         String
+  providerId       String
+  termId           String?
+  coursesJson      Json
+  termsJson        Json
   sectionTimesJson Json
-  sourceHash     String
-  syncedAt       DateTime
-  account        StudentAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  sourceHash       String
+  syncedAt         DateTime
+  account          StudentAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
+  @@unique([accountId, sourceHash], name: "courseCacheAccountSourceHash")
   @@index([accountId])
   @@index([schoolId])
   @@index([accountId, termId, syncedAt])
-  @@unique([accountId, sourceHash], name: "courseCacheAccountSourceHash")
 }
 
 model FeatureCache {
-  id           String          @id @default(cuid())
+  id         String         @id @default(cuid())
+  accountId  String
+  schoolId   String
+  providerId String
+  target     DataTarget
+  termId     String?
+  dataJson   Json
+  metaJson   Json?
+  sourceHash String
+  syncedAt   DateTime
+  account    StudentAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([accountId, target, sourceHash], name: "featureCacheAccountTargetSourceHash")
+  @@index([accountId])
+  @@index([target])
+  @@index([accountId, target, termId, syncedAt])
+}
+
+model SyncRecord {
+  id           String         @id @default(cuid())
   accountId    String
   schoolId     String
   providerId   String
   target       DataTarget
-  termId       String?
-  dataJson     Json
-  metaJson     Json?
-  sourceHash   String
-  syncedAt     DateTime
+  status       SyncStatus     @default(pending)
+  errorCode    String?
+  errorMessage String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
   account      StudentAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-
-  @@index([accountId])
-  @@index([target])
-  @@index([accountId, target, termId, syncedAt])
-  @@unique([accountId, target, sourceHash], name: "featureCacheAccountTargetSourceHash")
-}
-
-model SyncRecord {
-  id            String       @id @default(cuid())
-  accountId     String
-  schoolId      String
-  providerId    String
-  target        DataTarget
-  status        SyncStatus   @default(pending)
-  errorCode     String?
-  errorMessage  String?
-  startedAt     DateTime?
-  finishedAt    DateTime?
-  account       StudentAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  createdAt     DateTime     @default(now())
+  createdAt    DateTime       @default(now())
 
   @@index([accountId])
   @@index([status])
@@ -187,25 +208,80 @@ model SyncRecord {
   @@index([schoolId, target, status, createdAt])
 }
 
+model ReminderSubscription {
+  id                    String             @id @default(cuid())
+  accountId             String
+  openid                String
+  type                  ReminderType
+  status                ReminderStatus     @default(enabled)
+  templateId            String?
+  preferredTime         String             @default("07:30")
+  timezoneOffsetMinutes Int                @default(480)
+  settings              Json               @default("{}")
+  lastSentDate          String?
+  lastSentAt            DateTime?
+  lastErrorCode         String?
+  lastErrorMessage      String?
+  account               StudentAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  deliveries            ReminderDelivery[]
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@unique([accountId, openid, type])
+  @@index([status, type, preferredTime])
+  @@index([lastSentDate])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+model ReminderDelivery {
+  id             String                 @id @default(cuid())
+  subscriptionId String?
+  accountId      String
+  openid         String
+  type           ReminderType
+  dateKey        String
+  status         ReminderDeliveryStatus @default(pending)
+  title          String?
+  summary        String?
+  requestJson    Json?
+  responseJson   Json?
+  errorCode      String?
+  errorMessage   String?
+  sentAt         DateTime?
+  subscription   ReminderSubscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  account        StudentAccount         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt      DateTime               @default(now())
+
+  @@unique([subscriptionId, dateKey])
+  @@index([accountId])
+  @@index([type, dateKey, status])
+}
+
 model FeedbackItem {
-  id          String   @id @default(cuid())
-  accountId   String?
-  schoolId    String?
-  type        String   @default("experience")
-  content     String
-  contact     String?
-  status      String   @default("pending")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  accountId String?
+  schoolId  String?
+  type      String   @default("experience")
+  content   String
+  contact   String?
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([accountId])
   @@index([status])
 }
 
 model SchoolAccessSubmission {
-  id               String   @id @default(cuid())
+  id               String       @id @default(cuid())
   schoolName       String
-  aliases          Json     @default("[]")
+  aliases          Json         @default("[]")
   province         String?
   city             String?
   officialWebsite  String?
@@ -213,11 +289,11 @@ model SchoolAccessSubmission {
   loginUrl         String?
   loginModeHint    LoginMode?
   requestedTargets DataTarget[] @default([])
-  status           String   @default("submitted")
+  status           String       @default("submitted")
   note             String?
-  review           Json     @default("{}")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  review           Json         @default("{}")
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   @@index([status])
 }

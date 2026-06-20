@@ -8,7 +8,7 @@ CREATE TYPE "SchoolStatus" AS ENUM ('catalog_only', 'candidate', 'researching', 
 CREATE TYPE "LoginMode" AS ENUM ('direct_password', 'password_captcha', 'cas_simple', 'cas_webview', 'oauth_webview', 'qrcode');
 
 -- CreateEnum
-CREATE TYPE "DataAccessMode" AS ENUM ('server_session', 'webview_client_fetch', 'session_import', 'manual_import');
+CREATE TYPE "DataAccessMode" AS ENUM ('cloud_worker', 'webview_client_fetch', 'session_import', 'manual_import');
 
 -- CreateEnum
 CREATE TYPE "DataTarget" AS ENUM ('course', 'score', 'exam', 'profile');
@@ -20,7 +20,16 @@ CREATE TYPE "CredentialSaveMode" AS ENUM ('none', 'session_only', 'session_refre
 CREATE TYPE "AccountStatus" AS ENUM ('active', 'need_login', 'cached_only', 'disabled', 'unbound');
 
 -- CreateEnum
-CREATE TYPE "SyncStatus" AS ENUM ('pending', 'running', 'success', 'failed', 'need_login', 'need_webview_fetch', 'cancelled');
+CREATE TYPE "SyncStatus" AS ENUM ('pending', 'running', 'success', 'failed', 'need_login', 'need_webview_fetch', 'rate_limited', 'cancelled');
+
+-- CreateEnum
+CREATE TYPE "ReminderType" AS ENUM ('daily_course', 'exam');
+
+-- CreateEnum
+CREATE TYPE "ReminderStatus" AS ENUM ('enabled', 'disabled', 'blocked');
+
+-- CreateEnum
+CREATE TYPE "ReminderDeliveryStatus" AS ENUM ('pending', 'skipped', 'sent', 'failed');
 
 -- CreateTable
 CREATE TABLE "School" (
@@ -56,6 +65,7 @@ CREATE TABLE "StudentAccount" (
     "studentNoEncrypted" TEXT,
     "studentNoHash" TEXT,
     "displayName" TEXT,
+    "wechatOpenid" TEXT,
     "status" "AccountStatus" NOT NULL DEFAULT 'unbound',
     "authState" JSONB,
     "cacheState" JSONB,
@@ -128,6 +138,58 @@ CREATE TABLE "SyncRecord" (
 );
 
 -- CreateTable
+CREATE TABLE "ReminderSubscription" (
+    "id" TEXT NOT NULL,
+    "accountId" TEXT NOT NULL,
+    "openid" TEXT NOT NULL,
+    "type" "ReminderType" NOT NULL,
+    "status" "ReminderStatus" NOT NULL DEFAULT 'enabled',
+    "templateId" TEXT,
+    "preferredTime" TEXT NOT NULL DEFAULT '07:30',
+    "timezoneOffsetMinutes" INTEGER NOT NULL DEFAULT 480,
+    "settings" JSONB NOT NULL DEFAULT '{}',
+    "lastSentDate" TEXT,
+    "lastSentAt" TIMESTAMP(3),
+    "lastErrorCode" TEXT,
+    "lastErrorMessage" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ReminderSubscription_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "SystemSetting" (
+    "key" TEXT NOT NULL,
+    "value" JSONB NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "SystemSetting_pkey" PRIMARY KEY ("key")
+);
+
+-- CreateTable
+CREATE TABLE "ReminderDelivery" (
+    "id" TEXT NOT NULL,
+    "subscriptionId" TEXT,
+    "accountId" TEXT NOT NULL,
+    "openid" TEXT NOT NULL,
+    "type" "ReminderType" NOT NULL,
+    "dateKey" TEXT NOT NULL,
+    "status" "ReminderDeliveryStatus" NOT NULL DEFAULT 'pending',
+    "title" TEXT,
+    "summary" TEXT,
+    "requestJson" JSONB,
+    "responseJson" JSONB,
+    "errorCode" TEXT,
+    "errorMessage" TEXT,
+    "sentAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ReminderDelivery_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "FeedbackItem" (
     "id" TEXT NOT NULL,
     "accountId" TEXT,
@@ -176,6 +238,9 @@ CREATE INDEX "StudentAccount_schoolId_idx" ON "StudentAccount"("schoolId");
 CREATE INDEX "StudentAccount_providerId_idx" ON "StudentAccount"("providerId");
 
 -- CreateIndex
+CREATE INDEX "StudentAccount_wechatOpenid_idx" ON "StudentAccount"("wechatOpenid");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "StudentAccount_schoolId_studentNoHash_key" ON "StudentAccount"("schoolId", "studentNoHash");
 
 -- CreateIndex
@@ -185,16 +250,52 @@ CREATE INDEX "CourseCache_accountId_idx" ON "CourseCache"("accountId");
 CREATE INDEX "CourseCache_schoolId_idx" ON "CourseCache"("schoolId");
 
 -- CreateIndex
+CREATE INDEX "CourseCache_accountId_termId_syncedAt_idx" ON "CourseCache"("accountId", "termId", "syncedAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CourseCache_accountId_sourceHash_key" ON "CourseCache"("accountId", "sourceHash");
+
+-- CreateIndex
 CREATE INDEX "FeatureCache_accountId_idx" ON "FeatureCache"("accountId");
 
 -- CreateIndex
 CREATE INDEX "FeatureCache_target_idx" ON "FeatureCache"("target");
 
 -- CreateIndex
+CREATE INDEX "FeatureCache_accountId_target_termId_syncedAt_idx" ON "FeatureCache"("accountId", "target", "termId", "syncedAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "FeatureCache_accountId_target_sourceHash_key" ON "FeatureCache"("accountId", "target", "sourceHash");
+
+-- CreateIndex
 CREATE INDEX "SyncRecord_accountId_idx" ON "SyncRecord"("accountId");
 
 -- CreateIndex
 CREATE INDEX "SyncRecord_status_idx" ON "SyncRecord"("status");
+
+-- CreateIndex
+CREATE INDEX "SyncRecord_accountId_target_status_createdAt_idx" ON "SyncRecord"("accountId", "target", "status", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "SyncRecord_schoolId_target_status_createdAt_idx" ON "SyncRecord"("schoolId", "target", "status", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ReminderSubscription_status_type_preferredTime_idx" ON "ReminderSubscription"("status", "type", "preferredTime");
+
+-- CreateIndex
+CREATE INDEX "ReminderSubscription_lastSentDate_idx" ON "ReminderSubscription"("lastSentDate");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ReminderSubscription_accountId_openid_type_key" ON "ReminderSubscription"("accountId", "openid", "type");
+
+-- CreateIndex
+CREATE INDEX "ReminderDelivery_accountId_idx" ON "ReminderDelivery"("accountId");
+
+-- CreateIndex
+CREATE INDEX "ReminderDelivery_type_dateKey_status_idx" ON "ReminderDelivery"("type", "dateKey", "status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ReminderDelivery_subscriptionId_dateKey_key" ON "ReminderDelivery"("subscriptionId", "dateKey");
 
 -- CreateIndex
 CREATE INDEX "FeedbackItem_accountId_idx" ON "FeedbackItem"("accountId");
@@ -217,3 +318,11 @@ ALTER TABLE "FeatureCache" ADD CONSTRAINT "FeatureCache_accountId_fkey" FOREIGN 
 -- AddForeignKey
 ALTER TABLE "SyncRecord" ADD CONSTRAINT "SyncRecord_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "StudentAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+-- AddForeignKey
+ALTER TABLE "ReminderSubscription" ADD CONSTRAINT "ReminderSubscription_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "StudentAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ReminderDelivery" ADD CONSTRAINT "ReminderDelivery_subscriptionId_fkey" FOREIGN KEY ("subscriptionId") REFERENCES "ReminderSubscription"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ReminderDelivery" ADD CONSTRAINT "ReminderDelivery_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "StudentAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE;

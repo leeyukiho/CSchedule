@@ -5,8 +5,9 @@ import { submitSchoolAccess } from '../../shared/api/submissions'
 import { PageShell } from '../../shared/layout'
 
 const STATUS_CLEAR_DELAY_MS = 3000
-const EXTRA_VERIFICATION_OPTIONS = ['不确定', '不需要', '需要验证码或短信', '需要扫码或校内验证']
-const ADAPTATION_HELP_OPTIONS = ['愿意沟通', '需要先了解', '暂不方便']
+const EXTRA_VERIFICATION_OPTIONS = ['不需要', '需要验证码或短信', '需要扫码或校内验证', '不确定']
+const ADAPTATION_HELP_OPTIONS = ['愿意沟通', '先了解，愿意等', '暂不方便']
+const CONTACT_REQUIRED_ADAPTATION_HELP_INDEX = 0
 
 function decodeRouteParam(value?: string) {
   if (!value) return ''
@@ -23,12 +24,19 @@ export default function SubmissionPage() {
   const [schoolName, setSchoolName] = useState(() => decodeRouteParam(routeParams.schoolName))
   const [eduSystemWebsite, setEduSystemWebsite] = useState('')
   const [contact, setContact] = useState('')
-  const [extraVerificationIndex, setExtraVerificationIndex] = useState(0)
+  const [extraVerificationIndex, setExtraVerificationIndex] = useState(-1)
   const [adaptationHelpIndex, setAdaptationHelpIndex] = useState(0)
   const [note, setNote] = useState('')
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
   const [loading, setLoading] = useState(false)
+  const isContactRequired = adaptationHelpIndex === CONTACT_REQUIRED_ADAPTATION_HELP_INDEX
+  const canSubmit = Boolean(
+    schoolName.trim() &&
+    eduSystemWebsite.trim() &&
+    extraVerificationIndex >= 0 &&
+    (!isContactRequired || contact.trim()),
+  )
 
   useEffect(() => {
     if (!message && !errorText) {
@@ -48,27 +56,38 @@ export default function SubmissionPage() {
       setErrorText('请输入学校名称')
       return
     }
+    if (!eduSystemWebsite.trim()) {
+      setErrorText('请输入教务系统网址')
+      return
+    }
+    if (extraVerificationIndex < 0) {
+      setErrorText('请选择除账号密码外是否需要验证')
+      return
+    }
+    if (isContactRequired && !contact.trim()) {
+      setErrorText('请填写联系方式，方便后续沟通适配进度')
+      return
+    }
     setLoading(true)
     setMessage('')
     setErrorText('')
     try {
-      const result = await submitSchoolAccess({
+      await submitSchoolAccess({
         schoolName: schoolName.trim(),
-        eduSystemWebsite: eduSystemWebsite.trim() || undefined,
+        eduSystemWebsite: eduSystemWebsite.trim(),
         note: [
-          eduSystemWebsite.trim() ? `教务系统网址：${eduSystemWebsite.trim()}` : '',
-          contact.trim() ? `联系方式：${contact.trim()}` : '',
           `除账号密码外的验证：${EXTRA_VERIFICATION_OPTIONS[extraVerificationIndex]}`,
           `是否愿意协助首个接入适配：${ADAPTATION_HELP_OPTIONS[adaptationHelpIndex]}（不需要在此填写真实账号密码）`,
           note.trim() ? `备注：${note.trim()}` : '',
+          contact.trim() ? `联系方式：${contact.trim()}` : '',
         ].filter(Boolean).join('\n') || undefined,
         requestedTargets: ['course'],
       })
-      setMessage('已提交：' + result.id)
+      setMessage('提交成功，我们会尽快评估接入信息。')
       setSchoolName('')
       setEduSystemWebsite('')
       setContact('')
-      setExtraVerificationIndex(0)
+      setExtraVerificationIndex(-1)
       setAdaptationHelpIndex(0)
       setNote('')
     } catch (error) {
@@ -94,30 +113,23 @@ export default function SubmissionPage() {
         <View className='field'>
           <View className='label-row'>
             <Text className='label'>教务系统网址</Text>
-            <Text className='field-hint'>选填</Text>
+            <Text className='field-hint'>必填</Text>
           </View>
           <Input className='input' value={eduSystemWebsite} placeholder='教务系统主页或统一认证入口' onInput={(e) => setEduSystemWebsite(e.detail.value)} />
         </View>
         <View className='field'>
           <View className='label-row'>
-            <Text className='label'>联系方式</Text>
-            <Text className='field-hint'>选填</Text>
-          </View>
-          <Input className='input' value={contact} placeholder='手机号、微信或邮箱' onInput={(e) => setContact(e.detail.value)} />
-        </View>
-        <View className='field'>
-          <View className='label-row'>
             <Text className='label'>除账号密码外是否需要验证</Text>
-            <Text className='field-hint'>选填</Text>
+            <Text className='field-hint'>必填</Text>
           </View>
           <Picker
             mode='selector'
             range={EXTRA_VERIFICATION_OPTIONS}
-            value={extraVerificationIndex}
+            value={extraVerificationIndex >= 0 ? extraVerificationIndex : 0}
             onChange={(e) => setExtraVerificationIndex(Number(e.detail.value))}
           >
             <View className='submission-picker'>
-              <Text>{EXTRA_VERIFICATION_OPTIONS[extraVerificationIndex]}</Text>
+              <Text>{extraVerificationIndex >= 0 ? EXTRA_VERIFICATION_OPTIONS[extraVerificationIndex] : '请选择'}</Text>
               <View className='submission-picker-arrow' />
             </View>
           </Picker>
@@ -154,7 +166,14 @@ export default function SubmissionPage() {
             onInput={(e) => setNote(e.detail.value)}
           />
         </View>
-        <Button className='button' loading={loading} disabled={!schoolName.trim()} onClick={submit}>
+        <View className='field'>
+          <View className='label-row'>
+            <Text className='label'>联系方式</Text>
+            <Text className='field-hint'>{isContactRequired ? '必填' : '选填'}</Text>
+          </View>
+          <Input className='input' value={contact} placeholder='手机号、微信或邮箱' onInput={(e) => setContact(e.detail.value)} />
+        </View>
+        <Button className='button submission-submit-button' loading={loading} disabled={!canSubmit} onClick={submit}>
           提交申请
         </Button>
       </View>

@@ -10,6 +10,7 @@ import { FeedbackModule } from './modules/feedback/feedback.module'
 import { HealthModule } from './modules/health/health.module'
 import { ProvidersModule } from './modules/providers/providers.module'
 import { RawDataModule } from './modules/raw-data/raw-data.module'
+import { RemindersModule } from './modules/reminders/reminders.module'
 import { SchoolsModule } from './modules/schools/schools.module'
 import { SubmissionsModule } from './modules/submissions/submissions.module'
 import { SyncModule } from './modules/sync/sync.module'
@@ -30,6 +31,7 @@ import { TimetableModule } from './modules/timetable/timetable.module'
     TimetableModule,
     FeaturesModule,
     SyncModule,
+    RemindersModule,
     RawDataModule,
     FeedbackModule,
     SubmissionsModule,

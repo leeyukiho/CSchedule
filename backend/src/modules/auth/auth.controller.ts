@@ -28,3 +28,16 @@ export class SessionImportController {
     return this.authService.importSession(schoolId, input)
   }
 }
+
+@Controller('account/:accountId/wechat')
+export class AccountWechatController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Post('openid')
+  bindOpenid(
+    @Param('accountId') accountId: string,
+    @Body() input: { openid?: string },
+  ) {
+    return this.authService.bindWechatOpenid(accountId, String(input.openid || ''))
+  }
+}

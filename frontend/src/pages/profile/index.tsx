@@ -547,10 +547,7 @@ export default function ProfilePage() {
         </View>
         <View className='action-row' onClick={openSchoolSubmission}>
           <View className='action-icon action-school' />
-          <View className='action-text'>
-            <Text className='action-title'>申请添加新学校</Text>
-            <Text className='action-desc'>提交学校和教务系统信息</Text>
-          </View>
+          <Text>申请添加新学校</Text>
           <View className='row-arrow' />
         </View>
         <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/settings/index' })}>

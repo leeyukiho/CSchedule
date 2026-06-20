@@ -14,6 +14,7 @@ import {
   Power,
   PowerOff,
   RefreshCw,
+  BellRing,
   Save,
   School,
   Search,
@@ -25,7 +26,7 @@ const CONFIG_KEY = 'cschedule.adminWebsite.config'
 const DEFAULT_BASE_URL = 'http://localhost:3000/api/v1'
 const PAGE_SIZE = 50
 
-type ViewKey = 'overview' | 'schools' | 'submissions' | 'feedback'
+type ViewKey = 'overview' | 'schools' | 'submissions' | 'feedback' | 'reminders'
 type StatusType = 'success' | 'error'
 
 interface AdminStats {
@@ -66,6 +67,9 @@ interface SubmissionItem {
   province: string | null
   city: string | null
   officialWebsite?: string | null
+  eduSystemWebsite?: string | null
+  loginUrl?: string | null
+  loginModeHint?: string | null
   requestedTargets?: string[]
   note?: string | null
   status: string
@@ -103,6 +107,31 @@ interface FeedbackItem {
   } | null
 }
 
+interface ReminderConfig {
+  enabled: boolean
+  dryRun: boolean
+  sendWindowStart: string
+  sendWindowEnd: string
+  scanIntervalMs: number
+  batchSize: number
+  concurrency: number
+  ratePerSecond: number
+  maxRuntimeMs: number
+  testOpenid: string
+  dailyCourseTemplateId: string
+  examTemplateId: string
+}
+
+interface ReminderRunResult {
+  total?: number
+  sent?: number
+  skipped?: number
+  failed?: number
+  dryRun?: boolean
+  skippedReason?: string
+  reason?: string
+}
+
 interface SavedConfig {
   baseUrl?: string
   adminKey?: string
@@ -138,6 +167,10 @@ const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   feedback: {
     title: '用户反馈',
     description: '查看用户反馈和关联学生信息。',
+  },
+  reminders: {
+    title: '提醒设置',
+    description: '调整每日课程和考试提醒的发送窗口、批量、并发与 dry-run 状态。',
   },
 }
 
@@ -213,6 +246,61 @@ function statusTone(status: string) {
   return ''
 }
 
+function normalizeSearchText(value: string) {
+  return value.trim().toLocaleLowerCase()
+}
+
+function getSubmissionSchoolKey(item: SubmissionItem) {
+  return normalizeSearchText(item.schoolName) || item.id
+}
+
+function matchesSubmissionKeyword(item: SubmissionItem, keyword: string) {
+  if (!keyword) return true
+
+  return [
+    item.schoolName,
+    ...(item.aliases || []),
+    item.province,
+    item.city,
+    item.officialWebsite,
+    item.eduSystemWebsite,
+    item.loginUrl,
+  ].some((value) => normalizeSearchText(String(value || '')).includes(keyword))
+}
+
+function parseSubmissionNote(note?: string | null) {
+  const fields: Record<string, string> = {}
+
+  String(note || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .forEach((line) => {
+      const separator = line.indexOf('：')
+      if (separator > 0) {
+        fields[line.slice(0, separator).trim()] = line.slice(separator + 1).trim()
+      }
+    })
+
+  return {
+    extraVerification: fields['除账号密码外的验证'],
+    adaptationHelp: fields['是否愿意协助首个接入适配'],
+    note: fields['备注'],
+    contact: fields['联系方式'],
+  }
+}
+
+function targetLabel(target: string) {
+  const labels: Record<string, string> = {
+    course: '课表',
+    score: '成绩',
+    exam: '考试',
+    profile: '学籍',
+  }
+
+  return labels[target] || target
+}
+
 export function App() {
   const saved = useMemo(getSavedConfig, [])
   const [baseUrl, setBaseUrl] = useState(saved.baseUrl)
@@ -228,9 +316,11 @@ export function App() {
   const [schools, setSchools] = useState<PageResult<SchoolItem>>({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
   const [submissions, setSubmissions] = useState<PageResult<SubmissionItem>>({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
   const [feedback, setFeedback] = useState<PageResult<FeedbackItem>>({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
+  const [reminderConfig, setReminderConfig] = useState<ReminderConfig | null>(null)
+  const [reminderRun, setReminderRun] = useState<ReminderRunResult | null>(null)
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null)
   const [schoolFilters, setSchoolFilters] = useState({ keyword: '', status: '', enabled: '', offset: 0 })
-  const [submissionFilters, setSubmissionFilters] = useState({ status: '', offset: 0 })
+  const [submissionFilters, setSubmissionFilters] = useState({ keyword: '', status: '', offset: 0 })
   const [feedbackFilters, setFeedbackFilters] = useState({ status: '', offset: 0 })
   const [modal, setModal] = useState<ModalState | null>(null)
 
@@ -360,6 +450,7 @@ export function App() {
 
     if (view === 'submissions') {
       const query = buildQuery({
+        keyword: submissionFilters.keyword,
         status: submissionFilters.status,
         limit: PAGE_SIZE,
         offset: submissionFilters.offset,
@@ -376,6 +467,10 @@ export function App() {
       const nextFeedback = await load<PageResult<FeedbackItem>>('/admin/feedback?' + query)
       setFeedback(nextFeedback)
       setSelectedFeedback((current) => current || nextFeedback.items[0] || null)
+    }
+
+    if (view === 'reminders') {
+      setReminderConfig(await load<ReminderConfig>('/admin/reminders/config'))
     }
   }
 
@@ -421,6 +516,7 @@ export function App() {
     try {
       setLoading(true)
       const query = buildQuery({
+        keyword: nextFilters.keyword,
         status: nextFilters.status,
         limit: PAGE_SIZE,
         offset: nextFilters.offset,
@@ -537,6 +633,37 @@ export function App() {
     }
   }
 
+  async function saveReminderConfig(config: ReminderConfig) {
+    try {
+      setLoading(true)
+      const nextConfig = await requestApi<ReminderConfig>('/admin/reminders/config', {
+        method: 'POST',
+        bodyData: config,
+      })
+      setReminderConfig(nextConfig)
+      showStatus('提醒设置已保存。')
+    } catch (error) {
+      showStatus(describeFetchError(error, baseUrl), 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function runReminderDryRun() {
+    try {
+      setLoading(true)
+      const result = await requestApi<ReminderRunResult>('/admin/reminders/run?force=true&dryRun=true&limit=20', {
+        method: 'POST',
+      })
+      setReminderRun(result)
+      showStatus('提醒 dry-run 已完成。')
+    } catch (error) {
+      showStatus(describeFetchError(error, baseUrl), 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   if (!authed) {
     return (
       <main className="login-screen">
@@ -592,6 +719,7 @@ export function App() {
           <NavButton active={activeView === 'schools'} icon={<School size={18} />} label="学校管理" onClick={() => void switchView('schools')} />
           <NavButton active={activeView === 'submissions'} icon={<Inbox size={18} />} label="接入申请" onClick={() => void switchView('submissions')} />
           <NavButton active={activeView === 'feedback'} icon={<MessageSquareWarning size={18} />} label="用户反馈" onClick={() => void switchView('feedback')} />
+          <NavButton active={activeView === 'reminders'} icon={<BellRing size={18} />} label="提醒设置" onClick={() => void switchView('reminders')} />
         </nav>
         <div className="sidebar-footer">管理端仅面向网站浏览器使用。请在可信设备保存密钥，离开时退出登录。</div>
       </aside>
@@ -692,6 +820,14 @@ export function App() {
               }}
               onSelect={setSelectedFeedback}
               onShowJson={(item) => setModal({ title: '反馈原始数据', description: item.id, mode: 'json', value: item })}
+            />
+          )}
+          {!loading && activeView === 'reminders' && (
+            <RemindersView
+              config={reminderConfig}
+              runResult={reminderRun}
+              onSave={(config) => void saveReminderConfig(config)}
+              onDryRun={() => void runReminderDryRun()}
             />
           )}
         </section>
@@ -913,63 +1049,126 @@ function SchoolsView(props: {
 
 function SubmissionsView(props: {
   data: PageResult<SubmissionItem>
-  filters: { status: string; offset: number }
-  onFiltersChange: React.Dispatch<React.SetStateAction<{ status: string; offset: number }>>
+  filters: { keyword: string; status: string; offset: number }
+  onFiltersChange: React.Dispatch<React.SetStateAction<{ keyword: string; status: string; offset: number }>>
   onSearch: () => void
   onPage: (offset: number) => void
   onUpdate: (item: SubmissionItem, status: 'accepted' | 'rejected') => void
   onShowJson: (item: SubmissionItem) => void
 }) {
+  const groups = useMemo(() => {
+    const keyword = normalizeSearchText(props.filters.keyword)
+    const groupMap = new Map<string, { key: string; schoolName: string; items: SubmissionItem[] }>()
+
+    props.data.items.forEach((item) => {
+      const key = getSubmissionSchoolKey(item)
+      const group = groupMap.get(key) || { key, schoolName: item.schoolName, items: [] }
+      group.items.push(item)
+      groupMap.set(key, group)
+    })
+
+    return Array.from(groupMap.values())
+      .filter((group) => group.items.some((item) => matchesSubmissionKeyword(item, keyword)))
+      .sort((a, b) => b.items.length - a.items.length || a.schoolName.localeCompare(b.schoolName, 'zh-CN'))
+  }, [props.data.items, props.filters.keyword])
+
   return (
     <Panel>
       <PanelHeader title="接入申请" description={viewMeta.submissions.description} />
-      <SimpleStatusTools
-        value={props.filters.status}
-        options={[['', '全部'], ['submitted', '待审核'], ['accepted', '已通过'], ['rejected', '已驳回']]}
-        onChange={(status) => props.onFiltersChange((current) => ({ ...current, status }))}
-        onSearch={props.onSearch}
-      />
-      {props.data.items.length ? (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>学校</th>
-                <th>状态</th>
-                <th>提交信息</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {props.data.items.map((item) => (
-                <tr key={item.id}>
-                  <td>
-                    <div className="cell-title">{item.schoolName}</div>
-                    <div className="cell-meta">{joinFilled([item.province, item.city, item.officialWebsite])}</div>
-                  </td>
-                  <td>
-                    <Badge tone={statusTone(item.status)}>{item.status}</Badge>
-                    <div className="cell-meta">{formatDate(item.createdAt)}</div>
-                  </td>
-                  <td>
-                    <div className="cell-meta">期望能力：{item.requestedTargets?.join(' / ') || '--'}</div>
-                    <div className="cell-meta">备注：{display(item.note)}</div>
-                  </td>
-                  <td>
-                    <div className="row-actions">
-                      <button className="button secondary" type="button" onClick={() => props.onUpdate(item, 'accepted')}><Check size={16} />通过</button>
-                      <button className="button danger" type="button" onClick={() => props.onUpdate(item, 'rejected')}><X size={16} />驳回</button>
-                      <button className="button secondary" type="button" onClick={() => props.onShowJson(item)}><FileJson size={16} />详情</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="panel-tools">
+        <label className="field grow">
+          <span>学校搜索</span>
+          <input
+            value={props.filters.keyword}
+            placeholder="输入学校名称、省份、城市或教务系统网址"
+            onChange={(event) => props.onFiltersChange((current) => ({ ...current, keyword: event.target.value }))}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') props.onSearch()
+            }}
+          />
+        </label>
+        <SelectField
+          label="状态"
+          value={props.filters.status}
+          options={[['', '全部'], ['submitted', '待审核'], ['accepted', '已通过'], ['rejected', '已驳回']]}
+          onChange={(status) => props.onFiltersChange((current) => ({ ...current, status }))}
+        />
+        <button className="button primary" type="button" onClick={props.onSearch}><Search size={16} />查询</button>
+      </div>
+      {groups.length ? (
+        <div className="submission-groups">
+          {groups.map((group) => (
+            <section className="submission-school-group" key={group.key}>
+              <header className="submission-school-header">
+                <div>
+                  <h3>{group.schoolName}</h3>
+                  <div className="cell-meta">{group.items.length} 条申请</div>
+                </div>
+                <Badge tone={group.items.some((item) => item.status === 'submitted') ? 'amber' : ''}>
+                  {group.items.some((item) => item.status === 'submitted') ? '有待审核' : '已处理'}
+                </Badge>
+              </header>
+              <div className="submission-list">
+                {group.items.map((item) => (
+                  <SubmissionCard
+                    key={item.id}
+                    item={item}
+                    onUpdate={props.onUpdate}
+                    onShowJson={props.onShowJson}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       ) : <div className="empty">没有匹配的接入申请。</div>}
       <Pagination page={props.data} offset={props.filters.offset} onPage={props.onPage} />
     </Panel>
+  )
+}
+
+function SubmissionCard(props: {
+  item: SubmissionItem
+  onUpdate: (item: SubmissionItem, status: 'accepted' | 'rejected') => void
+  onShowJson: (item: SubmissionItem) => void
+}) {
+  const formInfo = parseSubmissionNote(props.item.note)
+  const location = joinFilled([props.item.province, props.item.city])
+  const targets = props.item.requestedTargets?.map(targetLabel).join(' / ') || '--'
+
+  return (
+    <article className="submission-card">
+      <div className="submission-card-head">
+        <div>
+          <Badge tone={statusTone(props.item.status)}>{props.item.status}</Badge>
+          <div className="cell-meta">提交时间：{formatDate(props.item.createdAt)}</div>
+        </div>
+        <div className="row-actions">
+          <button className="button secondary" type="button" onClick={() => props.onUpdate(props.item, 'accepted')}><Check size={16} />通过</button>
+          <button className="button danger" type="button" onClick={() => props.onUpdate(props.item, 'rejected')}><X size={16} />驳回</button>
+          <button className="button secondary" type="button" onClick={() => props.onShowJson(props.item)}><FileJson size={16} />原始数据</button>
+        </div>
+      </div>
+      <div className="submission-fields">
+        <SubmissionField label="学校名称" value={props.item.schoolName} />
+        <SubmissionField label="教务系统网址" value={display(props.item.eduSystemWebsite || props.item.loginUrl || props.item.officialWebsite)} />
+        <SubmissionField label="除账号密码外是否需要验证" value={display(formInfo.extraVerification)} />
+        <SubmissionField label="是否愿意协助首个适配" value={display(formInfo.adaptationHelp)} />
+        <SubmissionField label="备注说明" value={display(formInfo.note)} />
+        <SubmissionField label="联系方式" value={display(formInfo.contact)} />
+        <SubmissionField label="申请内容" value={targets} />
+        <SubmissionField label="地区 / 官网" value={joinFilled([location, props.item.officialWebsite]) || '--'} />
+      </div>
+    </article>
+  )
+}
+
+function SubmissionField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="submission-field">
+      <div className="submission-field-label">{label}</div>
+      <div className="submission-field-value">{value}</div>
+    </div>
   )
 }
 
@@ -1050,6 +1249,102 @@ function FeedbackView(props: {
         ) : <div className="empty">选择一条反馈查看详情。</div>}
       </aside>
     </div>
+  )
+}
+
+function RemindersView(props: {
+  config: ReminderConfig | null
+  runResult: ReminderRunResult | null
+  onSave: (config: ReminderConfig) => void
+  onDryRun: () => void
+}) {
+  const [draft, setDraft] = useState<ReminderConfig | null>(props.config)
+
+  useEffect(() => {
+    setDraft(props.config)
+  }, [props.config])
+
+  if (!draft) {
+    return <Panel><div className="empty">提醒配置未加载。</div></Panel>
+  }
+
+  const setValue = <K extends keyof ReminderConfig>(key: K, value: ReminderConfig[K]) => {
+    setDraft((current) => current ? { ...current, [key]: value } : current)
+  }
+  const setNumber = (key: keyof ReminderConfig, value: string) => {
+    setDraft((current) => current ? { ...current, [key]: Math.max(1, Number(value) || 1) } : current)
+  }
+
+  return (
+    <Panel>
+      <PanelHeader
+        title="提醒设置"
+        description={viewMeta.reminders.description}
+        actions={
+          <>
+            <button className="button secondary" type="button" onClick={props.onDryRun}><RefreshCw size={16} />Dry-run</button>
+            <button className="button primary" type="button" onClick={() => props.onSave(draft)}><Save size={16} />保存</button>
+          </>
+        }
+      />
+      <div className="settings-grid">
+        <label className="check-field">
+          <input type="checkbox" checked={draft.enabled} onChange={(event) => setValue('enabled', event.target.checked)} />
+          <span>启用自动提醒 worker</span>
+        </label>
+        <label className="check-field">
+          <input type="checkbox" checked={draft.dryRun} onChange={(event) => setValue('dryRun', event.target.checked)} />
+          <span>Dry-run 模式</span>
+        </label>
+        <label className="field">
+          <span>发送开始时间</span>
+          <input value={draft.sendWindowStart} onChange={(event) => setValue('sendWindowStart', event.target.value)} placeholder="07:30" />
+        </label>
+        <label className="field">
+          <span>发送结束时间</span>
+          <input value={draft.sendWindowEnd} onChange={(event) => setValue('sendWindowEnd', event.target.value)} placeholder="留空表示不设结束时间" />
+        </label>
+        <label className="field">
+          <span>每批数量</span>
+          <input type="number" min={1} value={draft.batchSize} onChange={(event) => setNumber('batchSize', event.target.value)} />
+        </label>
+        <label className="field">
+          <span>并发 worker 数</span>
+          <input type="number" min={1} value={draft.concurrency} onChange={(event) => setNumber('concurrency', event.target.value)} />
+        </label>
+        <label className="field">
+          <span>全局发送速率/秒</span>
+          <input type="number" min={1} value={draft.ratePerSecond} onChange={(event) => setNumber('ratePerSecond', event.target.value)} />
+        </label>
+        <label className="field">
+          <span>扫描间隔 ms</span>
+          <input type="number" min={1} value={draft.scanIntervalMs} onChange={(event) => setNumber('scanIntervalMs', event.target.value)} />
+        </label>
+        <label className="field">
+          <span>单轮最大运行 ms</span>
+          <input type="number" min={1} value={draft.maxRuntimeMs} onChange={(event) => setNumber('maxRuntimeMs', event.target.value)} />
+        </label>
+        <label className="field">
+          <span>测试 openid</span>
+          <input value={draft.testOpenid} onChange={(event) => setValue('testOpenid', event.target.value)} placeholder="生产留空" />
+        </label>
+        <label className="field">
+          <span>课程模板 ID</span>
+          <input value={draft.dailyCourseTemplateId} onChange={(event) => setValue('dailyCourseTemplateId', event.target.value)} />
+        </label>
+        <label className="field">
+          <span>考试模板 ID</span>
+          <input value={draft.examTemplateId} onChange={(event) => setValue('examTemplateId', event.target.value)} />
+        </label>
+      </div>
+      <div className="detail-panel">
+        <div className="detail-list">
+          <DetailItem label="窗口策略" value={draft.sendWindowEnd ? `${draft.sendWindowStart} - ${draft.sendWindowEnd}` : `${draft.sendWindowStart} 开始，不设结束时间`} />
+          <DetailItem label="吞吐估算" value={`约 ${draft.ratePerSecond * 60} 条/分钟，单轮最多处理 ${draft.batchSize} 条`} />
+          <DetailItem label="最近 dry-run" value={props.runResult ? JSON.stringify(props.runResult) : '尚未运行'} />
+        </div>
+      </div>
+    </Panel>
   )
 }
 

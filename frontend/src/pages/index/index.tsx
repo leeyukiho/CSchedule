@@ -3,6 +3,11 @@ import Taro, { useDidShow } from '@tarojs/taro'
 import { Text, View } from '@tarojs/components'
 
 import { getExams } from '../../shared/api/features'
+import {
+  getReminderPreferences,
+  resolveReminderOpenid,
+  updateReminderPreference,
+} from '../../shared/api/reminders'
 import { getTimetable } from '../../shared/api/timetable'
 import { CourseItem, FeatureCacheResponse, TimetableCacheResponse } from '../../shared/api/types'
 import {
@@ -16,6 +21,7 @@ import { getStoredAccountId, getStoredTermStarts } from '../../shared/storage'
 import { buildTermOptions, courseRunsInWeek, getTeachingWeekForDate } from '../../shared/term'
 
 const STATUS_CLEAR_DELAY_MS = 3000
+const REMINDER_STATE_REFRESH_MS = 60 * 1000
 const ACADEMIC_YEAR_PATTERN = /(20\d{2})\s*[-~—至]\s*(20\d{2})/
 const ACADEMIC_YEAR_COMPACT_PATTERN = /(20\d{2})[-~—至]?(20\d{2})/
 
@@ -211,6 +217,8 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false)
   const [errorText, setErrorText] = useState('')
   const [nowMs, setNowMs] = useState(() => Date.now())
+  const [subscribingReminder, setSubscribingReminder] = useState(false)
+  const [reminderSubscribed, setReminderSubscribed] = useState(false)
 
   useEffect(() => {
     if (!errorText) {
@@ -227,6 +235,18 @@ export default function HomePage() {
 
     return () => clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (!accountId || !reminderSubscribed) {
+      return undefined
+    }
+
+    const timer = setInterval(() => {
+      void loadReminderState(accountId)
+    }, REMINDER_STATE_REFRESH_MS)
+
+    return () => clearInterval(timer)
+  }, [accountId, reminderSubscribed])
 
   const todayCourses = useMemo(() => {
     const weekday = getWeekday()
@@ -276,11 +296,13 @@ export default function HomePage() {
       setExams(null)
       setLoading(false)
       setErrorText('')
+      setReminderSubscribed(false)
       return
     }
 
     if (id) {
       void loadTimetable(id)
+      void loadReminderState(id)
     }
   })
 
@@ -303,8 +325,111 @@ export default function HomePage() {
     }
   }
 
+  async function loadReminderState(id: string) {
+    try {
+      const preference = await getReminderPreferences(id)
+      setReminderSubscribed(Boolean(preference.enabled))
+    } catch {
+      setReminderSubscribed(false)
+    }
+  }
+
   function openProfileTab() {
     Taro.switchTab({ url: '/pages/profile/index' })
+  }
+
+  function getReminderOpenid(id: string) {
+    return new Promise<string>((resolve, reject) => {
+      Taro.login({
+        success: async (result) => {
+          try {
+            if (!result.code) {
+              reject(new Error('微信登录凭证获取失败'))
+              return
+            }
+
+            const response = await resolveReminderOpenid(id, result.code)
+            resolve(response.openid)
+          } catch (error) {
+            reject(error)
+          }
+        },
+        fail: () => reject(new Error('微信登录失败')),
+      })
+    })
+  }
+
+  function requestReminderSubscribe(templateIds: string[]) {
+    return new Promise<boolean>((resolve, reject) => {
+      Taro.requestSubscribeMessage({
+        tmplIds: templateIds,
+        success: (result) => {
+          const values = result as Record<string, string>
+          resolve(templateIds.some((templateId) => values[templateId] === 'accept'))
+        },
+        fail: (error) => reject(error),
+      })
+    })
+  }
+
+  function confirmOneTimeReminder() {
+    return new Promise<boolean>((resolve) => {
+      Taro.showModal({
+        title: '订阅本次提醒',
+        content: '微信一次性订阅通常只能发送一次。授权后，我们会在默认提醒时间发送下一次最近的课程或考试提醒；发送后可再次订阅下一次提醒。',
+        confirmText: '去订阅',
+        cancelText: '取消',
+        success: (result) => resolve(Boolean(result.confirm)),
+        fail: () => resolve(false),
+      })
+    })
+  }
+
+  async function subscribeOneTimeReminder() {
+    if (!accountId || subscribingReminder) {
+      return
+    }
+
+    setSubscribingReminder(true)
+
+    try {
+      const confirmed = await confirmOneTimeReminder()
+      if (!confirmed) {
+        return
+      }
+
+      const preference = await getReminderPreferences(accountId)
+      const templateIds = preference.templateIds || []
+
+      if (templateIds.length === 0) {
+        Taro.showToast({ title: '订阅模板未配置', icon: 'none' })
+        return
+      }
+
+      const openid = preference.openid || await getReminderOpenid(accountId)
+      const accepted = await requestReminderSubscribe(templateIds)
+
+      if (!accepted) {
+        Taro.showToast({ title: '未授权订阅消息', icon: 'none' })
+        return
+      }
+
+      await updateReminderPreference(accountId, {
+        enabled: true,
+        preferredTime: preference.preferredTime || '07:30',
+        openid,
+      })
+      void loadReminderState(accountId)
+      setReminderSubscribed(true)
+      Taro.showToast({ title: '已订阅', icon: 'success' })
+    } catch (error) {
+      Taro.showToast({
+        title: error instanceof Error ? error.message : '订阅失败',
+        icon: 'none',
+      })
+    } finally {
+      setSubscribingReminder(false)
+    }
   }
 
   const showGuestEmpty = Boolean(!accountId && !loading && !errorText)
@@ -322,7 +447,17 @@ export default function HomePage() {
           <View className='date-title'>{formatDateText()}</View>
           {homeTermLabel && <View className='date-week'>{homeTermLabel}</View>}
         </View>
-        <View className='calendar-mini' />
+        <View className='date-actions'>
+          {accountId && (
+            <View
+              className={`home-reminder-button${subscribingReminder || reminderSubscribed ? ' home-reminder-button-disabled' : ''}`}
+              onClick={reminderSubscribed ? undefined : subscribeOneTimeReminder}
+            >
+              {reminderSubscribed ? '已订阅' : (subscribingReminder ? '订阅中' : '订阅提醒')}
+            </View>
+          )}
+          <View className='calendar-mini' />
+        </View>
       </View>
 
       {errorText && <View className='status status-error'>{errorText}</View>}
@@ -342,7 +477,9 @@ export default function HomePage() {
       {todayItemCount > 0 && (
         <View className='section-head'>
           <View className='section-title'>今日安排</View>
-          <Text>共 {todayItemCount} 项</Text>
+          <View className='section-head-actions'>
+            <Text>共 {todayItemCount} 项</Text>
+          </View>
         </View>
       )}
 

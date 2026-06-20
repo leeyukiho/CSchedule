@@ -130,6 +130,13 @@ function resolveSeedStatus(school: ConnectedSchoolSeed) {
   return school.status ?? (school.enabled === false ? 'disabled' : 'enabled')
 }
 
+function resolveConnectedSchoolId(
+  school: ConnectedSchoolSeed,
+  catalogItem?: SchoolCatalogItem,
+) {
+  return catalogItem?.id || school.id
+}
+
 async function main() {
   const catalog = readCatalogFile()
   const connectedSchools = readConnectedSchoolsFile()
@@ -182,6 +189,7 @@ async function main() {
       (item) => item.code === school.catalogCode,
     )
     const status = resolveSeedStatus(school)
+    const schoolId = resolveConnectedSchoolId(school, catalogItem)
     const catalogConfig = {
       source: catalog.source,
       sourceDate: catalog.sourceDate,
@@ -192,9 +200,9 @@ async function main() {
     const verifiedAt = new Date(school.verifiedAt)
 
     await prisma.school.upsert({
-      where: { id: school.id },
+      where: { id: schoolId },
       create: {
-        id: school.id,
+        id: schoolId,
         name: school.name,
         shortName: school.shortName,
         province: school.province,
@@ -246,7 +254,7 @@ async function main() {
   }
 
   console.log(
-    `Seeded ${catalog.schools.length} catalog schools and ${connectedSchools.length} connected schools from ${CATALOG_FILE}`,
+    `Seeded ${catalog.schools.length} catalog schools; merged ${connectedSchools.length} connected provider configs from ${CATALOG_FILE}`,
   )
 }
 

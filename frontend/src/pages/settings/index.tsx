@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import Taro from '@tarojs/taro'
-import { useDidShow } from '@tarojs/taro'
+import Taro, { useDidShow } from '@tarojs/taro'
 import { Button, Picker, View } from '@tarojs/components'
 
 import { getTimetable } from '../../shared/api/timetable'
@@ -22,21 +21,22 @@ export default function SettingsPage() {
   const [selectedTermId, setSelectedTermId] = useState('')
 
   useDidShow(() => {
+    const nextAccountId = getStoredAccountId()
+
     setTermStarts(getStoredTermStarts())
-    void loadTerms()
+    void loadTerms(nextAccountId)
   })
 
-  async function loadTerms() {
-    const accountId = getStoredAccountId()
-
-    if (!accountId) {
+  async function loadTerms(id = getStoredAccountId()) {
+    if (!id) {
       setTerms([])
       return
     }
 
     try {
-      const timetable = await getTimetable(accountId)
+      const timetable = await getTimetable(id)
       const nextTerms = buildTermOptions(timetable)
+
       setTerms(nextTerms)
       setSelectedTermId((current) =>
         current && nextTerms.some((term) => term.id === current)
@@ -61,11 +61,11 @@ export default function SettingsPage() {
   const selectedTerm = terms[selectedTermIndex] || null
 
   function clearCache() {
-    const accountId = getStoredAccountId()
+    const currentAccountId = getStoredAccountId()
 
     clearStoredAccountId()
-    clearStoredAccountSummary(accountId || undefined)
-    clearStoredDataCaches(accountId || undefined)
+    clearStoredAccountSummary(currentAccountId || undefined)
+    clearStoredDataCaches(currentAccountId || undefined)
     clearStoredTermStarts()
     Taro.showToast({ title: '已退出登录', icon: 'success' })
     Taro.switchTab({ url: '/pages/profile/index' })
@@ -132,6 +132,7 @@ export default function SettingsPage() {
           </View>
         )}
       </View>
+
       <View className='soft-card settings-card'>
         <View className='settings-row'>
           <View>

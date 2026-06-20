@@ -4,12 +4,12 @@ import { CredentialVaultService } from "../../common/crypto/credential-vault.ser
 import { AccountsModule } from "../accounts/accounts.module";
 import { ProvidersModule } from "../providers/providers.module";
 import { SyncModule } from "../sync/sync.module";
-import { AuthController, SessionImportController } from "./auth.controller";
+import { AccountWechatController, AuthController, SessionImportController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 
 @Module({
   imports: [AccountsModule, ProvidersModule, SyncModule],
-  controllers: [AuthController, SessionImportController],
+  controllers: [AuthController, SessionImportController, AccountWechatController],
   providers: [AuthService, CredentialVaultService],
   exports: [AuthService],
 })

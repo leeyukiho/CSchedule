@@ -19,6 +19,7 @@ export interface LoginSubmitRequest {
   password?: string
   captcha?: string
   credentialSaveMode?: 'none' | 'password_vault'
+  wechatOpenid?: string
   verifiedByCloud?: boolean
   cacheResults?: LoginCacheResult[]
   cloudWarnings?: string[]

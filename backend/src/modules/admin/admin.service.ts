@@ -167,13 +167,23 @@ export class AdminService {
   }
 
   async listSubmissions(params: {
+    keyword?: string
     status?: string
     limit?: number
     offset?: number
   }) {
-    const { status, limit = 50, offset = 0 } = params
+    const { keyword, status, limit = 50, offset = 0 } = params
     const where: Record<string, unknown> = {}
     if (status) where.status = status
+    if (keyword) {
+      where.OR = [
+        { schoolName: { contains: keyword, mode: 'insensitive' } },
+        { province: { contains: keyword, mode: 'insensitive' } },
+        { city: { contains: keyword, mode: 'insensitive' } },
+        { officialWebsite: { contains: keyword, mode: 'insensitive' } },
+        { eduSystemWebsite: { contains: keyword, mode: 'insensitive' } },
+      ]
+    }
 
     const [submissions, total] = await this.prisma.$transaction([
       this.prisma.schoolAccessSubmission.findMany({

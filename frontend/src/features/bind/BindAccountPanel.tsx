@@ -62,6 +62,28 @@ function getVisibleFields(loginContext: LoginContextResponse | null) {
   return fields.filter((field) => field.type !== 'hidden' && !HIDDEN_FIELD_NAMES.has(field.name))
 }
 
+function getWechatOpenid() {
+  return new Promise<string>((resolve) => {
+    Taro.login({
+      success: async (result) => {
+        if (!result.code) {
+          resolve('')
+          return
+        }
+
+        try {
+          const { resolveReminderOpenid } = await import('../../shared/api/reminders')
+          const response = await resolveReminderOpenid('__bind__', result.code)
+          resolve(response.openid)
+        } catch {
+          resolve('')
+        }
+      },
+      fail: () => resolve(''),
+    })
+  })
+}
+
 function decodeRouteParam(value?: string) {
   if (!value) return ''
 
@@ -554,6 +576,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
 
     try {
       const context = loginContext || (await createLoginContext(selectedSchool.id))
+      const wechatOpenid = await getWechatOpenid()
 
       if (context.syncStrategy?.importMode === 'password_server') {
         const sharedCloudImport = getSharedCloudImport(
@@ -596,6 +619,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
             wantsPasswordVault ? 'password_vault' : 'none',
           verifiedByCloud: true,
           cacheResults: cloudResult.cacheResults,
+          ...(wechatOpenid ? { wechatOpenid } : {}),
           ...(cloudWarnings.length ? { cloudWarnings } : {}),
         })
 
@@ -634,6 +658,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
         username: shouldCollectCredentials ? form.username : undefined,
         password: wantsPasswordVault ? form.password : undefined,
         credentialSaveMode: 'none',
+        ...(wechatOpenid ? { wechatOpenid } : {}),
       })
 
       setStoredAccountId(result.accountId, selectedSchool.id)

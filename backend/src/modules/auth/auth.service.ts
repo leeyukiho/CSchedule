@@ -28,6 +28,21 @@ export class AuthService {
     private readonly courseSync: CourseSyncService,
   ) {}
 
+  async bindWechatOpenid(accountId: string, openid: string) {
+    const cleanOpenid = this.normalizeOpenid(openid);
+
+    if (!cleanOpenid) {
+      throw new BadRequestException("openid is required");
+    }
+
+    await this.prisma.studentAccount.update({
+      where: { id: accountId },
+      data: { wechatOpenid: cleanOpenid },
+    });
+
+    return { success: true };
+  }
+
   async submitLogin(
     schoolId: string,
     input: LoginSubmitRequest,
@@ -92,6 +107,7 @@ export class AuthService {
           studentNo: input.username,
           authState,
           credentialSaveMode,
+          wechatOpenid: input.wechatOpenid,
         })
       : await this.studentIdentity.findOrCreateAccount({
           schoolId,
@@ -104,6 +120,7 @@ export class AuthService {
             sessionReusable: false,
             sessionRefreshable: false,
             credentialSaveMode,
+            wechatOpenid: this.normalizeOpenid(input.wechatOpenid) || undefined,
             lastLoginAt: new Date(),
             lastAuthErrorCode: null,
             lastAuthErrorAt: null,
@@ -237,6 +254,7 @@ export class AuthService {
     studentNo?: string;
     authState: Prisma.InputJsonValue;
     credentialSaveMode: "none" | "password_vault";
+    wechatOpenid?: string;
   }) {
     const account = await this.prisma.studentAccount.findUnique({
       where: { id: input.accountId },
@@ -260,6 +278,7 @@ export class AuthService {
         providerId: input.providerId,
         authState: input.authState,
         credentialSaveMode: input.credentialSaveMode,
+        wechatOpenid: this.normalizeOpenid(input.wechatOpenid) || undefined,
         lastLoginAt: new Date(),
         lastAuthErrorCode: null,
         lastAuthErrorAt: null,
@@ -284,6 +303,10 @@ export class AuthService {
     }
 
     return "password_vault";
+  }
+
+  private normalizeOpenid(value: unknown) {
+    return typeof value === "string" && value.trim() ? value.trim() : "";
   }
 
   private getRequiredFetchTargets(capabilities: unknown): DataTarget[] {
