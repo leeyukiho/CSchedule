@@ -10,7 +10,14 @@ export interface ApiRequestOptions<TBody = unknown> {
 export async function requestApi<TResponse, TBody = unknown>(
   options: ApiRequestOptions<TBody>,
 ): Promise<TResponse> {
-  const baseUrl = process.env.TARO_APP_API_BASE_URL;
+  const baseUrl = String(process.env.TARO_APP_API_BASE_URL || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "");
+
+  if (!baseUrl) {
+    throw new Error("TARO_APP_API_BASE_URL is not configured");
+  }
+
   const response = await Taro.request<TResponse>({
     url: `${baseUrl}${options.path}`,
     method: options.method || "GET",
