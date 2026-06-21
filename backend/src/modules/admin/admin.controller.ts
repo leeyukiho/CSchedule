@@ -5,7 +5,7 @@ import {
   AdminSchoolUpdateInput,
   AdminService,
 } from './admin.service'
-import { SchoolStatus } from '@prisma/client'
+import { AccountStatus, SchoolStatus } from '@prisma/client'
 
 @Controller('admin')
 @UseGuards(AdminGuard)
@@ -34,6 +34,25 @@ export class AdminController {
     })
   }
 
+  @Get('users')
+  listUsers(
+    @Query('keyword') keyword?: string,
+    @Query('schoolId') schoolId?: string,
+    @Query('schoolKeyword') schoolKeyword?: string,
+    @Query('status') status?: AccountStatus,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.adminService.listUsers({
+      keyword,
+      schoolId,
+      schoolKeyword,
+      status,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+    })
+  }
+
   @Patch('schools/:schoolId')
   updateSchool(
     @Param('schoolId') schoolId: string,
@@ -54,12 +73,16 @@ export class AdminController {
   listSubmissions(
     @Query('keyword') keyword?: string,
     @Query('status') status?: string,
+    @Query('extraVerification') extraVerification?: string,
+    @Query('adaptationHelp') adaptationHelp?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
     return this.adminService.listSubmissions({
       keyword,
       status,
+      extraVerification,
+      adaptationHelp,
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
     })
@@ -76,11 +99,15 @@ export class AdminController {
   @Get('feedback')
   listFeedback(
     @Query('status') status?: string,
+    @Query('schoolId') schoolId?: string,
+    @Query('schoolKeyword') schoolKeyword?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
     return this.adminService.listFeedback({
       status,
+      schoolId,
+      schoolKeyword,
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
     })

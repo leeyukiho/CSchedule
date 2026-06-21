@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../../common/prisma/prisma.service'
-import { DataAccessMode, LoginMode, Prisma, SchoolStatus } from '@prisma/client'
+import { AccountStatus, DataAccessMode, LoginMode, Prisma, SchoolStatus } from '@prisma/client'
 
 export interface AdminSchoolUpdateInput {
   name?: string
@@ -24,6 +24,7 @@ export interface AdminSchoolUpdateInput {
 export interface AdminProviderConfigUpsertInput {
   providerId: string
   loginMode: LoginMode
+  sectionTimes?: Array<{ section: number; start: string; end: string }>
   dataAccess?: Partial<Record<'course' | 'score' | 'exam' | 'profile', DataAccessMode[]>>
   capabilities?: Record<string, boolean>
   eduSystemType?: string | null
@@ -71,16 +72,154 @@ export class AdminService {
       }),
       this.prisma.school.count({ where: where as any }),
     ])
+    const userCounts = schools.length
+      ? await this.prisma.studentAccount.groupBy({
+          by: ['schoolId'],
+          where: { schoolId: { in: schools.map((school) => school.id) } },
+          _count: { _all: true },
+        })
+      : []
+    const userCountMap = new Map(userCounts.map((item) => [item.schoolId, item._count._all]))
 
     return {
       items: schools.map((school) => ({
         ...school,
         termStarts: this.getTermStarts(school.config),
+        sectionTimes: this.getSectionTimes(school.config),
+        userCount: userCountMap.get(school.id) ?? 0,
       })),
       total,
       limit,
       offset,
       hasMore: offset + schools.length < total,
+    }
+  }
+
+  async listUsers(params: {
+    keyword?: string
+    schoolId?: string
+    schoolKeyword?: string
+    status?: AccountStatus
+    limit?: number
+    offset?: number
+  }) {
+    const { keyword, schoolId, schoolKeyword, status, limit = 50, offset = 0 } = params
+    const where: Record<string, unknown> = {}
+    const take = Math.min(limit, 200)
+    const normalizedKeyword = keyword?.trim().toLocaleLowerCase()
+
+    if (status) where.status = status
+    if (schoolId) where.schoolId = schoolId
+    else if (schoolKeyword) {
+      where.schoolId = {
+        in: await this.findSchoolIdsByKeyword(schoolKeyword),
+      }
+    }
+
+    const accountSelect = {
+      id: true,
+      schoolId: true,
+      providerId: true,
+      studentNoEncrypted: true,
+      displayName: true,
+      status: true,
+      authState: true,
+      lastLoginAt: true,
+      createdAt: true,
+      updatedAt: true,
+      school: {
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+        },
+      },
+    } satisfies Prisma.StudentAccountSelect
+    const [accounts, total] = normalizedKeyword
+      ? [
+          await this.prisma.studentAccount.findMany({
+            where: where as any,
+            select: accountSelect,
+            orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+            take: 2000,
+          }),
+          0,
+        ]
+      : await this.prisma.$transaction([
+          this.prisma.studentAccount.findMany({
+            where: where as any,
+            select: accountSelect,
+            orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+            take,
+            skip: offset,
+          }),
+          this.prisma.studentAccount.count({ where: where as any }),
+        ])
+    const accountIds = accounts.map((account) => account.id)
+    const profileCaches = accountIds.length
+      ? await this.prisma.featureCache.findMany({
+          where: {
+            accountId: { in: accountIds },
+            target: 'profile',
+          },
+          orderBy: [{ accountId: 'asc' }, { syncedAt: 'desc' }],
+        })
+      : []
+    const profileCacheMap = new Map<string, (typeof profileCaches)[number]>()
+
+    for (const cache of profileCaches) {
+      if (!profileCacheMap.has(cache.accountId)) {
+        profileCacheMap.set(cache.accountId, cache)
+      }
+    }
+    const filteredItems = accounts
+      .map((account) => {
+        const profile = this.getFeedbackProfile(account.authState, profileCacheMap.get(account.id)?.dataJson)
+        const student = this.getFeedbackStudentInfo(account, profile)
+        const contact = this.getUserContact(profile)
+
+        return {
+          id: account.id,
+          schoolId: account.schoolId,
+          providerId: account.providerId,
+          displayName: account.displayName,
+          status: account.status,
+          createdAt: account.createdAt,
+          updatedAt: account.updatedAt,
+          lastLoginAt: account.lastLoginAt,
+          school: account.school,
+          student,
+          contact,
+        }
+      })
+      .filter((item) => {
+        if (!normalizedKeyword) return true
+
+        return [
+          item.id,
+          item.displayName,
+          item.providerId,
+          item.schoolId,
+          item.school?.name,
+          item.school?.shortName,
+          item.student.name,
+          item.student.studentNo,
+          item.student.grade,
+          item.student.major,
+          item.student.className,
+          item.contact.value,
+          item.contact.phone,
+          item.contact.email,
+        ].some((value) => String(value || '').toLocaleLowerCase().includes(normalizedKeyword))
+      })
+    const items = normalizedKeyword ? filteredItems.slice(offset, offset + take) : filteredItems
+
+    return {
+      items,
+      total: normalizedKeyword ? filteredItems.length : total,
+      limit,
+      offset,
+      hasMore: normalizedKeyword ? offset + take < filteredItems.length : offset + accounts.length < total,
     }
   }
 
@@ -135,13 +274,21 @@ export class AdminService {
       throw new NotFoundException('School not found')
     }
 
-    const providerConfig = {
-      ...(input.providerConfig || {}),
-      ...(input.authConfig ? { authConfig: input.authConfig } : {}),
-      ...(input.credentialPolicy ? { credentialPolicy: input.credentialPolicy } : {}),
-      ...(input.featureConfig ? { featureConfig: input.featureConfig } : {}),
-      ...(input.limits ? { limits: input.limits } : {}),
-    }
+    const shouldUpdateProviderConfig =
+      input.providerConfig !== undefined ||
+      input.authConfig !== undefined ||
+      input.credentialPolicy !== undefined ||
+      input.featureConfig !== undefined ||
+      input.limits !== undefined
+    const providerConfig = shouldUpdateProviderConfig
+      ? {
+          ...(input.providerConfig || {}),
+          ...(input.authConfig ? { authConfig: input.authConfig } : {}),
+          ...(input.credentialPolicy ? { credentialPolicy: input.credentialPolicy } : {}),
+          ...(input.featureConfig ? { featureConfig: input.featureConfig } : {}),
+          ...(input.limits ? { limits: input.limits } : {}),
+        }
+      : undefined
     const capabilities = input.capabilities ?? (school.capabilities as Record<string, boolean>) ?? {}
     const dataAccess = input.dataAccess ?? (school.dataAccess as Record<string, unknown>) ?? {}
     const status = input.status ?? school.status
@@ -158,10 +305,15 @@ export class AdminService {
         status,
         enabled: status === 'enabled',
         ...(verifiedAt ? { verifiedAt } : {}),
-        config: await this.mergeSchoolConfig(schoolId, {
-          authConfig: input.authConfig,
-          providerConfig,
-        }),
+        ...(shouldUpdateProviderConfig || input.sectionTimes !== undefined
+          ? {
+              config: await this.mergeSchoolConfig(schoolId, {
+                authConfig: input.authConfig,
+                providerConfig: shouldUpdateProviderConfig ? providerConfig : undefined,
+                sectionTimes: input.sectionTimes,
+              }),
+            }
+          : {}),
       },
     })
   }
@@ -169,11 +321,14 @@ export class AdminService {
   async listSubmissions(params: {
     keyword?: string
     status?: string
+    extraVerification?: string
+    adaptationHelp?: string
     limit?: number
     offset?: number
   }) {
-    const { keyword, status, limit = 50, offset = 0 } = params
+    const { keyword, status, extraVerification, adaptationHelp, limit = 50, offset = 0 } = params
     const where: Record<string, unknown> = {}
+    const and: Record<string, unknown>[] = []
     if (status) where.status = status
     if (keyword) {
       where.OR = [
@@ -184,6 +339,23 @@ export class AdminService {
         { eduSystemWebsite: { contains: keyword, mode: 'insensitive' } },
       ]
     }
+    if (extraVerification) {
+      and.push({
+        note: {
+          contains: `除账号密码外的验证：${extraVerification}`,
+          mode: 'insensitive',
+        },
+      })
+    }
+    if (adaptationHelp) {
+      and.push({
+        note: {
+          contains: `是否愿意协助首个接入适配：${adaptationHelp}`,
+          mode: 'insensitive',
+        },
+      })
+    }
+    if (and.length) where.AND = and
 
     const [submissions, total] = await this.prisma.$transaction([
       this.prisma.schoolAccessSubmission.findMany({
@@ -220,12 +392,20 @@ export class AdminService {
 
   async listFeedback(params: {
     status?: string
+    schoolId?: string
+    schoolKeyword?: string
     limit?: number
     offset?: number
   }) {
-    const { status, limit = 50, offset = 0 } = params
+    const { status, schoolId, schoolKeyword, limit = 50, offset = 0 } = params
     const where: Record<string, unknown> = {}
     if (status) where.status = status
+    if (schoolId) where.schoolId = schoolId
+    if (schoolKeyword) {
+      where.schoolId = {
+        in: await this.findSchoolIdsByKeyword(schoolKeyword),
+      }
+    }
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.feedbackItem.findMany({
@@ -259,6 +439,23 @@ export class AdminService {
         })
       : []
     const accountMap = new Map(accounts.map((account) => [account.id, account]))
+    const schoolIds = [
+      ...new Set([
+        ...items.map((item) => item.schoolId).filter(Boolean),
+        ...accounts.map((account) => account.schoolId).filter(Boolean),
+      ]),
+    ] as string[]
+    const schools = schoolIds.length
+      ? await this.prisma.school.findMany({
+          where: { id: { in: schoolIds } },
+          select: {
+            id: true,
+            name: true,
+            shortName: true,
+          },
+        })
+      : []
+    const schoolMap = new Map(schools.map((school) => [school.id, school]))
     const profileCaches = accountIds.length
       ? await this.prisma.featureCache.findMany({
           where: {
@@ -292,10 +489,12 @@ export class AdminService {
               school: account.school,
             }
           : null
+        const school = account?.school ?? (item.schoolId ? schoolMap.get(item.schoolId) ?? null : null)
 
         return {
           ...item,
           account: publicAccount,
+          school,
           student: account ? this.getFeedbackStudentInfo(account, profile) : null,
         }
       }),
@@ -333,6 +532,7 @@ export class AdminService {
       authConfig?: Record<string, unknown> | null
       providerConfig?: Record<string, unknown> | null
       termStarts?: Record<string, string>
+      sectionTimes?: Array<{ section: number; start: string; end: string }>
     },
   ) {
     const school = await this.prisma.school.findUnique({ where: { id: schoolId } })
@@ -356,6 +556,10 @@ export class AdminService {
       nextConfig.termStarts = this.normalizeTermStarts(input.termStarts)
     }
 
+    if (input.sectionTimes !== undefined) {
+      nextConfig.sectionTimes = this.normalizeSectionTimes(input.sectionTimes)
+    }
+
     return this.toJson(nextConfig)
   }
 
@@ -371,6 +575,17 @@ export class AdminService {
     return result
   }
 
+  private normalizeSectionTimes(value: Array<{ section: number; start: string; end: string }>) {
+    return (Array.isArray(value) ? value : [])
+      .map((item) => ({
+        section: Number(item.section),
+        start: String(item.start || '').trim(),
+        end: String(item.end || '').trim(),
+      }))
+      .filter((item) => Number.isInteger(item.section) && item.section > 0 && item.start && item.end)
+      .sort((left, right) => left.section - right.section)
+  }
+
   private getTermStarts(config: unknown) {
     const record = this.asRecord(this.asRecord(config).termStarts)
     const result: Record<string, string> = {}
@@ -382,6 +597,32 @@ export class AdminService {
     }
 
     return result
+  }
+
+  private getSectionTimes(config: unknown) {
+    const record = this.asRecord(config)
+    const source = record.sectionTimes ?? this.asRecord(record.provider).sectionTimes
+    return Array.isArray(source) ? this.normalizeSectionTimes(source as Array<{ section: number; start: string; end: string }>) : []
+  }
+
+  private async findSchoolIdsByKeyword(keyword: string) {
+    const value = keyword.trim()
+
+    if (!value) return []
+
+    const schools = await this.prisma.school.findMany({
+      where: {
+        OR: [
+          { id: { contains: value, mode: 'insensitive' } },
+          { name: { contains: value, mode: 'insensitive' } },
+          { shortName: { contains: value, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+      take: 200,
+    })
+
+    return schools.map((school) => school.id)
   }
 
   private getFeedbackProfile(authState: unknown, cacheData: unknown) {
@@ -414,6 +655,25 @@ export class AdminService {
       major: this.getFirstText(profile, ['major']),
       className: this.getFirstText(profile, ['className', 'class']),
       level: this.getFirstText(profile, ['level']),
+    }
+  }
+
+  private getUserContact(profile: Record<string, unknown>) {
+    const phone = this.getFirstText(profile, [
+      'phone',
+      'mobile',
+      'mobilePhone',
+      'phoneNumber',
+      'telephone',
+      'tel',
+    ])
+    const email = this.getFirstText(profile, ['email', 'mail', 'emailAddress'])
+    const direct = this.getFirstText(profile, ['contact', 'contactInfo', 'wechat', 'qq'])
+
+    return {
+      phone: phone ?? null,
+      email: email ?? null,
+      value: direct ?? phone ?? email ?? null,
     }
   }
 
