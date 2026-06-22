@@ -1,5 +1,5 @@
 export default definePageConfig({
-  navigationBarTitleText: '成绩',
+  navigationBarTitleText: '成 绩',
   navigationStyle: 'custom',
 })
 
