@@ -17,13 +17,37 @@ import {
   getWeekday,
 } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
-import { getStoredAccountId, getStoredTermStarts } from '../../shared/storage'
+import { getStoredAccountSummary, getStoredAuthState, getStoredTermStarts } from '../../shared/storage'
 import { buildTermOptions, courseRunsInWeek, getTeachingWeekForDate } from '../../shared/term'
+
+import './index.scss'
 
 const STATUS_CLEAR_DELAY_MS = 3000
 const REMINDER_STATE_REFRESH_MS = 60 * 1000
-const ACADEMIC_YEAR_PATTERN = /(20\d{2})\s*[-~—至]\s*(20\d{2})/
-const ACADEMIC_YEAR_COMPACT_PATTERN = /(20\d{2})[-~—至]?(20\d{2})/
+const WEATHER_CACHE_TTL_MS = 10 * 60 * 1000
+const WEATHER_API_URL = 'https://api.open-meteo.com/v1/forecast'
+const AIR_QUALITY_API_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality'
+
+type SchoolWeatherLocation = {
+  id: string
+  schoolIds: string[]
+  providerIds: string[]
+  names: string[]
+  displayName: string
+  latitude: number
+  longitude: number
+}
+
+type SchoolWeatherIdentity = {
+  schoolId: string
+  providerId: string
+  schoolName: string
+}
+
+type WeatherCacheEntry = {
+  text: string
+  cachedAt: number
+}
 
 type HomeExamItem = {
   id: string
@@ -36,6 +60,66 @@ type HomeExamItem = {
   seatNo: string
   status: 'today' | 'finished'
 }
+
+const EMPTY_SCHOOL_IDENTITY: SchoolWeatherIdentity = {
+  schoolId: '',
+  providerId: '',
+  schoolName: '',
+}
+
+const SCHOOL_WEATHER_LOCATIONS: SchoolWeatherLocation[] = [
+  {
+    id: 'wtbu',
+    schoolIds: ['wtbu', 'moe_4142013242', '4142013242'],
+    providerIds: ['wtbu'],
+    names: ['武汉工商学院', '武工商'],
+    displayName: '武工商',
+    latitude: 30.4611,
+    longitude: 114.279297,
+  },
+  {
+    id: 'whhxit',
+    schoolIds: ['whhxit', 'moe_4142013666', '4142013666'],
+    providerIds: ['whhxit'],
+    names: ['武汉华夏理工学院', '华夏理工学院', '华夏理工'],
+    displayName: '华夏理工',
+    latitude: 30.466706,
+    longitude: 114.412072,
+  },
+]
+
+const WEATHER_CODE_LABELS: Record<number, string> = {
+  0: '晴',
+  1: '晴间多云',
+  2: '多云',
+  3: '阴',
+  45: '有雾',
+  48: '雾凇',
+  51: '小毛毛雨',
+  53: '毛毛雨',
+  55: '大毛毛雨',
+  56: '冻毛毛雨',
+  57: '强冻毛毛雨',
+  61: '小雨',
+  63: '中雨',
+  65: '大雨',
+  66: '冻雨',
+  67: '强冻雨',
+  71: '小雪',
+  73: '中雪',
+  75: '大雪',
+  77: '米雪',
+  80: '阵雨',
+  81: '强阵雨',
+  82: '暴雨',
+  85: '阵雪',
+  86: '强阵雪',
+  95: '雷雨',
+  96: '雷雨冰雹',
+  99: '强雷雨冰雹',
+}
+
+const schoolWeatherCache = new Map<string, WeatherCacheEntry>()
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -61,6 +145,204 @@ function getTextValue(source: Record<string, unknown>, keys: string[]) {
   }
 
   return ''
+}
+
+function normalizeSchoolMatchValue(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, '')
+}
+
+function hasSchoolMatch(candidate: string, keys: string[]) {
+  const normalizedCandidate = normalizeSchoolMatchValue(candidate)
+
+  if (!normalizedCandidate) {
+    return false
+  }
+
+  return keys.some((key) => {
+    const normalizedKey = normalizeSchoolMatchValue(key)
+
+    return normalizedKey && (
+      normalizedCandidate === normalizedKey ||
+      normalizedCandidate.includes(normalizedKey) ||
+      normalizedKey.includes(normalizedCandidate)
+    )
+  })
+}
+
+function resolveSchoolWeatherLocation(identity: SchoolWeatherIdentity) {
+  const candidates = [
+    identity.schoolId,
+    identity.providerId,
+    identity.schoolName,
+  ].filter(Boolean)
+
+  return SCHOOL_WEATHER_LOCATIONS.find((location) => {
+    const keys = [
+      location.id,
+      ...location.schoolIds,
+      ...location.providerIds,
+      ...location.names,
+    ]
+
+    return candidates.some((candidate) => hasSchoolMatch(candidate, keys))
+  }) || null
+}
+
+function getFiniteNumber(value: unknown) {
+  const numberValue = typeof value === 'number'
+    ? value
+    : typeof value === 'string'
+      ? Number(value)
+      : NaN
+
+  return Number.isFinite(numberValue) ? numberValue : undefined
+}
+
+function getWeatherCodeLabel(code: number | undefined) {
+  if (typeof code !== 'number') {
+    return '天气'
+  }
+
+  return WEATHER_CODE_LABELS[code] || '天气'
+}
+
+function formatTemperature(value: number | undefined) {
+  return typeof value === 'number' ? `${Math.round(value)}°` : ''
+}
+
+function formatAirQualityLevel(value: number | undefined) {
+  if (typeof value !== 'number' || value < 0) {
+    return ''
+  }
+
+  if (value <= 50) {
+    return '优'
+  }
+
+  if (value <= 100) {
+    return '良'
+  }
+
+  if (value <= 150) {
+    return '轻度污染'
+  }
+
+  if (value <= 200) {
+    return '中度污染'
+  }
+
+  if (value <= 300) {
+    return '重度污染'
+  }
+
+  return '严重污染'
+}
+
+function buildWeatherRequestUrl(location: SchoolWeatherLocation) {
+  const currentFields = [
+    'temperature_2m',
+    'apparent_temperature',
+    'weather_code',
+  ].join(',')
+  const params = [
+    `latitude=${location.latitude}`,
+    `longitude=${location.longitude}`,
+    `current=${encodeURIComponent(currentFields)}`,
+    'timezone=Asia%2FShanghai',
+    'forecast_days=1',
+  ]
+
+  return `${WEATHER_API_URL}?${params.join('&')}`
+}
+
+function buildAirQualityRequestUrl(location: SchoolWeatherLocation) {
+  const params = [
+    `latitude=${location.latitude}`,
+    `longitude=${location.longitude}`,
+    'current=us_aqi',
+    'timezone=Asia%2FShanghai',
+    'forecast_days=1',
+  ]
+
+  return `${AIR_QUALITY_API_URL}?${params.join('&')}`
+}
+
+function buildWeatherText(data: unknown) {
+  const record = asRecord(data)
+  const current = asRecord(record.current)
+  const legacyCurrent = asRecord(record.current_weather)
+  const temperature = getFiniteNumber(current.temperature_2m) ?? getFiniteNumber(legacyCurrent.temperature)
+  const weatherCode = getFiniteNumber(current.weather_code) ?? getFiniteNumber(legacyCurrent.weathercode)
+  const conditionText = getWeatherCodeLabel(weatherCode)
+  const temperatureText = formatTemperature(temperature)
+
+  return [conditionText, temperatureText].filter(Boolean).join(' ')
+}
+
+function buildAirQualityText(data: unknown) {
+  const record = asRecord(data)
+  const current = asRecord(record.current)
+  const aqi = getFiniteNumber(current.us_aqi)
+  const level = formatAirQualityLevel(aqi)
+
+  return level ? `空气质量 ${level}` : ''
+}
+
+async function requestWeatherData(location: SchoolWeatherLocation) {
+  const response = await Taro.request<unknown>({
+    url: buildWeatherRequestUrl(location),
+    method: 'GET',
+  })
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new Error('天气读取失败')
+  }
+
+  return response.data
+}
+
+async function requestAirQualityData(location: SchoolWeatherLocation) {
+  const response = await Taro.request<unknown>({
+    url: buildAirQualityRequestUrl(location),
+    method: 'GET',
+  })
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new Error('空气质量读取失败')
+  }
+
+  return response.data
+}
+
+function settleRequest<T>(request: Promise<T>) {
+  return request.catch(() => undefined)
+}
+
+async function fetchSchoolWeatherText(location: SchoolWeatherLocation) {
+  const cached = schoolWeatherCache.get(location.id)
+
+  if (cached && Date.now() - cached.cachedAt < WEATHER_CACHE_TTL_MS) {
+    return cached.text
+  }
+
+  const [weatherData, airQualityData] = await Promise.all([
+    settleRequest(requestWeatherData(location)),
+    settleRequest(requestAirQualityData(location)),
+  ])
+  const weatherText = weatherData ? buildWeatherText(weatherData) : ''
+  const airQualityText = airQualityData ? buildAirQualityText(airQualityData) : ''
+
+  if (!weatherText && !airQualityText) {
+    throw new Error('天气读取失败')
+  }
+
+  const text = [location.displayName, weatherText, airQualityText].filter(Boolean).join(' · ')
+  schoolWeatherCache.set(location.id, {
+    text,
+    cachedAt: Date.now(),
+  })
+
+  return text
 }
 
 function getLocalDateKey(date = new Date()) {
@@ -183,30 +465,8 @@ function buildTodayExamItems(data: unknown, now = Date.now()): HomeExamItem[] {
     .sort((left, right) => getExamSortTime(left) - getExamSortTime(right))
 }
 
-function formatHomeTermLabel(timetable: TimetableCacheResponse | null) {
-  const termOptions = buildTermOptions(timetable)
-  const currentTerm =
-    termOptions.find((term) => term.id === timetable?.termId) ||
-    termOptions[0] ||
-    null
-
-  if (!currentTerm) {
-    return ''
-  }
-
-  const text = [currentTerm.label, currentTerm.id, timetable?.termId || ''].filter(Boolean).join(' ')
-  const compactText = text.replace(/\s+/g, '')
-  const yearMatch = text.match(ACADEMIC_YEAR_PATTERN) || compactText.match(ACADEMIC_YEAR_COMPACT_PATTERN)
-
-  if (!yearMatch) {
-    return currentTerm.label
-  }
-
-  const semester = /第\s*二\s*学期|第二学期|下学期|学期\s*2|semester\s*2/i.test(text)
-    ? '2'
-    : '1'
-
-  return `${yearMatch[1]}-${yearMatch[2]} 第${semester}学期`
+function getHomeTone(index: number) {
+  return ['blue', 'green', 'purple', 'red'][index % 4]
 }
 
 export default function HomePage() {
@@ -219,6 +479,8 @@ export default function HomePage() {
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [subscribingReminder, setSubscribingReminder] = useState(false)
   const [reminderSubscribed, setReminderSubscribed] = useState(false)
+  const [schoolIdentity, setSchoolIdentity] = useState<SchoolWeatherIdentity>(EMPTY_SCHOOL_IDENTITY)
+  const [homeWeatherText, setHomeWeatherText] = useState('')
 
   useEffect(() => {
     if (!errorText) {
@@ -247,6 +509,41 @@ export default function HomePage() {
 
     return () => clearInterval(timer)
   }, [accountId, reminderSubscribed])
+
+  const weatherLocation = useMemo(
+    () => resolveSchoolWeatherLocation({
+      schoolId: timetable?.schoolId || schoolIdentity.schoolId,
+      providerId: timetable?.providerId || schoolIdentity.providerId,
+      schoolName: schoolIdentity.schoolName,
+    }),
+    [schoolIdentity.providerId, schoolIdentity.schoolId, schoolIdentity.schoolName, timetable?.providerId, timetable?.schoolId],
+  )
+
+  useEffect(() => {
+    if (!weatherLocation) {
+      setHomeWeatherText('')
+      return undefined
+    }
+
+    let cancelled = false
+
+    setHomeWeatherText(`${weatherLocation.displayName} · 天气加载中`)
+    void fetchSchoolWeatherText(weatherLocation)
+      .then((text) => {
+        if (!cancelled) {
+          setHomeWeatherText(text)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHomeWeatherText(`${weatherLocation.displayName} · 天气暂不可用`)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [weatherLocation])
 
   const todayCourses = useMemo(() => {
     const weekday = getWeekday()
@@ -287,8 +584,18 @@ export default function HomePage() {
   }, [termStarts, timetable])
 
   useDidShow(() => {
-    const id = getStoredAccountId()
+    const authState = getStoredAuthState()
+    const id = authState.accountId
+    const accountSummary = getStoredAccountSummary(id)
+
     setAccountId(id)
+    setSchoolIdentity(id
+      ? {
+          schoolId: authState.schoolId || accountSummary?.schoolId || '',
+          providerId: accountSummary?.providerId || '',
+          schoolName: accountSummary?.school?.name || '',
+        }
+      : EMPTY_SCHOOL_IDENTITY)
     setTermStarts(getStoredTermStarts())
 
     if (!id) {
@@ -297,6 +604,7 @@ export default function HomePage() {
       setLoading(false)
       setErrorText('')
       setReminderSubscribed(false)
+      setHomeWeatherText('')
       return
     }
 
@@ -361,14 +669,16 @@ export default function HomePage() {
 
   function requestReminderSubscribe(templateIds: string[]) {
     return new Promise<boolean>((resolve, reject) => {
-      Taro.requestSubscribeMessage({
+      const options = {
         tmplIds: templateIds,
         success: (result) => {
           const values = result as Record<string, string>
           resolve(templateIds.some((templateId) => values[templateId] === 'accept'))
         },
         fail: (error) => reject(error),
-      })
+      } as unknown as Parameters<typeof Taro.requestSubscribeMessage>[0]
+
+      Taro.requestSubscribeMessage(options)
     })
   }
 
@@ -438,14 +748,17 @@ export default function HomePage() {
   const finishedTodayExamItems = todayExamItems.filter((exam) => exam.status === 'finished')
   const todayItemCount = todayCourses.length + todayExamItems.length
   const showTodayRestText = Boolean(accountId && timetable && !loading && !errorText && todayItemCount === 0)
-  const homeTermLabel = useMemo(() => formatHomeTermLabel(timetable), [timetable])
+  const weatherDisplayText = homeWeatherText || (weatherLocation ? `${weatherLocation.displayName} · 天气加载中` : '')
 
   return (
-    <PageShell title='首页' activeTab='home' contentClassName='home-content'>
+    <PageShell title='首页' activeTab='home' contentClassName='home-content' customNav>
       <View className='date-row'>
-        <View>
-          <View className='date-title'>{formatDateText()}</View>
-          {homeTermLabel && <View className='date-week'>{homeTermLabel}</View>}
+        <View className='date-main'>
+          <View className='date-title'>
+            <Text>{formatDateText()}</Text>
+            {loading && <Text className='date-updated'>同步中</Text>}
+          </View>
+          {weatherDisplayText && <View className='date-weather'>{weatherDisplayText}</View>}
         </View>
         <View className='date-actions'>
           {accountId && (
@@ -462,7 +775,7 @@ export default function HomePage() {
 
       {errorText && <View className='status status-error'>{errorText}</View>}
 
-      {loading && <View className='soft-card state-card'>正在加载课程...</View>}
+      {loading && <View className='soft-card state-card'>正在读取已缓存课程和考试...</View>}
 
       {showGuestEmpty && (
         <View className='soft-card home-empty-card'>
@@ -474,43 +787,40 @@ export default function HomePage() {
 
       {showTodayRestText && <View className='today-empty-text'>今天没有安排，可以好好放松一下。</View>}
 
-      {todayItemCount > 0 && (
-        <View className='section-head'>
-          <View className='section-title'>今日安排</View>
-          <View className='section-head-actions'>
-            <Text>共 {todayItemCount} 项</Text>
-          </View>
+      <View className='section-head'>
+        <View className='section-title'>今日安排</View>
+        <View className='section-head-actions'>
+          <Text>共 {todayItemCount} 项</Text>
         </View>
-      )}
+      </View>
 
       {todayCourses.length > 0 && (
         <View className='home-arrangement-group'>
-          <View className='home-arrangement-title'>
-            <Text>课程</Text>
-            <Text>{todayCourses.length} 项</Text>
-          </View>
           {todayCourses.map((course: CourseItem, index) => {
-            const [startTime = '', endTime = ''] = formatCourseTime(
+            const time = formatCourseTime(
               course,
               timetable?.sectionTimes,
               timetable?.providerId,
-            ).split('-')
+            )
             const timeFallback = formatSections(course)
+            const tone = getHomeTone(index)
 
             return (
               <View className='soft-card course-card home-arrangement-card' key={course.id || `${course.name}-${index}`}>
-                <View className='course-time-column'>
-                  <Text>{startTime || timeFallback}</Text>
-                  <View className='course-time-divider' />
-                  <Text>{endTime || timeFallback}</Text>
-                </View>
                 <View className='course-main'>
+                  <View className='course-meta'>{timeFallback}　　{time || '时间待定'}</View>
                   <View className='course-title'>{course.name || '未命名课程'}</View>
                   <View className='course-place'>
+                    <View className='pin' />
                     <Text>{course.classroom || course.location || '地点待定'}</Text>
                   </View>
                 </View>
-                <View className='teacher course-teacher'>{course.teacher || '教师待定'}</View>
+                <View className='course-side'>
+                  <View className={`class-icon class-icon-${tone}`}>
+                    <View className='card-symbol symbol-book' />
+                  </View>
+                  <Text className='teacher'>{course.teacher || '教师待定'}</Text>
+                </View>
               </View>
             )
           })}
@@ -529,27 +839,33 @@ export default function HomePage() {
 
             return (
               <View
-                className={`soft-card exam-card home-exam-card home-arrangement-card exam-card-${status === 'today' ? 'today' : 'finished'}`}
+                className={`soft-card course-card exam-card home-exam-card home-arrangement-card exam-card-${status === 'today' ? 'today' : 'finished'}`}
                 key={`exam-${exam.id}-${index}`}
               >
-                <View className='exam-time-column'>
-                  <Text className='exam-time-text'>{timeParts.start}</Text>
-                  <Text className='exam-time-separator'>~</Text>
-                  <Text className='exam-time-text'>{timeParts.end}</Text>
-                </View>
-                <View className='exam-main'>
-                  <View className='exam-course'>{exam.courseName}</View>
-                  <View className='exam-meta'>
+                <View className='course-main'>
+                  <View className='course-meta'>考试　　{timeParts.start}-{timeParts.end}</View>
+                  <View className='course-title'>{exam.courseName}</View>
+                  <View className='course-place'>
+                    <View className='pin' />
                     <Text>{exam.location || '地点待安排'}</Text>
-                    {exam.seatNo && <Text>座位：{exam.seatNo}</Text>}
                   </View>
                 </View>
-                <View className={`exam-status exam-status-${status}`}>
-                  {status === 'today' ? '今日' : '已结束'}
+                <View className='course-side'>
+                  <View className='class-icon class-icon-red'>
+                    <View className='card-symbol symbol-exam' />
+                  </View>
+                  <Text className='teacher'>{status === 'today' ? (exam.seatNo || '今日') : '已结束'}</Text>
                 </View>
               </View>
             )
           })}
+        </View>
+      )}
+
+      {!loading && todayItemCount === 0 && !showGuestEmpty && !showTodayRestText && (
+        <View className='soft-card empty-card'>
+          <View className='empty-icon' />
+          <Text>今日暂无安排</Text>
         </View>
       )}
     </PageShell>

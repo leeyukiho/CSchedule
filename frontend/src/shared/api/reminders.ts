@@ -86,14 +86,6 @@ function setCachedReminderPreferences(
   } satisfies CachedReminderPreferences)
 }
 
-export function bindAccountOpenid(accountId: string, openid: string) {
-  return requestApi<{ success: boolean }, { openid: string }>({
-    method: 'POST',
-    path: `/account/${encodeURIComponent(accountId)}/wechat/openid`,
-    data: { openid },
-  })
-}
-
 export async function getReminderPreferences(
   accountId: string,
   options: ReminderPreferencesOptions = {},

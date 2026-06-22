@@ -2,6 +2,22 @@ import { CourseItem, SchoolListItem, SchoolStatus } from './api/types'
 
 export type SectionTimeMap = Record<number, { start: string; end: string }>
 
+export const DEFAULT_SECTION_TIMES: SectionTimeMap = {
+  1: { start: '08:20', end: '09:05' },
+  2: { start: '09:15', end: '10:00' },
+  3: { start: '10:20', end: '11:05' },
+  4: { start: '11:15', end: '12:00' },
+  5: { start: '12:10', end: '12:55' },
+  6: { start: '13:05', end: '13:50' },
+  7: { start: '14:10', end: '14:55' },
+  8: { start: '15:05', end: '15:50' },
+  9: { start: '16:10', end: '16:55' },
+  10: { start: '17:05', end: '17:50' },
+  11: { start: '18:30', end: '19:15' },
+  12: { start: '19:20', end: '20:10' },
+  13: { start: '20:20', end: '21:05' },
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -124,7 +140,10 @@ export function formatCourseTime(
   providerId?: string,
 ) {
   const sections = getCourseSections(course)
-  const timeMap = getSectionTimeMap(sectionTimes, providerId)
+  const timeMap = {
+    ...DEFAULT_SECTION_TIMES,
+    ...getSectionTimeMap(sectionTimes, providerId),
+  }
   const first = timeMap[sections[0]]
   const last = timeMap[sections[sections.length - 1]]
 

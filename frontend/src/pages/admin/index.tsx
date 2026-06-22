@@ -256,9 +256,9 @@ export default function AdminPage() {
     setSchoolTermInputs((current) => ({
       ...current,
       [schoolId]: {
-        termId: '',
-        startDate: '',
         ...(current[schoolId] || {}),
+        termId: current[schoolId]?.termId || '',
+        startDate: current[schoolId]?.startDate || '',
         [field]: value,
       },
     }))

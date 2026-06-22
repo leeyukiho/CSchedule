@@ -9,11 +9,38 @@
 }
 
 .mini-page {
+  padding-bottom: calc(126rpx + env(safe-area-inset-bottom));
+}
+
+.sub-page {
   padding-bottom: calc(36rpx + env(safe-area-inset-bottom));
 }
 
 .content {
   padding: 28rpx 32rpx 0;
+}
+
+.custom-nav {
+  width: 100%;
+  padding-left: 24rpx;
+  padding-right: 24rpx;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background: #ffffff;
+  border-bottom: 1rpx solid #f0f1f4;
+  position: relative;
+}
+
+.custom-nav-title {
+  max-width: 420rpx;
+  color: #101828;
+  font-size: 36rpx;
+  font-weight: 800;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .page-compact {
@@ -594,283 +621,6 @@
   font-size: 30rpx;
   font-weight: 700;
   line-height: 1.45;
-  text-align: center;
-}
-
-.schedule-filters,
-.schedule-toolbar {
-  min-height: 82rpx;
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  margin-bottom: 16rpx;
-}
-
-.schedule-header {
-  min-height: 82rpx;
-  margin-bottom: 16rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18rpx;
-}
-
-.filter-picker,
-.filter-grow {
-  flex: 1;
-  min-width: 0;
-}
-
-.term-week-picker {
-  flex: 1;
-  min-width: 0;
-}
-
-.week-picker {
-  flex: 0 0 188rpx;
-}
-
-.filter-select {
-  height: 72rpx;
-  border: 1rpx solid #d8dee8;
-  border-radius: 14rpx;
-  background: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10rpx;
-  color: #101828;
-  font-size: 24rpx;
-  padding: 0 18rpx;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.filter-select text {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.term-week-select {
-  height: 68rpx;
-  justify-content: center;
-  border-radius: 999rpx;
-  font-size: 24rpx;
-  font-weight: 700;
-}
-
-.schedule-today-button {
-  flex: 0 0 auto;
-  height: 68rpx;
-  min-width: 104rpx;
-  padding: 0 24rpx;
-  border-radius: 999rpx;
-  background: #2f7bff;
-  color: #ffffff;
-  box-shadow: 0 12rpx 28rpx rgba(47, 123, 255, 0.22);
-  font-size: 24rpx;
-  font-weight: 800;
-  line-height: 68rpx;
-  text-align: center;
-}
-
-.chevron-down {
-  width: 16rpx;
-  height: 16rpx;
-  border-right: 3rpx solid currentColor;
-  border-bottom: 3rpx solid currentColor;
-  transform: rotate(45deg);
-  margin-top: -6rpx;
-}
-
-.chevron-up {
-  transform: rotate(225deg);
-  margin-top: 6rpx;
-}
-
-.timetable {
-  width: 684rpx;
-  height: 1452rpx;
-  background: #ffffff;
-  position: relative;
-  overflow: hidden;
-  border: 1rpx solid #eef0f4;
-  border-radius: 12rpx;
-}
-
-.timetable::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(#eef2f7, #eef2f7) 0 0 / 100% 80rpx no-repeat,
-    linear-gradient(#eef2f7, #eef2f7) 0 0 / 54rpx 100% no-repeat;
-}
-
-.weekday,
-.time-cell {
-  position: absolute;
-  z-index: 1;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: #4b5563;
-  font-size: 20rpx;
-  line-height: 1.2;
-  background: #eef2f7;
-}
-
-.timetable-row-line {
-  position: absolute;
-  z-index: 0;
-  background: #f8fafc;
-  pointer-events: none;
-}
-
-.weekday-name {
-  margin-bottom: 5rpx;
-  color: #111827;
-  font-size: 24rpx;
-  font-weight: 800;
-}
-
-.weekday-date {
-  color: #667085;
-  font-size: 19rpx;
-  font-weight: 700;
-}
-
-.weekday-active {
-  color: #2f7bff;
-}
-
-.weekday-active .weekday-name,
-.weekday-active .weekday-date {
-  color: #2f7bff;
-}
-
-.period-index {
-  margin-bottom: 5rpx;
-  color: #111827;
-  font-size: 24rpx;
-  font-weight: 800;
-}
-
-.lesson-block {
-  position: absolute;
-  z-index: 2;
-  box-sizing: border-box;
-  padding: 10rpx 3rpx;
-  border: 1rpx solid rgba(255, 255, 255, 0.48);
-  border-radius: 10rpx;
-  background: #eef4ff;
-  color: #24476f;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  text-align: center;
-  font-size: 20rpx;
-  line-height: 1.2;
-  font-weight: 800;
-  overflow: hidden;
-  backdrop-filter: blur(12rpx);
-  -webkit-backdrop-filter: blur(12rpx);
-}
-
-.lesson-block::before {
-  content: "";
-  position: absolute;
-  left: 1rpx;
-  right: 1rpx;
-  top: 1rpx;
-  height: 36%;
-  border-radius: 9rpx 9rpx 5rpx 5rpx;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0));
-  pointer-events: none;
-}
-
-.lesson-name,
-.lesson-room {
-  position: relative;
-  z-index: 1;
-  display: block;
-  width: 100%;
-  word-break: break-all;
-  text-align: center;
-}
-
-.lesson-room {
-  margin-top: 18rpx;
-  font-size: 16rpx;
-  font-weight: 700;
-  line-height: 1.18;
-}
-
-.lesson-detail-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 32rpx;
-  background: rgba(16, 24, 40, 0.32);
-}
-
-.lesson-detail-card {
-  width: 100%;
-  padding: 30rpx 28rpx 26rpx;
-  border-radius: 16rpx 16rpx 0 0;
-  background: #ffffff;
-  box-shadow: 0 -18rpx 46rpx rgba(16, 24, 40, 0.16);
-}
-
-.lesson-detail-title {
-  margin-bottom: 22rpx;
-  color: #101828;
-  font-size: 34rpx;
-  font-weight: 800;
-  line-height: 1.25;
-}
-
-.lesson-detail-row {
-  min-height: 52rpx;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24rpx;
-  color: #344054;
-  font-size: 26rpx;
-  line-height: 1.4;
-}
-
-.lesson-detail-row text:first-child {
-  flex: 0 0 88rpx;
-  color: #667085;
-}
-
-.lesson-detail-row text:last-child {
-  flex: 1;
-  min-width: 0;
-  text-align: right;
-}
-
-.lesson-detail-close {
-  height: 76rpx;
-  margin-top: 24rpx;
-  border-radius: 999rpx;
-  background: #f2f4f7;
-  color: #101828;
-  font-size: 26rpx;
-  font-weight: 800;
-  line-height: 76rpx;
   text-align: center;
 }
 
@@ -1721,9 +1471,11 @@
 }
 
 .grade-row {
-  min-height: 112rpx;
-  padding: 22rpx 0;
-  border-top: 1rpx solid #eef0f4;
+  min-height: 45rpx;
+  padding: 0;
+  display: flex;
+  border-bottom: 1rpx solid #eef0f4;
+  border-top: 0;
 }
 
 .grade-course {

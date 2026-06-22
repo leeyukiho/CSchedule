@@ -15,12 +15,6 @@ function normalizeAccount(response: StudentAccountSummary): StudentAccountSummar
   }
 }
 
-export function listAccounts() {
-  return requestApi<StudentAccountSummary[]>({
-    path: '/account',
-  })
-}
-
 export async function getAccount(
   accountId: string,
   options: AccountCacheOptions = {},

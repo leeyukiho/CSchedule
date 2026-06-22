@@ -40,6 +40,26 @@ interface CloudCredentialSyncResponse {
 
 let cloudInitialized = false
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>
+
+    for (const key of ['errMsg', 'message', 'errorMessage']) {
+      const value = record[key]
+
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim()
+      }
+    }
+  }
+
+  return String(error || '')
+}
+
 function getCloudApi() {
   const cloud = (Taro as unknown as { cloud?: unknown }).cloud
 
@@ -108,16 +128,47 @@ export async function runCredentialSyncWithCloud(
     ...syncRequest,
   }
   const syncUrl = cloudFunction?.url
+  const envId = process.env.TARO_APP_CLOUDBASE_ENV_ID
+  const cloud = getCloudApi()
+
+  if (cloudFunction?.functionName && envId && cloud?.callFunction) {
+    if (!cloudInitialized) {
+      cloud.init?.({ env: envId })
+      cloudInitialized = true
+    }
+
+    try {
+      const response = await cloud.callFunction({
+        name: cloudFunction.functionName,
+        data: payload,
+      })
+
+      return unwrapCloudCredentialSyncResult(response.result)
+    } catch (error) {
+      if (!syncUrl) {
+        throw new Error(getErrorMessage(error) || 'CLOUD_SYNC_CALL_FAILED')
+      }
+    }
+  }
 
   if (syncUrl) {
-    const response = await Taro.request<
+    let response: Taro.request.SuccessCallbackResult<
       CloudCredentialSyncResponse | CloudCredentialSyncResult
-    >({
-      url: syncUrl,
-      method: 'POST',
-      data: payload,
-      header: { 'content-type': 'application/json' },
-    })
+    >
+
+    try {
+      response = await Taro.request<
+        CloudCredentialSyncResponse | CloudCredentialSyncResult
+      >({
+        url: syncUrl,
+        method: 'POST',
+        data: payload,
+        timeout: 20000,
+        header: { 'content-type': 'application/json' },
+      })
+    } catch (error) {
+      throw new Error(getErrorMessage(error) || 'CLOUD_SYNC_REQUEST_FAILED')
+    }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw new Error(`CLOUD_SYNC_FAILED: ${response.statusCode}`)
@@ -129,9 +180,6 @@ export async function runCredentialSyncWithCloud(
   if (!cloudFunction?.functionName) {
     throw new Error('CLOUD_SYNC_FUNCTION_NOT_CONFIGURED')
   }
-
-  const envId = process.env.TARO_APP_CLOUDBASE_ENV_ID
-  const cloud = getCloudApi()
 
   if (!envId || !cloud?.callFunction) {
     throw new Error('CLOUD_SYNC_NOT_CONFIGURED')

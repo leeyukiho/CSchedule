@@ -7,6 +7,8 @@ import { FeatureCacheResponse, FeatureDisplayConfig, FeatureDisplayField } from 
 import { PageShell } from '../../shared/layout'
 import { getStoredAccountId } from '../../shared/storage'
 
+import './index.scss'
+
 type ScoreGroup = {
   id: string
   title: string
@@ -190,24 +192,6 @@ function countScoreItems(groups: ScoreGroup[]) {
   return groups.reduce((count, group) => count + group.items.length, 0)
 }
 
-function getScoreFieldValueClass(field: FeatureDisplayField) {
-  const fieldName = field.key.toLowerCase()
-
-  if (fieldName.includes('credit')) {
-    return 'grade-field-value grade-field-value-credit'
-  }
-
-  if (fieldName.includes('gpa')) {
-    return 'grade-field-value grade-field-value-gpa'
-  }
-
-  if (field.primary || fieldName.includes('score') || fieldName.includes('grade')) {
-    return 'grade-field-value grade-field-value-score'
-  }
-
-  return 'grade-field-value'
-}
-
 function hasFeatureCache(feature: FeatureCacheResponse | null) {
   return Boolean(
     feature &&
@@ -385,8 +369,11 @@ function getExamDateText(exam: ExamItem) {
     return '待定'
   }
 
-  const [, month = '', day = ''] = exam.date.match(/^\d{4}-(\d{2})-(\d{2})$/) || []
-  return month && day ? `${month}/${day}` : exam.date
+  const [, month = '', day = ''] =
+    exam.date.match(/^\d{4}-(\d{1,2})-(\d{1,2})$/) ||
+    exam.date.match(/^(\d{1,2})\/(\d{1,2})$/) ||
+    []
+  return month && day ? `${Number(month)}月${Number(day)}日` : exam.date
 }
 
 function getExamTimeParts(exam: ExamItem) {
@@ -422,6 +409,7 @@ export default function GradesPage() {
   const [errorText, setErrorText] = useState('')
   const [collapsedSemesters, setCollapsedSemesters] = useState<Record<string, boolean>>({})
   const [showAllExams, setShowAllExams] = useState(false)
+  const [expandedExamIds, setExpandedExamIds] = useState<Record<string, boolean>>({})
   const [nowMs, setNowMs] = useState(() => Date.now())
 
   useEffect(() => {
@@ -464,6 +452,7 @@ export default function GradesPage() {
         setExams(cachedExamData)
         setCollapsedSemesters({})
         setShowAllExams(false)
+        setExpandedExamIds({})
 
         const [scoreData, examData] = await Promise.all([
           hasFeatureCache(cachedScoreData)
@@ -517,15 +506,35 @@ export default function GradesPage() {
   const visibleExamItems = showAllExams ? examItems : visibleCollapsedExamItems
   const examCount = examSections.reduce((count, section) => count + section.items.length, 0)
   const shouldShowCollapsedExamPlaceholder = !showAllExams && examCount > 0 && visibleCollapsedExamItems.length === 0
+  const examSummaryTitle = examCount
+    ? `共 ${examCount} 场考试`
+    : '暂无考试安排'
+  const examSummarySubtitle = visibleCollapsedExamItems[0]
+    ? `${visibleCollapsedExamItems[0].exam.courseName} ${getExamStatusText(visibleCollapsedExamItems[0].status)}`
+    : (examCount ? '点击展开查看全部考试记录' : '请同步后查看最新考试信息')
   const toggleSemester = (id: string) => {
     setCollapsedSemesters((current) => ({ ...current, [id]: !current[id] }))
   }
   const toggleExamSection = () => {
     setShowAllExams((current) => !current)
   }
+  const getExamKey = (status: ExamDisplayStatus, exam: ExamItem, index: number) =>
+    `${status}-${exam.id}-${index}`
+  const toggleExam = (key: string) => {
+    setExpandedExamIds((current) => ({ ...current, [key]: !current[key] }))
+  }
+  const getScoreFieldValue = (item: Record<string, unknown>, matches: string[], fallbackIndex: number) => {
+    const matchedField = scoreItemFields.find((field, index) => (
+      index > 0 &&
+      matches.some((match) => field.key.toLowerCase().includes(match) || field.label.includes(match))
+    ))
+    const field = matchedField || scoreItemFields[fallbackIndex]
+
+    return field ? getTextValue(item, field) : '--'
+  }
 
   return (
-    <PageShell title='成绩' activeTab='grades'>
+    <PageShell title='成绩' activeTab='grades' customNav contentClassName='grades-page'>
       <View className='score-summary'>
         <View className='score-summary-title'>学业总览</View>
         <View className='metric-row'>
@@ -542,62 +551,98 @@ export default function GradesPage() {
       {errorText && <View className='status status-error'>{errorText}</View>}
       {loading && <View className='soft-card state-card'>正在读取成绩...</View>}
 
-      <View className='exam-list'>
-        <View className='exam-section-title'>
-          <View>
-            <Text>考试安排</Text>
-            <View className='exam-count'>{examCount}</View>
-          </View>
-          <View className='exam-toggle' onClick={toggleExamSection}>
-            <View className={showAllExams ? 'chevron-down chevron-up' : 'chevron-down'} />
-          </View>
-        </View>
-        {visibleExamItems.map(({ exam, status, isToday, showsTodayStatus }, index) => {
-          const timeParts = getExamTimeParts(exam)
-
-          return (
-            <View
-              className={`soft-card exam-card exam-card-${status}${isToday ? ' exam-card-today' : ''}`}
-              key={`${status}-${exam.id}-${index}`}
-            >
-              <View className='exam-time-column'>
-                <Text className='exam-date'>{timeParts.date}</Text>
-                <Text className='exam-time-text'>
-                  {timeParts.start}
-                </Text>
-                <Text className='exam-time-separator'>~</Text>
-                <Text className='exam-time-text'>
-                  {timeParts.end}
-                </Text>
-              </View>
-              <View className='exam-main'>
-                <View className='exam-course'>{exam.courseName}</View>
-                <View className='exam-meta'>
-                  <Text>{exam.location || '地点待安排'}</Text>
-                  {exam.seatNo && <Text>座位：{exam.seatNo}</Text>}
-                </View>
-                {exam.remark && exam.remark !== '--' && <View className='exam-remark'>{exam.remark}</View>}
-              </View>
-              <View className={`exam-status exam-status-${showsTodayStatus ? 'today' : status}`}>
-                {showsTodayStatus ? '今日' : getExamStatusText(status)}
-              </View>
+      <View className='exam-section'>
+        <View className='filter'>考试安排 <View className='exam-count'>{examCount}</View></View>
+        {!examCount && (
+          <View className='soft-card exam-empty'>请同步后查看最新考试信息</View>
+        )}
+        {examCount > 0 && (
+          <View
+            className={`soft-card exam-stack${showAllExams ? ' exam-stack-open' : ''}`}
+            onClick={toggleExamSection}
+          >
+            <View className='exam-stack-main'>
+              <View className='exam-stack-title'>{examSummaryTitle}</View>
+              <View className='exam-stack-subtitle'>{examSummarySubtitle}</View>
             </View>
-          )
-        })}
-        {shouldShowCollapsedExamPlaceholder && (
-          <View className='soft-card exam-card'>
-            <View>
-              <View className='exam-course'>暂未安排任何考试</View>
-              <View className='exam-meta'>
-                <Text>点击右侧箭头可查看全部考试记录</Text>
-              </View>
-            </View>
+            <View className='exam-stack-count'>{examCount}</View>
+            <View className='exam-stack-toggle' />
           </View>
         )}
-        {!examCount && (
-          <View className='soft-card exam-empty-card'>
-            <View className='exam-empty-title'>暂无考试安排</View>
-            <View className='exam-empty-desc'>请同步后查看最新考试信息</View>
+        {shouldShowCollapsedExamPlaceholder && (
+          <View className='soft-card exam-empty'>点击展开查看全部考试记录</View>
+        )}
+        {showAllExams && visibleExamItems.length > 0 && (
+          <View className='exam-list'>
+            {visibleExamItems.map(({ exam, status, showsTodayStatus }, index) => {
+              const timeParts = getExamTimeParts(exam)
+              const examKey = getExamKey(status, exam, index)
+              const expanded = Boolean(expandedExamIds[examKey])
+
+              return (
+                <View
+                  className={`soft-card exam-row exam-row-${status} ${expanded ? 'exam-row-expanded' : 'exam-row-collapsed'}`}
+                  key={examKey}
+                  onClick={() => toggleExam(examKey)}
+                >
+                  <View className='exam-head'>
+                    <View className='exam-date'>
+                      <Text>{timeParts.date}</Text>
+                      <Text className='exam-date-time'>{status === 'upcoming' ? `${timeParts.start}-${timeParts.end}` : getExamStatusText(status)}</Text>
+                    </View>
+                    <View className='exam-main'>
+                      <View className='exam-title'>{exam.courseName}</View>
+                      <View className='exam-meta'>
+                        {exam.examType && exam.examType !== '--' && <Text>{exam.examType}</Text>}
+                        <Text className='exam-meta-location'>{status === 'upcoming' ? (exam.location || '地点待安排') : getExamStatusText(status)}</Text>
+                        {exam.seatNo && <Text>座位：{exam.seatNo}</Text>}
+                      </View>
+                    </View>
+                    <View className={`exam-status exam-status-${showsTodayStatus ? 'today' : status}`}>
+                      {showsTodayStatus ? '今日' : getExamStatusText(status)}
+                    </View>
+                    <View className={expanded ? 'exam-toggle exam-toggle-open' : 'exam-toggle'} />
+                  </View>
+
+                  {expanded && (
+                    <View className='exam-detail'>
+                      <View className='exam-detail-grid'>
+                        <View className='exam-detail-item'>
+                          <Text className='exam-detail-label'>日期</Text>
+                          <Text className='exam-detail-value'>{timeParts.date}</Text>
+                        </View>
+                        <View className='exam-detail-item exam-detail-time-item'>
+                          <Text className='exam-detail-label'>时间</Text>
+                          <Text className='exam-detail-value'>{timeParts.start}-{timeParts.end}</Text>
+                        </View>
+                        <View className='exam-detail-item'>
+                          <Text className='exam-detail-label'>状态</Text>
+                          <Text className='exam-detail-value'>{getExamStatusText(status)}</Text>
+                        </View>
+                        <View className='exam-detail-location-row'>
+                          <View className='exam-detail-item exam-detail-location-item'>
+                            <Text className='exam-detail-label'>地点</Text>
+                            <Text className='exam-detail-value'>{exam.location || '地点待安排'}</Text>
+                          </View>
+                          {exam.seatNo && (
+                            <View className='exam-detail-item exam-detail-seat-item'>
+                              <Text className='exam-detail-label'>座位</Text>
+                              <Text className='exam-detail-value'>{exam.seatNo}</Text>
+                            </View>
+                          )}
+                        </View>
+                        {exam.remark && exam.remark !== '--' && (
+                          <View className='exam-detail-item'>
+                            <Text className='exam-detail-label'>备注</Text>
+                            <Text className='exam-detail-value'>{exam.remark}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )
+            })}
           </View>
         )}
       </View>
@@ -639,21 +684,19 @@ export default function GradesPage() {
             <View className={collapsedSemesters[group.id] ? 'chevron-down' : 'chevron-down chevron-up'} />
           </View>
           {!collapsedSemesters[group.id] && (
-            <View className='grade-list'>
+            <View className='grade-table'>
+              <View className='grade-row'>
+                <View className='grade-cell grade-head grade-name'>课程名称</View>
+                <View className='grade-cell grade-head grade-num'>学分</View>
+                <View className='grade-cell grade-head grade-num'>成绩</View>
+                <View className='grade-cell grade-head grade-num'>绩点</View>
+              </View>
               {group.items.map((item, index) => (
                 <View className='grade-row' key={`${group.id}-${index}`}>
-                  <View className='grade-course'>{getTextValue(item, scoreItemFields[0])}</View>
-                  <View className='grade-fields'>
-                    {scoreItemFields.slice(1).map((field) => (
-                      <Text
-                        className={field.primary ? 'grade-field grade-field-primary' : 'grade-field'}
-                        key={field.key}
-                      >
-                        <Text>{field.label}：</Text>
-                        <Text className={getScoreFieldValueClass(field)}>{getTextValue(item, field)}</Text>
-                      </Text>
-                    ))}
-                  </View>
+                  <View className='grade-cell grade-name'>{getTextValue(item, scoreItemFields[0])}</View>
+                  <View className='grade-cell grade-num'>{getScoreFieldValue(item, ['credit', '学分'], 1)}</View>
+                  <View className='grade-cell grade-num grade-score'>{getScoreFieldValue(item, ['score', 'grade', '成绩'], 2)}</View>
+                  <View className='grade-cell grade-num'>{getScoreFieldValue(item, ['gpa', '绩点'], 3)}</View>
                 </View>
               ))}
             </View>
