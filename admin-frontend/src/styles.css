@@ -885,8 +885,11 @@ tbody tr:hover {
 
 .modal {
   width: min(720px, 100%);
+  max-width: calc(100vw - 32px);
   max-height: min(760px, 88vh);
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow-strong);
@@ -922,25 +925,30 @@ tbody tr:hover {
 .modal-body {
   display: grid;
   gap: 10px;
+  min-width: 0;
   padding: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .config-form {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .form-grid {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .form-grid.two {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .provider-simple-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .form-section {
@@ -988,26 +996,67 @@ tbody tr:hover {
 .term-row {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 180px 38px;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 180px) minmax(110px, auto);
   align-items: end;
   gap: 8px;
+  min-width: 0;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #f8fafc;
 }
 
+.term-display {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid #dbeafe;
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.term-label {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.term-id-code {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: "Fira Code", Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.term-row-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 34px;
+  min-width: 0;
+}
+
 .section-time-table {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .section-time-head,
 .section-time-row {
   display: grid;
-  grid-template-columns: 96px minmax(120px, 1fr) minmax(120px, 1fr) 38px;
+  grid-template-columns: minmax(72px, 96px) minmax(0, 1fr) minmax(0, 1fr) 38px;
   align-items: end;
   gap: 8px;
+  min-width: 0;
 }
 
 .section-time-head {
@@ -1040,7 +1089,7 @@ tbody tr:hover {
 }
 
 .inline-footer {
-  margin: 0 -16px -16px;
+  margin: 0 -12px -12px;
   padding-bottom: 0;
 }
 

@@ -85,6 +85,7 @@ interface SchoolItem {
   dataAccess?: Record<string, unknown>
   capabilities?: Record<string, boolean>
   termStarts?: Record<string, string>
+  terms?: TermOption[]
   sectionTimes?: SectionTimeItem[]
   userCount?: number
 }
@@ -218,6 +219,13 @@ interface TermStartRow {
   id: string
   termId: string
   startDate: string
+  label?: string
+  locked?: boolean
+}
+
+interface TermOption {
+  id: string
+  label?: string
 }
 
 interface SectionTimeItem {
@@ -1112,15 +1120,37 @@ function getProviderDraft(school: SchoolItem) {
   }
 }
 
-function createTermStartRows(termStarts: unknown): TermStartRow[] {
+function createTermStartRows(termStarts: unknown, terms: TermOption[] = []): TermStartRow[] {
   const record = termStarts && typeof termStarts === 'object' && !Array.isArray(termStarts)
     ? termStarts as Record<string, unknown>
     : {}
-  const rows = Object.entries(record).map(([termId, startDate]) => ({
-    id: `${termId}-${String(startDate)}`,
-    termId,
-    startDate: String(startDate || ''),
-  }))
+  const termMap = new Map<string, TermStartRow>()
+
+  for (const term of terms) {
+    const termId = String(term.id || '').trim()
+    if (!termId || termMap.has(termId)) continue
+
+    termMap.set(termId, {
+      id: `term-${termId}`,
+      termId,
+      label: term.label || termId,
+      startDate: String(record[termId] || ''),
+      locked: true,
+    })
+  }
+
+  for (const [termId, startDate] of Object.entries(record)) {
+    if (termMap.has(termId)) continue
+    termMap.set(termId, {
+      id: `manual-${termId}`,
+      termId,
+      label: termId,
+      startDate: String(startDate || ''),
+      locked: Boolean(termId),
+    })
+  }
+
+  const rows = [...termMap.values()]
 
   return rows.length ? rows : [{ id: String(Date.now()), termId: '', startDate: '' }]
 }
@@ -1961,6 +1991,7 @@ function ConfigModal({ modal, onClose, onSubmit }: { modal: ModalState; onClose:
           {modal.mode === 'term' && (
             <TermStartForm
               value={modal.value}
+              school={modal.school}
               onCancel={onClose}
               onSubmit={onSubmit}
             />
@@ -2062,8 +2093,10 @@ function SubmissionConfirmModal(props: { action: SubmissionConfirmState; onCance
   )
 }
 
-function TermStartForm(props: { value: unknown; onCancel: () => void; onSubmit: (value: Record<string, string>) => void }) {
-  const [rows, setRows] = useState<TermStartRow[]>(() => createTermStartRows(props.value))
+function TermStartForm(props: { value: unknown; school?: SchoolItem; onCancel: () => void; onSubmit: (value: Record<string, string>) => void }) {
+  const knownTerms = props.school?.terms || []
+  const hasKnownTerms = knownTerms.length > 0
+  const [rows, setRows] = useState<TermStartRow[]>(() => createTermStartRows(props.value, knownTerms))
 
   const updateRow = (id: string, patch: Partial<TermStartRow>) => {
     setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row))
@@ -2075,6 +2108,12 @@ function TermStartForm(props: { value: unknown; onCancel: () => void; onSubmit: 
       return nextRows.length ? nextRows : [{ id: String(Date.now()), termId: '', startDate: '' }]
     })
   }
+  const addManualRow = () => {
+    setRows((current) => [
+      ...current,
+      { id: `${Date.now()}-${current.length}`, termId: '', startDate: '' },
+    ])
+  }
 
   return (
     <form className="config-form" onSubmit={(event) => {
@@ -2085,24 +2124,31 @@ function TermStartForm(props: { value: unknown; onCancel: () => void; onSubmit: 
         <header className="form-section-header">
           <div>
             <h3>默认首周</h3>
-            <p>每个学期填写该学期第一周的周一日期。</p>
+            <p>{hasKnownTerms ? '已同步到的学期会直接显示，只需要填写第一周的周一日期。' : '还没有同步到学期列表，可先手动填写学期 ID 和首周日期。'}</p>
           </div>
-          <button className="button secondary" type="button" onClick={() => setRows((current) => [...current, { id: `${Date.now()}-${current.length}`, termId: '', startDate: '' }])}>
+          <button className="button secondary" type="button" onClick={addManualRow}>
             <Plus size={16} />
-            添加学期
+            {hasKnownTerms ? '手动补充' : '添加学期'}
           </button>
         </header>
         <div className="term-row-list">
         {rows.map((row) => (
           <div className="term-row" key={row.id}>
-            <label className="field">
-              <span>学期 ID</span>
-              <input
-                value={row.termId}
-                placeholder="2025-2026-2"
-                onChange={(event) => updateRow(row.id, { termId: event.target.value })}
-              />
-            </label>
+            {row.locked ? (
+              <div className="term-display">
+                <span className="term-label">{row.label || row.termId}</span>
+                <span className="term-id-code">{row.termId}</span>
+              </div>
+            ) : (
+              <label className="field">
+                <span>学期 ID</span>
+                <input
+                  value={row.termId}
+                  placeholder="2025-2026-2"
+                  onChange={(event) => updateRow(row.id, { termId: event.target.value })}
+                />
+              </label>
+            )}
             <label className="field">
               <span>首周周一</span>
               <input
@@ -2111,9 +2157,15 @@ function TermStartForm(props: { value: unknown; onCancel: () => void; onSubmit: 
                 onChange={(event) => updateRow(row.id, { startDate: event.target.value })}
               />
             </label>
-            <button className="button ghost icon-button" type="button" aria-label="删除首周" onClick={() => removeRow(row.id)}>
-              <Trash2 size={16} />
-            </button>
+            <div className="term-row-action">
+              {row.locked ? (
+                <span className="cell-meta">清空日期可移除配置</span>
+              ) : (
+                <button className="button ghost icon-button" type="button" aria-label="删除首周" onClick={() => removeRow(row.id)}>
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </div>
           </div>
         ))}
         </div>

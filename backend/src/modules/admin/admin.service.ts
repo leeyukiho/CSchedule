@@ -72,19 +72,41 @@ export class AdminService {
       }),
       this.prisma.school.count({ where: where as any }),
     ])
+    const schoolIds = schools.map((school) => school.id)
     const userCounts = schools.length
       ? await this.prisma.studentAccount.groupBy({
           by: ['schoolId'],
-          where: { schoolId: { in: schools.map((school) => school.id) } },
+          where: { schoolId: { in: schoolIds } },
           _count: { _all: true },
         })
       : []
+    const courseCaches = schools.length
+      ? (
+          await Promise.all(schoolIds.map((schoolId) => (
+            this.prisma.courseCache.findMany({
+              where: { schoolId },
+              select: {
+                schoolId: true,
+                termId: true,
+                termsJson: true,
+              },
+              orderBy: { syncedAt: 'desc' },
+              take: 20,
+            })
+          )))
+        ).flat()
+      : []
     const userCountMap = new Map(userCounts.map((item) => [item.schoolId, item._count._all]))
+    const termMap = this.getSchoolTermMap(courseCaches)
 
     return {
       items: schools.map((school) => ({
         ...school,
         termStarts: this.getTermStarts(school.config),
+        terms: this.getSchoolTerms(
+          termMap.get(school.id),
+          this.getTermStarts(school.config),
+        ),
         sectionTimes: this.getSectionTimes(school.config),
         userCount: userCountMap.get(school.id) ?? 0,
       })),
@@ -597,6 +619,60 @@ export class AdminService {
     }
 
     return result
+  }
+
+  private getSchoolTermMap(
+    caches: Array<{ schoolId: string; termId: string | null; termsJson: unknown }>,
+  ) {
+    const map = new Map<string, Map<string, { id: string; label: string }>>()
+
+    for (const cache of caches) {
+      const terms = map.get(cache.schoolId) ?? new Map<string, { id: string; label: string }>()
+      this.addTermOption(terms, cache.termId, cache.termId)
+
+      for (const term of Array.isArray(cache.termsJson) ? cache.termsJson : []) {
+        const record = this.asRecord(term)
+        const id = this.getFirstText(record, ['id'])
+        const label = this.getFirstText(record, ['label', 'title', 'name', 'rawLabel'])
+        this.addTermOption(terms, id, label)
+      }
+
+      map.set(cache.schoolId, terms)
+    }
+
+    return map
+  }
+
+  private getSchoolTerms(
+    terms: Map<string, { id: string; label: string }> | undefined,
+    termStarts: Record<string, string>,
+  ) {
+    const result = new Map(terms ?? [])
+
+    for (const termId of Object.keys(termStarts)) {
+      this.addTermOption(result, termId, termId)
+    }
+
+    return [...result.values()]
+  }
+
+  private addTermOption(
+    terms: Map<string, { id: string; label: string }>,
+    idValue: unknown,
+    labelValue: unknown,
+  ) {
+    const id = typeof idValue === 'string' || typeof idValue === 'number'
+      ? String(idValue).trim()
+      : ''
+
+    if (!id || terms.has(id)) {
+      return
+    }
+
+    const label = typeof labelValue === 'string' || typeof labelValue === 'number'
+      ? String(labelValue).trim()
+      : ''
+    terms.set(id, { id, label: label || id })
   }
 
   private getSectionTimes(config: unknown) {
