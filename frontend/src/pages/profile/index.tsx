@@ -4,6 +4,7 @@ import { Button, Image, Input, ScrollView, Text, View } from '@tarojs/components
 
 import { getAccount } from '../../shared/api/accounts'
 import { getProfile, saveProfile } from '../../shared/api/features'
+import { refreshSchoolTermStarts, saveSchoolTermStartsFromResponse } from '../../shared/api/schools'
 import { createManualSync, getSyncJob } from '../../shared/api/sync'
 import { getTimetable } from '../../shared/api/timetable'
 import {
@@ -210,6 +211,10 @@ function logSyncFailure(job: SyncJobResponse) {
   })
 }
 
+function settleSchoolTermStarts(schoolId: string) {
+  return refreshSchoolTermStarts(schoolId).catch(() => null)
+}
+
 async function waitForSyncJob(job: SyncJobResponse) {
   let currentJob = job
   const startedAt = Date.now()
@@ -248,6 +253,7 @@ function persistSyncCache(accountId: string, job: SyncJobResponse) {
         sourceHash: timetable.sourceHash,
         syncedAt: timetable.syncedAt,
       })
+      saveSchoolTermStartsFromResponse(timetable.schoolId, timetable.termStarts)
       clearStoredDataCacheTerms(accountId, 'timetable')
 
       persisted = true
@@ -445,8 +451,12 @@ export default function ProfilePage() {
     setErrorText('')
 
     try {
+      const termStartsRequest = settleSchoolTermStarts(syncAccount.schoolId)
       const job = await createManualSync(syncAccount.id, { targets: ['course', 'profile', 'score', 'exam'] })
-      const finalJob = await waitForSyncJob(job)
+      const [finalJob] = await Promise.all([
+        waitForSyncJob(job),
+        termStartsRequest,
+      ])
 
       if (finalJob.status === 'success') {
         const cachePersisted = persistSyncCache(syncAccount.id, finalJob)

@@ -124,6 +124,12 @@ export interface SchoolListResponse {
   hasMore: boolean
 }
 
+export interface SchoolTermStartsResponse {
+  schoolId: string
+  termStarts: Record<string, string>
+  updatedAt?: string
+}
+
 export type AccountStatus = 'active' | 'need_login' | 'cached_only' | 'disabled' | 'unbound'
 
 export interface AccountSessionSummary {

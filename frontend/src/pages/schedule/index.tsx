@@ -6,7 +6,7 @@ import { getTimetable } from '../../shared/api/timetable'
 import { CourseItem, FeatureDisplayField, TimetableCacheResponse } from '../../shared/api/types'
 import { DEFAULT_SECTION_TIMES, getCourseSections, getSectionTimeMap } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
-import { getStoredAccountId, getStoredTermStarts } from '../../shared/storage'
+import { getStoredAuthState, getStoredTermStarts } from '../../shared/storage'
 import {
   TermOption,
   buildTermOptions,
@@ -329,7 +329,8 @@ export default function SchedulePage() {
   ])
 
   useDidShow(() => {
-    const id = getStoredAccountId()
+    const authState = getStoredAuthState()
+    const id = authState.accountId
     const storedTermStarts = getStoredTermStarts()
     setAccountId(id)
     setTermStarts(storedTermStarts)

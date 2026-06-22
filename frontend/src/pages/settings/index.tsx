@@ -11,6 +11,7 @@ import {
   clearStoredTermStarts,
   getStoredAccountId,
   getStoredTermStarts,
+  getStoredUserTermStarts,
   setStoredTermStart,
 } from '../../shared/storage'
 import { TermOption, buildTermOptions } from '../../shared/term'
@@ -18,12 +19,13 @@ import { TermOption, buildTermOptions } from '../../shared/term'
 export default function SettingsPage() {
   const [terms, setTerms] = useState<TermOption[]>([])
   const [termStarts, setTermStarts] = useState<Record<string, string>>({})
+  const [userTermStarts, setUserTermStarts] = useState<Record<string, string>>({})
   const [selectedTermId, setSelectedTermId] = useState('')
 
   useDidShow(() => {
     const nextAccountId = getStoredAccountId()
 
-    setTermStarts(getStoredTermStarts())
+    refreshTermStartState(nextAccountId)
     void loadTerms(nextAccountId)
   })
 
@@ -51,7 +53,18 @@ export default function SettingsPage() {
 
   function updateTermStart(termId: string, date: string) {
     setStoredTermStart(termId, date)
-    setTermStarts(getStoredTermStarts())
+    refreshTermStartState()
+  }
+
+  function restoreDefaultTermStart(termId: string) {
+    setStoredTermStart(termId, '')
+    refreshTermStartState()
+    Taro.showToast({ title: '已恢复默认', icon: 'success' })
+  }
+
+  function refreshTermStartState(accountId = getStoredAccountId()) {
+    setTermStarts(getStoredTermStarts(accountId))
+    setUserTermStarts(getStoredUserTermStarts(accountId))
   }
 
   const selectedTermIndex = Math.max(
@@ -59,6 +72,7 @@ export default function SettingsPage() {
     0,
   )
   const selectedTerm = terms[selectedTermIndex] || null
+  const selectedTermHasUserStart = Boolean(selectedTerm && userTermStarts[selectedTerm.id])
 
   function clearCache() {
     const currentAccountId = getStoredAccountId()
@@ -66,7 +80,7 @@ export default function SettingsPage() {
     clearStoredAccountId()
     clearStoredAccountSummary(currentAccountId || undefined)
     clearStoredDataCaches(currentAccountId || undefined)
-    clearStoredTermStarts()
+    clearStoredTermStarts(currentAccountId)
     Taro.showToast({ title: '已退出登录', icon: 'success' })
     Taro.switchTab({ url: '/pages/profile/index' })
   }
@@ -102,7 +116,7 @@ export default function SettingsPage() {
                   <View className='settings-desc'>
                     {selectedTerm
                       ? (termStarts[selectedTerm.id]
-                        ? `首周开始：${termStarts[selectedTerm.id]}`
+                        ? `首周开始：${termStarts[selectedTerm.id]}${selectedTermHasUserStart ? '（个人）' : '（默认）'}`
                         : '未设置，将使用默认估算日期')
                       : '请先选择学期'}
                   </View>
@@ -124,6 +138,14 @@ export default function SettingsPage() {
                 {selectedTerm && termStarts[selectedTerm.id] ? '修改日期' : '设置日期'}
               </View>
             </Picker>
+            {selectedTermHasUserStart && selectedTerm && (
+              <View
+                className='small-button settings-reset-button'
+                onClick={() => restoreDefaultTermStart(selectedTerm.id)}
+              >
+                恢复默认
+              </View>
+            )}
           </View>
         )}
         {terms.length === 0 && (

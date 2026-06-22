@@ -23,6 +23,11 @@ export class SchoolsController {
     )
   }
 
+  @Get(':schoolId/term-starts')
+  getSchoolTermStarts(@Param('schoolId') schoolId: string) {
+    return this.schoolsService.getSchoolTermStarts(schoolId)
+  }
+
   @Post(':schoolId/login-context')
   createLoginContext(@Param('schoolId') schoolId: string) {
     return this.schoolsService.createLoginContext(schoolId)

@@ -9,7 +9,7 @@ import {
   hasCloudCredentialSync,
   runCredentialSyncWithCloud,
 } from '../../shared/api/cloud-sync'
-import { createLoginContext, listSchools } from '../../shared/api/schools'
+import { createLoginContext, listSchools, refreshSchoolTermStarts } from '../../shared/api/schools'
 import {
   FeatureCacheResponse,
   LoginContextResponse,
@@ -175,6 +175,10 @@ function getBindErrorMessage(error: unknown) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function settleSchoolTermStarts(schoolId: string) {
+  return refreshSchoolTermStarts(schoolId).catch(() => null)
 }
 
 function getText(value: unknown) {
@@ -575,10 +579,13 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
     setErrorText('')
 
     try {
-      const context = loginContext || (await createLoginContext(selectedSchool.id))
-      const wechatOpenid = await getWechatOpenid()
+      const [context, wechatOpenid] = await Promise.all([
+        loginContext ? Promise.resolve(loginContext) : createLoginContext(selectedSchool.id),
+        getWechatOpenid(),
+      ])
 
       if (context.syncStrategy?.importMode === 'password_server') {
+        const termStartsRequest = settleSchoolTermStarts(selectedSchool.id)
         const sharedCloudImport = getSharedCloudImport(
           context.syncStrategy.cloudFunctions,
           CLOUD_IMPORT_TARGETS,
@@ -647,6 +654,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
             profileCacheData: savedProfileCache,
           }),
         )
+        await termStartsRequest
         setMessage('登录成功，数据已获取。')
         Taro.switchTab({ url: '/pages/index/index' })
         return
@@ -693,6 +701,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
         })
         return
       } else {
+        await settleSchoolTermStarts(selectedSchool.id)
         setMessage('登录成功，课表已获取。')
       }
 

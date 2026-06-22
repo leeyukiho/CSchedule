@@ -8,6 +8,7 @@ import {
   LoginContextResponse,
   SchoolCatalogSeed,
   SchoolListResponse,
+  SchoolTermStartsResponse,
 } from './schools.types'
 import {
   CredentialSaveCapability,
@@ -121,6 +122,31 @@ export class SchoolsService {
       limit,
       offset,
       hasMore: offset + schools.length < total,
+    }
+  }
+
+  async getSchoolTermStarts(schoolId: string): Promise<SchoolTermStartsResponse> {
+    const school = await this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: {
+        id: true,
+        config: true,
+        enabled: true,
+        status: true,
+        updatedAt: true,
+      },
+    })
+
+    if (!school) {
+      throw new NotFoundException('School not found')
+    }
+
+    this.assertSchoolAvailable(school)
+
+    return {
+      schoolId: school.id,
+      termStarts: this.getTermStarts(school.config),
+      updatedAt: school.updatedAt.toISOString(),
     }
   }
 
@@ -286,7 +312,7 @@ export class SchoolsService {
     throw new NotFoundException('School not found')
   }
 
-  private assertSchoolAvailable(school: SchoolCatalogSeed) {
+  private assertSchoolAvailable(school: { enabled: boolean; status: string }) {
     if (!school.enabled || school.status !== 'enabled') {
       throw new NotFoundException('School not available')
     }
@@ -502,6 +528,19 @@ export class SchoolsService {
     return value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {}
+  }
+
+  private getTermStarts(config: unknown) {
+    const record = this.asRecord(this.asRecord(config).termStarts)
+    const result: Record<string, string> = {}
+
+    for (const [termId, date] of Object.entries(record)) {
+      if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        result[termId] = date
+      }
+    }
+
+    return result
   }
 
   private getStatusMessage(enabled: boolean, status: string) {

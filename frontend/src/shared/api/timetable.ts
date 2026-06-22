@@ -1,6 +1,7 @@
 import { requestApi } from './client'
 import { CourseItem, TimetableCacheResponse } from './types'
 import { clearStoredDataCacheTerms, getStoredDataCache, setStoredDataCache } from '../storage'
+import { saveSchoolTermStartsFromResponse } from './schools'
 
 const timetableRequests = new Map<string, Promise<TimetableCacheResponse>>()
 
@@ -34,6 +35,7 @@ export async function getTimetable(
   )
 
   if (!options.forceRefresh && cached) {
+    saveSchoolTermStartsFromResponse(cached.data.schoolId, cached.data.termStarts)
     return cached.data
   }
 
@@ -61,6 +63,7 @@ export async function getTimetable(
           ...cached.data,
           termStarts: response.termStarts || cached.data.termStarts,
         }
+        saveSchoolTermStartsFromResponse(timetable.schoolId, timetable.termStarts)
         setStoredDataCache(accountId, 'timetable', timetable, {
           termId,
           sourceHash: cached.sourceHash,
@@ -75,6 +78,7 @@ export async function getTimetable(
       }
 
       const timetable = normalizeTimetable(response)
+      saveSchoolTermStartsFromResponse(timetable.schoolId, timetable.termStarts)
       setStoredDataCache(accountId, 'timetable', timetable, {
         termId,
         sourceHash: timetable.sourceHash,
@@ -88,6 +92,7 @@ export async function getTimetable(
       return timetable
     } catch (error) {
       if (cached) {
+        saveSchoolTermStartsFromResponse(cached.data.schoolId, cached.data.termStarts)
         return cached.data
       }
 

@@ -45,6 +45,12 @@ export interface SchoolListResponse {
   hasMore: boolean
 }
 
+export interface SchoolTermStartsResponse {
+  schoolId: string
+  termStarts: Record<string, string>
+  updatedAt?: string
+}
+
 export interface LoginContextResponse {
   contextId: string
   mode: LoginMode

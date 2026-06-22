@@ -3,6 +3,7 @@ import Taro, { useRouter } from '@tarojs/taro'
 import { Button, Text, View, WebView } from '@tarojs/components'
 
 import { completeWebviewSync, uploadRawData } from '../../shared/api/raw-data'
+import { refreshSchoolTermStarts } from '../../shared/api/schools'
 import {
   DataTarget,
   FeatureCacheResponse,
@@ -367,6 +368,15 @@ export default function WebviewSyncPage() {
   const uploadedPayloadHashes = useRef(new Set<string>())
   const uploadingPayloadHashes = useRef(new Set<string>())
   const closingRef = useRef(false)
+  const termStartsRequestRef = useRef<Promise<unknown> | null>(null)
+
+  useEffect(() => {
+    if (!schoolId) {
+      return
+    }
+
+    termStartsRequestRef.current = refreshSchoolTermStarts(schoolId).catch(() => null)
+  }, [schoolId])
 
   useEffect(() => {
     if (!message && !errorText) {
@@ -502,6 +512,7 @@ export default function WebviewSyncPage() {
       }
 
       if (result.canCloseWebview && !closingRef.current) {
+        await termStartsRequestRef.current
         closingRef.current = true
         setMessage('同步完成，正在进入小程序。')
         Taro.switchTab({ url: '/pages/index/index' })
@@ -533,7 +544,9 @@ export default function WebviewSyncPage() {
         if (result.canCloseWebview && !closingRef.current) {
           closingRef.current = true
           setStoredAccountId(activeAccountId, schoolId)
-          Taro.switchTab({ url: '/pages/index/index' })
+          void Promise.resolve(termStartsRequestRef.current).then(() => {
+            Taro.switchTab({ url: '/pages/index/index' })
+          })
         } else {
           setErrorText(
             `仍缺少必要数据：${result.missingRequiredTargets.join(', ') || 'course'}`,

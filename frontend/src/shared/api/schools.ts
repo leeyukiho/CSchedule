@@ -1,5 +1,6 @@
 import { requestApi } from './client'
-import { LoginContextResponse, SchoolListResponse } from './types'
+import { LoginContextResponse, SchoolListResponse, SchoolTermStartsResponse } from './types'
+import { setStoredSchoolTermStarts } from '../storage'
 
 export interface ListSchoolsOptions {
   keyword?: string
@@ -15,6 +16,7 @@ const schoolListCache = new Map<string, {
   value: SchoolListResponse
 }>()
 const schoolListRequests = new Map<string, Promise<SchoolListResponse>>()
+const schoolTermStartsRequests = new Map<string, Promise<SchoolTermStartsResponse>>()
 
 function createSchoolListCacheKey(options: ListSchoolsOptions) {
   return JSON.stringify({
@@ -86,4 +88,44 @@ export function createLoginContext(schoolId: string) {
     method: 'POST',
     path: `/schools/${encodeURIComponent(schoolId)}/login-context`,
   })
+}
+
+export function saveSchoolTermStartsFromResponse(
+  schoolId: string,
+  termStarts?: Record<string, string>,
+  updatedAt?: string,
+) {
+  if (!schoolId || !termStarts) {
+    return
+  }
+
+  setStoredSchoolTermStarts(schoolId, termStarts, { updatedAt })
+}
+
+export async function refreshSchoolTermStarts(schoolId: string) {
+  const cleanSchoolId = schoolId.trim()
+
+  if (!cleanSchoolId) {
+    return null
+  }
+
+  const pending = schoolTermStartsRequests.get(cleanSchoolId)
+
+  if (pending) {
+    return pending
+  }
+
+  const request = requestApi<SchoolTermStartsResponse>({
+    path: `/schools/${encodeURIComponent(cleanSchoolId)}/term-starts`,
+  })
+    .then((response) => {
+      saveSchoolTermStartsFromResponse(response.schoolId, response.termStarts, response.updatedAt)
+      return response
+    })
+    .finally(() => {
+      schoolTermStartsRequests.delete(cleanSchoolId)
+    })
+
+  schoolTermStartsRequests.set(cleanSchoolId, request)
+  return request
 }

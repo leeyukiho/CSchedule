@@ -4,6 +4,8 @@ import type { StudentAccountSummary } from './api/types'
 
 const AUTH_STATE_KEY = 'cschedule.authState'
 const TERM_STARTS_KEY = 'cschedule.termStarts'
+const SCHOOL_TERM_STARTS_PREFIX = 'cschedule.schoolTermStarts.'
+const ACCOUNT_TERM_STARTS_PREFIX = 'cschedule.accountTermStarts.'
 const DATA_CACHE_PREFIX = 'cschedule.dataCache.'
 const ACCOUNT_SUMMARY_PREFIX = 'cschedule.accountSummary.'
 
@@ -134,9 +136,13 @@ export function clearStoredAccountSummary(accountId?: string) {
 }
 
 function normalizeTermStarts(value: unknown): Record<string, string> {
-  const source = value && typeof value === 'object' && !Array.isArray(value)
+  const record = value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {}
+  const wrappedTermStarts = record.termStarts
+  const source = wrappedTermStarts && typeof wrappedTermStarts === 'object' && !Array.isArray(wrappedTermStarts)
+    ? (wrappedTermStarts as Record<string, unknown>)
+    : record
   const result: Record<string, string> = {}
 
   for (const [key, date] of Object.entries(source)) {
@@ -148,12 +154,88 @@ function normalizeTermStarts(value: unknown): Record<string, string> {
   return result
 }
 
-export function getStoredTermStarts() {
-  return normalizeTermStarts(Taro.getStorageSync(TERM_STARTS_KEY))
+function getSchoolTermStartsKey(schoolId: string) {
+  return `${SCHOOL_TERM_STARTS_PREFIX}${schoolId}`
 }
 
-export function setStoredTermStart(termId: string, startDate: string) {
-  const starts = getStoredTermStarts()
+function getAccountTermStartsKey(accountId: string) {
+  return `${ACCOUNT_TERM_STARTS_PREFIX}${accountId}`
+}
+
+function migrateLegacyTermStarts(accountId: string) {
+  if (!accountId) {
+    return
+  }
+
+  const legacyStarts = normalizeTermStarts(Taro.getStorageSync(TERM_STARTS_KEY))
+
+  if (Object.keys(legacyStarts).length === 0) {
+    return
+  }
+
+  const existingStarts = normalizeTermStarts(Taro.getStorageSync(getAccountTermStartsKey(accountId)))
+
+  Taro.setStorageSync(getAccountTermStartsKey(accountId), {
+    ...legacyStarts,
+    ...existingStarts,
+  })
+  Taro.removeStorageSync(TERM_STARTS_KEY)
+}
+
+export function getStoredSchoolTermStarts(schoolId = getStoredAuthState().schoolId) {
+  if (!schoolId) {
+    return {}
+  }
+
+  return normalizeTermStarts(Taro.getStorageSync(getSchoolTermStartsKey(schoolId)))
+}
+
+export function setStoredSchoolTermStarts(
+  schoolId: string,
+  termStarts: Record<string, string> = {},
+  options: { updatedAt?: string } = {},
+) {
+  if (!schoolId) {
+    return
+  }
+
+  Taro.setStorageSync(getSchoolTermStartsKey(schoolId), {
+    termStarts: normalizeTermStarts(termStarts),
+    updatedAt: options.updatedAt,
+    cachedAt: new Date().toISOString(),
+  })
+}
+
+export function getStoredUserTermStarts(accountId = getStoredAccountId()) {
+  if (!accountId) {
+    return {}
+  }
+
+  migrateLegacyTermStarts(accountId)
+
+  return normalizeTermStarts(Taro.getStorageSync(getAccountTermStartsKey(accountId)))
+}
+
+export function getStoredTermStarts(
+  accountId = getStoredAuthState().accountId,
+  schoolId = getStoredAuthState().schoolId,
+) {
+  return {
+    ...getStoredSchoolTermStarts(schoolId),
+    ...getStoredUserTermStarts(accountId),
+  }
+}
+
+export function setStoredTermStart(
+  termId: string,
+  startDate: string,
+  accountId = getStoredAccountId(),
+) {
+  if (!accountId) {
+    return
+  }
+
+  const starts = getStoredUserTermStarts(accountId)
 
   if (!termId) {
     return
@@ -165,10 +247,15 @@ export function setStoredTermStart(termId: string, startDate: string) {
     delete starts[termId]
   }
 
-  Taro.setStorageSync(TERM_STARTS_KEY, starts)
+  Taro.setStorageSync(getAccountTermStartsKey(accountId), starts)
 }
 
-export function clearStoredTermStarts() {
+export function clearStoredTermStarts(accountId = getStoredAccountId()) {
+  if (accountId) {
+    Taro.removeStorageSync(getAccountTermStartsKey(accountId))
+    return
+  }
+
   Taro.removeStorageSync(TERM_STARTS_KEY)
 }
 
