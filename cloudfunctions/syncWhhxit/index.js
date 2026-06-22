@@ -667,6 +667,19 @@ function toNumber(value) {
   return Number.isFinite(number) ? number : 0
 }
 
+function isLowScore(value) {
+  const text = cleanText(value)
+
+  if (!text || text === '--') {
+    return false
+  }
+
+  return (
+    (/[\d]/.test(text) && toNumber(text) < 60) ||
+    /^(不及格|不合格|缺考|缓考|作弊)$/u.test(text)
+  )
+}
+
 function formatNumber(value, digits) {
   return Number.isFinite(value) && value > 0 ? value.toFixed(digits) : '--'
 }
@@ -683,6 +696,7 @@ function buildGradesResult(records) {
     const termId = record.termId
     const credit = toNumber(record.credit)
     const score = toNumber(record.score)
+    const scoreLow = isLowScore(record.score)
     const gpa = toNumber(record.gpa)
 
     if (!semesters.has(termId)) {
@@ -703,27 +717,30 @@ function buildGradesResult(records) {
       name: record.name,
       credit: record.credit || '--',
       score: record.score || '--',
-      scoreLow: score > 0 && score < 60,
+      scoreLow,
       gpa: record.gpa || '--',
       teacher: record.teacher,
       courseType: record.courseType,
       examType: record.examType,
     })
-    semester.creditValue += credit
-    totalCredit += credit
 
-    if (credit > 0 && score > 0) {
-      semester.scoreValue += score * credit
-      semester.scoreCredit += credit
-      weightedScore += score * credit
-      scoreCredit += credit
-    }
+    if (credit > 0 && !scoreLow) {
+      semester.creditValue += credit
+      totalCredit += credit
 
-    if (credit > 0 && gpa > 0) {
-      semester.gpaValue += gpa * credit
-      semester.gpaCredit += credit
-      weightedGpa += gpa * credit
-      gpaCredit += credit
+      if (score > 0) {
+        semester.scoreValue += score * credit
+        semester.scoreCredit += credit
+        weightedScore += score * credit
+        scoreCredit += credit
+      }
+
+      if (gpa > 0) {
+        semester.gpaValue += gpa * credit
+        semester.gpaCredit += credit
+        weightedGpa += gpa * credit
+        gpaCredit += credit
+      }
     }
   }
 

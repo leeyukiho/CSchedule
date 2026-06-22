@@ -1,4 +1,5 @@
 export default definePageConfig({
-  navigationBarTitleText: '个人',
+  navigationBarTitleText: '个 人',
+  navigationStyle: 'custom',
 })
 

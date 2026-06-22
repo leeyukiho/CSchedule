@@ -1676,6 +1676,19 @@ function getNumericScore(value) {
   return toNumber(text)
 }
 
+function isLowScore(value) {
+  const text = String(value || '').trim()
+
+  if (!text || text === '--') {
+    return false
+  }
+
+  return (
+    (/[\d]/.test(text) && toNumber(text) < 60) ||
+    /^(不及格|不合格|缺考|缓考|作弊)$/u.test(text)
+  )
+}
+
 function formatNumber(value, digits = 2) {
   if (!Number.isFinite(value) || value <= 0) {
     return '--'
@@ -1805,7 +1818,7 @@ function buildGradesResult(records) {
     const term = record.term || '未分组学期'
     const credit = toNumber(record.credit)
     const numericScore = getNumericScore(record.score)
-    const scoreLow = numericScore > 0 && numericScore < 60
+    const scoreLow = isLowScore(record.score)
     const gpa = calculateGpa(record.score, record.gpa)
     const grade = {
       name: record.name,
@@ -1830,9 +1843,9 @@ function buildGradesResult(records) {
 
     const semester = semesters.get(term)
     semester.grades.push(grade)
-    semester.creditValue += credit
 
-    if (credit > 0) {
+    if (credit > 0 && !scoreLow) {
+      semester.creditValue += credit
       totalCredit += credit
 
       if (numericScore > 0) {

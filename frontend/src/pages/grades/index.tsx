@@ -88,7 +88,118 @@ function getTextValue(source: Record<string, unknown>, field: FeatureDisplayFiel
   return '--'
 }
 
-function buildSummary(data: unknown, display?: FeatureDisplayConfig) {
+function parseScoreNumber(value: unknown) {
+  const number = Number.parseFloat(String(value || '').replace(/[^\d.-]/g, ''))
+
+  return Number.isFinite(number) ? number : 0
+}
+
+function formatScoreStat(value: number, digits = 2) {
+  return Number.isFinite(value) && value > 0 ? Number(value.toFixed(digits)).toString() : '--'
+}
+
+function isLowScoreValue(value: unknown) {
+  const text = String(value || '').trim()
+
+  if (!text || text === '--') {
+    return false
+  }
+
+  return (
+    (/[\d]/.test(text) && parseScoreNumber(text) < 60) ||
+    /^(不及格|不合格|缺考|缓考|作弊)$/u.test(text)
+  )
+}
+
+function getScoreFieldValue(
+  item: Record<string, unknown>,
+  scoreItemFields: FeatureDisplayField[],
+  matches: string[],
+  fallbackIndex: number,
+) {
+  const matchedField = scoreItemFields.find((field, index) => (
+    index > 0 &&
+    matches.some((match) => field.key.toLowerCase().includes(match) || field.label.includes(match))
+  ))
+  const field = matchedField || scoreItemFields[fallbackIndex]
+
+  return field ? getTextValue(item, field) : '--'
+}
+
+function isLowScoreItem(item: Record<string, unknown>, scoreValue: string) {
+  const scoreLow = item.scoreLow
+
+  return scoreLow === true || scoreLow === 'true' || isLowScoreValue(scoreValue)
+}
+
+function calculateScoreStats(items: Record<string, unknown>[], scoreItemFields: FeatureDisplayField[]) {
+  return items.reduce(
+    (stats, item) => {
+      const credit = parseScoreNumber(getScoreFieldValue(item, scoreItemFields, ['credit', '学分'], 1))
+      const scoreValue = getScoreFieldValue(item, scoreItemFields, ['score', 'grade', '成绩'], 2)
+      const score = parseScoreNumber(scoreValue)
+      const gpa = parseScoreNumber(getScoreFieldValue(item, scoreItemFields, ['gpa', '绩点'], 3))
+
+      if (credit > 0 && !isLowScoreItem(item, scoreValue)) {
+        stats.totalCredit += credit
+
+        if (score > 0) {
+          stats.weightedScore += score * credit
+          stats.scoreCredit += credit
+        }
+
+        if (gpa > 0) {
+          stats.weightedGpa += gpa * credit
+          stats.gpaCredit += credit
+        }
+      }
+
+      return stats
+    },
+    {
+      totalCredit: 0,
+      weightedScore: 0,
+      weightedGpa: 0,
+      scoreCredit: 0,
+      gpaCredit: 0,
+    },
+  )
+}
+
+function formatCalculatedScoreStats(items: Record<string, unknown>[], scoreItemFields: FeatureDisplayField[]) {
+  const stats = calculateScoreStats(items, scoreItemFields)
+
+  return {
+    totalCredit: formatScoreStat(stats.totalCredit, 1),
+    average: formatScoreStat(stats.weightedScore / stats.scoreCredit, 2),
+    gpa: formatScoreStat(stats.weightedGpa / stats.gpaCredit, 2),
+  }
+}
+
+function getSummaryStatKey(field: FeatureDisplayField) {
+  const key = field.key.toLowerCase()
+
+  if (key.includes('totalcredit') || field.label.includes('总学分')) {
+    return 'totalCredit'
+  }
+
+  if (key.includes('average') || field.label.includes('平均')) {
+    return 'average'
+  }
+
+  if (key.includes('gpa') || field.label.includes('绩点')) {
+    return 'gpa'
+  }
+
+  return ''
+}
+
+function buildSummary(
+  data: unknown,
+  display: FeatureDisplayConfig | undefined,
+  groups: ScoreGroup[],
+  scoreItemFields: FeatureDisplayField[],
+) {
   const fields = display?.summaryFields || [
     { key: 'totalCredit', label: '总学分' },
     { key: 'average', label: '平均分' },
@@ -96,10 +207,17 @@ function buildSummary(data: unknown, display?: FeatureDisplayConfig) {
   ]
   const record = asRecord(data)
   const summaryList = asArray(record.summary).map(asRecord)
+  const calculatedStats = formatCalculatedScoreStats(
+    groups.flatMap((group) => group.items),
+    scoreItemFields,
+  )
 
   return fields.slice(0, 3).map((field) => {
     const matched = summaryList.find((item) => item.label === field.label || item.key === field.key)
-    const value = matched ? matched.value : record[field.key]
+    const statKey = getSummaryStatKey(field)
+    const value = statKey
+      ? calculatedStats[statKey as keyof typeof calculatedStats]
+      : (matched ? matched.value : record[field.key])
 
     return {
       label: field.label,
@@ -161,29 +279,46 @@ function getSemesterSortKey(group: Record<string, unknown>, index: number) {
   return academicYearMatch ? Number(academicYearMatch[1]) * 10 + semester : -index
 }
 
-function buildScoreGroups(data: unknown, display?: FeatureDisplayConfig): ScoreGroup[] {
+function buildScoreGroups(
+  data: unknown,
+  display: FeatureDisplayConfig | undefined,
+  scoreItemFields: FeatureDisplayField[],
+): ScoreGroup[] {
   const groupPath = display?.groupPath || 'semesters'
   const itemPath = display?.itemPath || 'grades'
   const groups = asArray(getByPath(data, groupPath)).map(asRecord)
 
   if (!groups.length) {
     const items = asArray(getByPath(data, itemPath)).map(asRecord)
+    const stats = formatCalculatedScoreStats(items, scoreItemFields)
 
     return items.length
-      ? [{ id: 'all', title: display?.title || '成绩', items }]
+      ? [{
+        id: 'all',
+        title: display?.title || '成绩',
+        credit: stats.totalCredit,
+        average: stats.average,
+        gpa: stats.gpa,
+        items,
+      }]
       : []
   }
 
   return groups
-    .map((group, index) => ({
-      id: String(group.id || `group-${index + 1}`),
-      title: formatSemesterTitle(group.title || group.label, `第${index + 1}学期`),
-      credit: typeof group.credit === 'string' ? group.credit : undefined,
-      average: typeof group.average === 'string' ? group.average : undefined,
-      gpa: typeof group.gpa === 'string' ? group.gpa : undefined,
-      items: asArray(getByPath(group, itemPath)).map(asRecord),
-      sortKey: getSemesterSortKey(group, index),
-    }))
+    .map((group, index) => {
+      const items = asArray(getByPath(group, itemPath)).map(asRecord)
+      const stats = formatCalculatedScoreStats(items, scoreItemFields)
+
+      return {
+        id: String(group.id || `group-${index + 1}`),
+        title: formatSemesterTitle(group.title || group.label, `第${index + 1}学期`),
+        credit: stats.totalCredit,
+        average: stats.average,
+        gpa: stats.gpa,
+        items,
+        sortKey: getSemesterSortKey(group, index),
+      }
+    })
     .sort((left, right) => right.sortKey - left.sortKey)
     .map(({ sortKey, ...group }) => group)
 }
@@ -409,7 +544,6 @@ export default function GradesPage() {
   const [errorText, setErrorText] = useState('')
   const [collapsedSemesters, setCollapsedSemesters] = useState<Record<string, boolean>>({})
   const [showAllExams, setShowAllExams] = useState(false)
-  const [expandedExamIds, setExpandedExamIds] = useState<Record<string, boolean>>({})
   const [nowMs, setNowMs] = useState(() => Date.now())
 
   useEffect(() => {
@@ -452,7 +586,6 @@ export default function GradesPage() {
         setExams(cachedExamData)
         setCollapsedSemesters({})
         setShowAllExams(false)
-        setExpandedExamIds({})
 
         const [scoreData, examData] = await Promise.all([
           hasFeatureCache(cachedScoreData)
@@ -470,8 +603,17 @@ export default function GradesPage() {
       .finally(() => setLoading(false))
   })
 
-  const scoreSummary = useMemo(() => buildSummary(scores?.data, scores?.display), [scores])
-  const scoreGroups = useMemo(() => buildScoreGroups(scores?.data, scores?.display), [scores])
+  const scoreItemFields = scores?.display?.itemFields?.length
+    ? scores.display.itemFields
+    : DEFAULT_SCORE_ITEM_FIELDS
+  const scoreGroups = useMemo(
+    () => buildScoreGroups(scores?.data, scores?.display, scoreItemFields),
+    [scores, scoreItemFields],
+  )
+  const scoreSummary = useMemo(
+    () => buildSummary(scores?.data, scores?.display, scoreGroups, scoreItemFields),
+    [scores, scoreGroups, scoreItemFields],
+  )
   useEffect(() => {
     setCollapsedSemesters((current) => {
       const next = { ...current }
@@ -488,9 +630,6 @@ export default function GradesPage() {
     })
   }, [scoreGroups])
 
-  const scoreItemFields = scores?.display?.itemFields?.length
-    ? scores.display.itemFields
-    : DEFAULT_SCORE_ITEM_FIELDS
   const scoreCount = countScoreItems(scoreGroups)
   const examSections = buildExamSections(exams?.data, nowMs)
   const todayKey = getLocalDateKey()
@@ -520,21 +659,9 @@ export default function GradesPage() {
   }
   const getExamKey = (status: ExamDisplayStatus, exam: ExamItem, index: number) =>
     `${status}-${exam.id}-${index}`
-  const toggleExam = (key: string) => {
-    setExpandedExamIds((current) => ({ ...current, [key]: !current[key] }))
-  }
-  const getScoreFieldValue = (item: Record<string, unknown>, matches: string[], fallbackIndex: number) => {
-    const matchedField = scoreItemFields.find((field, index) => (
-      index > 0 &&
-      matches.some((match) => field.key.toLowerCase().includes(match) || field.label.includes(match))
-    ))
-    const field = matchedField || scoreItemFields[fallbackIndex]
-
-    return field ? getTextValue(item, field) : '--'
-  }
 
   return (
-    <PageShell title='成绩' activeTab='grades' customNav contentClassName='grades-page'>
+    <PageShell title='成 绩' activeTab='grades' customNav contentClassName='grades-page'>
       <View className='score-summary'>
         <View className='score-summary-title'>学业总览</View>
         <View className='metric-row'>
@@ -577,13 +704,11 @@ export default function GradesPage() {
             {visibleExamItems.map(({ exam, status, showsTodayStatus }, index) => {
               const timeParts = getExamTimeParts(exam)
               const examKey = getExamKey(status, exam, index)
-              const expanded = Boolean(expandedExamIds[examKey])
 
               return (
                 <View
-                  className={`soft-card exam-row exam-row-${status} ${expanded ? 'exam-row-expanded' : 'exam-row-collapsed'}`}
+                  className={`soft-card exam-row exam-row-${status}`}
                   key={examKey}
-                  onClick={() => toggleExam(examKey)}
                 >
                   <View className='exam-head'>
                     <View className='exam-date'>
@@ -593,7 +718,6 @@ export default function GradesPage() {
                     <View className='exam-main'>
                       <View className='exam-title'>{exam.courseName}</View>
                       <View className='exam-meta'>
-                        {exam.examType && exam.examType !== '--' && <Text>{exam.examType}</Text>}
                         <Text className='exam-meta-location'>{status === 'upcoming' ? (exam.location || '地点待安排') : getExamStatusText(status)}</Text>
                         {exam.seatNo && <Text>座位：{exam.seatNo}</Text>}
                       </View>
@@ -601,45 +725,7 @@ export default function GradesPage() {
                     <View className={`exam-status exam-status-${showsTodayStatus ? 'today' : status}`}>
                       {showsTodayStatus ? '今日' : getExamStatusText(status)}
                     </View>
-                    <View className={expanded ? 'exam-toggle exam-toggle-open' : 'exam-toggle'} />
                   </View>
-
-                  {expanded && (
-                    <View className='exam-detail'>
-                      <View className='exam-detail-grid'>
-                        <View className='exam-detail-item'>
-                          <Text className='exam-detail-label'>日期</Text>
-                          <Text className='exam-detail-value'>{timeParts.date}</Text>
-                        </View>
-                        <View className='exam-detail-item exam-detail-time-item'>
-                          <Text className='exam-detail-label'>时间</Text>
-                          <Text className='exam-detail-value'>{timeParts.start}-{timeParts.end}</Text>
-                        </View>
-                        <View className='exam-detail-item'>
-                          <Text className='exam-detail-label'>状态</Text>
-                          <Text className='exam-detail-value'>{getExamStatusText(status)}</Text>
-                        </View>
-                        <View className='exam-detail-location-row'>
-                          <View className='exam-detail-item exam-detail-location-item'>
-                            <Text className='exam-detail-label'>地点</Text>
-                            <Text className='exam-detail-value'>{exam.location || '地点待安排'}</Text>
-                          </View>
-                          {exam.seatNo && (
-                            <View className='exam-detail-item exam-detail-seat-item'>
-                              <Text className='exam-detail-label'>座位</Text>
-                              <Text className='exam-detail-value'>{exam.seatNo}</Text>
-                            </View>
-                          )}
-                        </View>
-                        {exam.remark && exam.remark !== '--' && (
-                          <View className='exam-detail-item'>
-                            <Text className='exam-detail-label'>备注</Text>
-                            <Text className='exam-detail-value'>{exam.remark}</Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                  )}
                 </View>
               )
             })}
@@ -691,14 +777,19 @@ export default function GradesPage() {
                 <View className='grade-cell grade-head grade-num'>成绩</View>
                 <View className='grade-cell grade-head grade-num'>绩点</View>
               </View>
-              {group.items.map((item, index) => (
-                <View className='grade-row' key={`${group.id}-${index}`}>
-                  <View className='grade-cell grade-name'>{getTextValue(item, scoreItemFields[0])}</View>
-                  <View className='grade-cell grade-num'>{getScoreFieldValue(item, ['credit', '学分'], 1)}</View>
-                  <View className='grade-cell grade-num grade-score'>{getScoreFieldValue(item, ['score', 'grade', '成绩'], 2)}</View>
-                  <View className='grade-cell grade-num'>{getScoreFieldValue(item, ['gpa', '绩点'], 3)}</View>
-                </View>
-              ))}
+              {group.items.map((item, index) => {
+                const scoreValue = getScoreFieldValue(item, scoreItemFields, ['score', 'grade', '成绩'], 2)
+                const scoreLow = isLowScoreItem(item, scoreValue)
+
+                return (
+                  <View className={scoreLow ? 'grade-row grade-row-low' : 'grade-row'} key={`${group.id}-${index}`}>
+                    <View className='grade-cell grade-name'>{getTextValue(item, scoreItemFields[0])}</View>
+                    <View className='grade-cell grade-num'>{getScoreFieldValue(item, scoreItemFields, ['credit', '学分'], 1)}</View>
+                    <View className={scoreLow ? 'grade-cell grade-num grade-score grade-score-low' : 'grade-cell grade-num grade-score'}>{scoreValue}</View>
+                    <View className='grade-cell grade-num'>{getScoreFieldValue(item, scoreItemFields, ['gpa', '绩点'], 3)}</View>
+                  </View>
+                )
+              })}
             </View>
           )}
         </View>

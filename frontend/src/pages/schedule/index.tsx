@@ -579,7 +579,7 @@ export default function SchedulePage() {
   }
 
   return (
-    <PageShell title='课表' activeTab='schedule' contentClassName='schedule-content' customNav>
+    <PageShell title='课 表' activeTab='schedule' contentClassName='schedule-content' customNav>
       <View className='schedule-filters'>
         <Picker
           className='filter-picker semester-picker'

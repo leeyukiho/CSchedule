@@ -751,7 +751,7 @@ export default function HomePage() {
   const weatherDisplayText = homeWeatherText || (weatherLocation ? `${weatherLocation.displayName} · 天气加载中` : '')
 
   return (
-    <PageShell title='首页' activeTab='home' contentClassName='home-content' customNav>
+    <PageShell title='首 页' activeTab='home' contentClassName='home-content' customNav>
       <View className='date-row'>
         <View className='date-main'>
           <View className='date-title'>

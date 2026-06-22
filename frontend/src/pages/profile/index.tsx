@@ -505,7 +505,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <PageShell title='个人' activeTab='profile'>
+    <PageShell title='个 人' activeTab='profile' customNav>
       {message && <View className='status'>{message}</View>}
       {errorText && <View className='status status-error'>{errorText}</View>}
 
