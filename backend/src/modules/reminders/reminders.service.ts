@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { ReminderSubscription, ReminderType } from '@prisma/client'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { ProviderDisplayService } from '../providers/provider-display.service'
 import {
   getReminderConfig,
   isWithinReminderWindow,
@@ -70,6 +71,7 @@ export class RemindersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly wechat: WechatSubscribeMessageService,
+    private readonly providerDisplay: ProviderDisplayService,
   ) {}
 
   async resolveOpenid(code: string) {
@@ -418,6 +420,7 @@ export class RemindersService {
       include: {
         account: {
           select: {
+            providerId: true,
             school: { select: { config: true } },
           },
         },
@@ -430,8 +433,14 @@ export class RemindersService {
     const term = this.getCurrentTerm(cache?.termId || '', cache?.termsJson)
     const weekStart = this.getTeachingWeekStart(term, cache?.termId || '', termStarts)
     const maxWeek = this.getMaxCourseWeek(courses)
+    const cacheSectionTimes = Array.isArray(cache?.sectionTimesJson) ? cache.sectionTimesJson : []
+    const configuredSectionTimes = this.providerDisplay.getSectionTimes(
+      cache?.account.school.config ?? null,
+      cache?.account.providerId || '',
+    )
+    const sectionTimes = cacheSectionTimes.length ? cacheSectionTimes : configuredSectionTimes
     const candidates = courses
-      .map((course) => this.toCourseReminderCandidate(course, weekStart, now, cache?.sectionTimesJson, maxWeek))
+      .map((course) => this.toCourseReminderCandidate(course, weekStart, now, sectionTimes, maxWeek))
       .filter((item): item is CourseReminderCandidate => Boolean(item))
       .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime())
 
@@ -563,6 +572,7 @@ export class RemindersService {
       data: {
         ...(status === 'sent' || status === 'skipped'
           ? {
+            status: 'disabled',
             lastSentDate: dateKey,
             lastSentAt: new Date(),
             lastErrorCode: null,
@@ -783,7 +793,7 @@ export class RemindersService {
     fallbackTermId: string,
     termStarts: Record<string, string>,
   ) {
-    const customStart = term ? this.parseLocalDate(termStarts[term.id] || '') : null
+    const customStart = this.parseLocalDate(this.getTermStartDateValue(term, fallbackTermId, termStarts))
 
     if (customStart) {
       return this.getMondayOnOrAfter(customStart)
@@ -796,6 +806,31 @@ export class RemindersService {
       : new Date(startYear, 8, 1)
 
     return this.getMondayOnOrAfter(nominalStart)
+  }
+
+  private getTermStartDateValue(
+    term: { id: string; label: string } | null,
+    fallbackTermId: string,
+    termStarts: Record<string, string>,
+  ) {
+    const ids = [term?.id || '', fallbackTermId].filter(Boolean)
+
+    for (const id of ids) {
+      const value = termStarts[id]
+      if (value) return value
+
+      const scopedMatch = id.match(/^([^:]+):(.+)$/)
+      if (scopedMatch && termStarts[scopedMatch[2]]) {
+        return termStarts[scopedMatch[2]]
+      }
+
+      const scopedKey = Object.keys(termStarts).find((key) => key.endsWith(`:${id}`))
+      if (scopedKey && termStarts[scopedKey]) {
+        return termStarts[scopedKey]
+      }
+    }
+
+    return ''
   }
 
   private parseTermDescriptor(term: { id: string; label: string } | null, fallbackTermId: string) {

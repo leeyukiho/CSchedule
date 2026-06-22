@@ -4,7 +4,10 @@ import { Text, View } from '@tarojs/components'
 
 import { getExams } from '../../shared/api/features'
 import {
+  getCachedReminderPreferenceState,
+  getLocalReminderTemplateIds,
   getReminderPreferences,
+  ReminderPreferencesResponse,
   resolveReminderOpenid,
   updateReminderPreference,
 } from '../../shared/api/reminders'
@@ -23,8 +26,13 @@ import { buildTermOptions, courseRunsInWeek, getTeachingWeekForDate } from '../.
 import './index.scss'
 
 const STATUS_CLEAR_DELAY_MS = 3000
-const REMINDER_STATE_REFRESH_MS = 60 * 1000
 const WEATHER_CACHE_TTL_MS = 10 * 60 * 1000
+const REMINDER_STATE_REFRESH_PREFIX = 'cschedule.reminderStateRefreshAt.'
+const REMINDER_STATE_REFRESH_GRACE_MS = 2 * 60 * 1000
+const REMINDER_STATE_RETRY_MS = 2 * 60 * 1000
+const REMINDER_STATE_FAST_RETRY_WINDOW_MS = 30 * 60 * 1000
+const REMINDER_STATE_SLOW_RETRY_MS = 5 * 60 * 1000
+const REMINDER_STATE_STALE_RETRY_MS = 30 * 60 * 1000
 const WEATHER_API_URL = 'https://api.open-meteo.com/v1/forecast'
 const AIR_QUALITY_API_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality'
 
@@ -353,6 +361,70 @@ function getLocalDateKey(date = new Date()) {
   return `${year}-${month}-${day}`
 }
 
+function getReminderRefreshKey(accountId: string, date = new Date()) {
+  return `${REMINDER_STATE_REFRESH_PREFIX}${accountId}.${getLocalDateKey(date)}`
+}
+
+function getReminderRefreshAt(accountId: string) {
+  const value = Number(Taro.getStorageSync(getReminderRefreshKey(accountId)))
+  return Number.isFinite(value) ? value : 0
+}
+
+function markReminderRefresh(accountId: string) {
+  Taro.setStorageSync(getReminderRefreshKey(accountId), Date.now())
+}
+
+function getPreferredTimeMs(preferredTime: string, date = new Date()) {
+  const match = preferredTime.match(/^(\d{1,2}):(\d{2})$/)
+
+  if (!match) {
+    return 0
+  }
+
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return 0
+  }
+
+  const result = new Date(date)
+  result.setHours(hour, minute, 0, 0)
+  return result.getTime()
+}
+
+function shouldRefreshReminderState(
+  accountId: string,
+  preference: ReminderPreferencesResponse | null,
+  now = Date.now(),
+  hasFreshCache = false,
+) {
+  if (!accountId) {
+    return false
+  }
+
+  const msSinceRefresh = now - getReminderRefreshAt(accountId)
+
+  if (!preference) {
+    return msSinceRefresh >= REMINDER_STATE_RETRY_MS
+  }
+
+  if (preference.enabled) {
+    const preferredTimeMs = getPreferredTimeMs(preference.preferredTime, new Date(now))
+    const msSincePreferredTime = preferredTimeMs ? now - preferredTimeMs : -1
+
+    if (msSincePreferredTime >= REMINDER_STATE_REFRESH_GRACE_MS) {
+      const retryMs = msSincePreferredTime <= REMINDER_STATE_REFRESH_GRACE_MS + REMINDER_STATE_FAST_RETRY_WINDOW_MS
+        ? REMINDER_STATE_RETRY_MS
+        : REMINDER_STATE_SLOW_RETRY_MS
+
+      return msSinceRefresh >= retryMs
+    }
+  }
+
+  return !hasFreshCache && msSinceRefresh >= REMINDER_STATE_STALE_RETRY_MS
+}
+
 function normalizeDateKey(date: string) {
   const match = date.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
 
@@ -499,16 +571,12 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
-    if (!accountId || !reminderSubscribed) {
-      return undefined
+    if (!accountId) {
+      return
     }
 
-    const timer = setInterval(() => {
-      void loadReminderState(accountId)
-    }, REMINDER_STATE_REFRESH_MS)
-
-    return () => clearInterval(timer)
-  }, [accountId, reminderSubscribed])
+    void loadReminderState(accountId)
+  }, [accountId, nowMs])
 
   const weatherLocation = useMemo(
     () => resolveSchoolWeatherLocation({
@@ -634,11 +702,22 @@ export default function HomePage() {
   }
 
   async function loadReminderState(id: string) {
+    const cachedPreference = getCachedReminderPreferenceState(id)
+    const freshPreference = await getReminderPreferences(id, { cacheOnly: true })
+    const preference = freshPreference || cachedPreference
+    setReminderSubscribed(Boolean(preference?.enabled))
+
+    if (!shouldRefreshReminderState(id, preference, nowMs, Boolean(freshPreference))) {
+      return
+    }
+
+    markReminderRefresh(id)
+
     try {
-      const preference = await getReminderPreferences(id)
-      setReminderSubscribed(Boolean(preference.enabled))
+      const nextPreference = await getReminderPreferences(id, { forceRefresh: true })
+      setReminderSubscribed(Boolean(nextPreference.enabled))
     } catch {
-      setReminderSubscribed(false)
+      markReminderRefresh(id)
     }
   }
 
@@ -708,15 +787,16 @@ export default function HomePage() {
         return
       }
 
-      const preference = await getReminderPreferences(accountId)
-      const templateIds = preference.templateIds || []
+      const preference = getCachedReminderPreferenceState(accountId)
+      const templateIds = preference?.templateIds?.length
+        ? preference.templateIds
+        : getLocalReminderTemplateIds()
 
       if (templateIds.length === 0) {
-        Taro.showToast({ title: '订阅模板未配置', icon: 'none' })
+        Taro.showToast({ title: '暂时无法订阅，请稍后再试', icon: 'none' })
         return
       }
 
-      const openid = preference.openid || await getReminderOpenid(accountId)
       const accepted = await requestReminderSubscribe(templateIds)
 
       if (!accepted) {
@@ -724,13 +804,19 @@ export default function HomePage() {
         return
       }
 
-      await updateReminderPreference(accountId, {
+      if (preference?.enabled && preference.openid) {
+        setReminderSubscribed(true)
+        Taro.showToast({ title: '已订阅', icon: 'success' })
+        return
+      }
+
+      const openid = preference?.openid || await getReminderOpenid(accountId)
+      const nextPreference = await updateReminderPreference(accountId, {
         enabled: true,
-        preferredTime: preference.preferredTime || '07:30',
+        preferredTime: preference?.preferredTime || '07:30',
         openid,
       })
-      void loadReminderState(accountId)
-      setReminderSubscribed(true)
+      setReminderSubscribed(Boolean(nextPreference.enabled))
       Taro.showToast({ title: '已订阅', icon: 'success' })
     } catch (error) {
       Taro.showToast({

@@ -12,6 +12,11 @@ export interface ReminderPreferencesResponse {
   templateIds: string[]
 }
 
+const LOCAL_REMINDER_TEMPLATE_IDS = [
+  String(process.env.TARO_APP_WECHAT_DAILY_COURSE_TEMPLATE_ID || '').trim(),
+  String(process.env.TARO_APP_WECHAT_EXAM_TEMPLATE_ID || '').trim(),
+].filter(Boolean)
+
 interface CachedReminderPreferences {
   value: ReminderPreferencesResponse
   expiresAt: number
@@ -19,6 +24,7 @@ interface CachedReminderPreferences {
 
 interface ReminderPreferencesOptions {
   forceRefresh?: boolean
+  cacheOnly?: boolean
 }
 
 const REMINDER_PREFERENCES_CACHE_PREFIX = 'cschedule.reminderPreferences.'
@@ -51,21 +57,32 @@ function normalizeReminderPreferences(value: unknown): ReminderPreferencesRespon
   }
 }
 
-function getCachedReminderPreferences(accountId: string) {
+function readCachedReminderPreferences(accountId: string) {
   const cached = Taro.getStorageSync(getReminderPreferencesCacheKey(accountId))
   const cache = cached && typeof cached === 'object' && !Array.isArray(cached)
     ? (cached as Partial<CachedReminderPreferences>)
     : {}
   const value = normalizeReminderPreferences(cache.value)
 
-  if (!value || typeof cache.expiresAt !== 'number') {
+  return value && typeof cache.expiresAt === 'number'
+    ? { value, expiresAt: cache.expiresAt }
+    : null
+}
+
+function getCachedReminderPreferences(accountId: string) {
+  const cache = readCachedReminderPreferences(accountId)
+
+  if (!cache) {
     return null
   }
 
-  if (cache.expiresAt <= Date.now()) {
-    Taro.removeStorageSync(getReminderPreferencesCacheKey(accountId))
+  const { value, expiresAt } = cache
+
+  if (!value || typeof expiresAt !== 'number') {
     return null
   }
+
+  if (expiresAt <= Date.now()) return null
 
   return value
 }
@@ -86,6 +103,14 @@ function setCachedReminderPreferences(
   } satisfies CachedReminderPreferences)
 }
 
+export function getCachedReminderPreferenceState(accountId: string) {
+  return readCachedReminderPreferences(accountId)?.value || null
+}
+
+export function getLocalReminderTemplateIds() {
+  return LOCAL_REMINDER_TEMPLATE_IDS
+}
+
 export async function getReminderPreferences(
   accountId: string,
   options: ReminderPreferencesOptions = {},
@@ -93,6 +118,10 @@ export async function getReminderPreferences(
   const cached = getCachedReminderPreferences(accountId)
 
   if (!options.forceRefresh && cached) {
+    return cached
+  }
+
+  if (options.cacheOnly) {
     return cached
   }
 

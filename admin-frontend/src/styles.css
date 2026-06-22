@@ -926,15 +926,16 @@ tbody tr:hover {
   display: grid;
   gap: 10px;
   min-width: 0;
-  padding: 12px;
+  padding: 12px 12px 16px;
   overflow-x: hidden;
   overflow-y: auto;
 }
 
 .config-form {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
+  padding-bottom: 4px;
 }
 
 .form-grid {
@@ -1026,16 +1027,6 @@ tbody tr:hover {
   white-space: nowrap;
 }
 
-.term-id-code {
-  overflow: hidden;
-  color: var(--muted);
-  font-family: "Fira Code", Consolas, "Courier New", monospace;
-  font-size: 12px;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .term-row-action {
   display: flex;
   align-items: center;
@@ -1089,8 +1080,8 @@ tbody tr:hover {
 }
 
 .inline-footer {
-  margin: 0 -12px -12px;
-  padding-bottom: 0;
+  margin: 2px 0 0;
+  padding: 12px 0 4px;
 }
 
 .confirm-title-row {

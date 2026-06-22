@@ -121,7 +121,7 @@ export function getTeachingWeekStart(
   fallbackTermId?: string,
   termStarts: Record<string, string> = {},
 ) {
-  const customStart = term ? parseLocalDate(termStarts[term.id] || '') : null
+  const customStart = parseLocalDate(getTermStartDateValue(term, fallbackTermId, termStarts))
 
   if (customStart) {
     return getMondayOnOrAfter(customStart)
@@ -138,6 +138,31 @@ export function getTeachingWeekStart(
   }
 
   return getMondayOnOrAfter(new Date(startYear, 8, 1))
+}
+
+function getTermStartDateValue(
+  term: TermOption | null,
+  fallbackTermId = '',
+  termStarts: Record<string, string> = {},
+) {
+  const ids = [term?.id || '', fallbackTermId].filter(Boolean)
+
+  for (const id of ids) {
+    const value = termStarts[id]
+    if (value) return value
+
+    const scopedMatch = id.match(/^([^:]+):(.+)$/)
+    if (scopedMatch && termStarts[scopedMatch[2]]) {
+      return termStarts[scopedMatch[2]]
+    }
+
+    const scopedKey = Object.keys(termStarts).find((key) => key.endsWith(`:${id}`))
+    if (scopedKey && termStarts[scopedKey]) {
+      return termStarts[scopedKey]
+    }
+  }
+
+  return ''
 }
 
 export function getTeachingWeekForDate(

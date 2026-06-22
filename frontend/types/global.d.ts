@@ -35,5 +35,7 @@ declare namespace NodeJS {
     TARO_APP_ID: string;
     TARO_APP_API_BASE_URL: string;
     TARO_APP_CLOUDBASE_ENV_ID: string;
+    TARO_APP_WECHAT_DAILY_COURSE_TEMPLATE_ID: string;
+    TARO_APP_WECHAT_EXAM_TEMPLATE_ID: string;
   }
 }

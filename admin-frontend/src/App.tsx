@@ -1120,39 +1120,218 @@ function getProviderDraft(school: SchoolItem) {
   }
 }
 
-function createTermStartRows(termStarts: unknown, terms: TermOption[] = []): TermStartRow[] {
+function createTermStartRows(termStarts: unknown, terms: TermOption[] = [], school?: SchoolItem): TermStartRow[] {
   const record = termStarts && typeof termStarts === 'object' && !Array.isArray(termStarts)
     ? termStarts as Record<string, unknown>
     : {}
-  const termMap = new Map<string, TermStartRow>()
+  const groupedTerms = groupTermOptionsForDisplay(terms, school)
+  const usedTermStartKeys = new Set<string>()
+  const rows: TermStartRow[] = []
 
-  for (const term of terms) {
-    const termId = String(term.id || '').trim()
-    if (!termId || termMap.has(termId)) continue
+  for (const group of groupedTerms) {
+    const recordKey = group.ids.find((termId) => Object.prototype.hasOwnProperty.call(record, termId))
+    const termId = recordKey || group.preferredId
 
-    termMap.set(termId, {
+    if (!termId) continue
+    if (recordKey) usedTermStartKeys.add(recordKey)
+
+    rows.push({
       id: `term-${termId}`,
       termId,
-      label: term.label || termId,
-      startDate: String(record[termId] || ''),
+      label: group.label,
+      startDate: String(recordKey ? record[recordKey] : ''),
       locked: true,
     })
   }
 
   for (const [termId, startDate] of Object.entries(record)) {
-    if (termMap.has(termId)) continue
-    termMap.set(termId, {
+    if (usedTermStartKeys.has(termId)) continue
+    rows.push({
       id: `manual-${termId}`,
       termId,
-      label: termId,
+      label: getTermDisplayLabel(termId, terms, school),
       startDate: String(startDate || ''),
       locked: Boolean(termId),
     })
   }
 
-  const rows = [...termMap.values()]
-
   return rows.length ? rows : [{ id: String(Date.now()), termId: '', startDate: '' }]
+}
+
+function groupTermOptionsForDisplay(terms: TermOption[], school?: SchoolItem) {
+  const providerCode = getSchoolProviderCode(school)
+  const groups = new Map<string, { ids: string[]; preferredId: string; label: string }>()
+
+  for (const term of terms) {
+    const termId = String(term.id || '').trim()
+    if (!termId) continue
+
+    const key = getTermDisplayKey(termId, providerCode)
+    const label = normalizeTermDisplayLabel(term.label, termId, providerCode)
+    const ids = getTermDisplayAliases(termId, providerCode)
+    const existing = groups.get(key)
+
+    if (!existing) {
+      groups.set(key, {
+        ids,
+        preferredId: termId,
+        label,
+      })
+      continue
+    }
+
+    for (const id of ids) {
+      if (!existing.ids.includes(id)) existing.ids.push(id)
+    }
+    if (isProviderScopedTermId(termId, providerCode)) existing.preferredId = termId
+    if (isBetterTermDisplayLabel(label, existing.label, termId, existing.preferredId)) {
+      existing.label = label
+    }
+  }
+
+  return [...groups.values()]
+}
+
+function getTermDisplayLabel(termId: string, terms: TermOption[] = [], school?: SchoolItem) {
+  const providerCode = getSchoolProviderCode(school)
+  const key = getTermDisplayKey(termId, providerCode)
+  const group = groupTermOptionsForDisplay(terms, school).find((item) => (
+    item.ids.includes(termId) || item.ids.some((id) => getTermDisplayKey(id, providerCode) === key)
+  ))
+
+  return group?.label || normalizeTermDisplayLabel('', termId, providerCode)
+}
+
+function getTermStartDisplayEntries(school: SchoolItem) {
+  return Object.entries(school.termStarts || {}).map(([termId, date]) => ({
+    termId,
+    date,
+    label: getTermDisplayLabel(termId, school.terms || [], school),
+  }))
+}
+
+function getTermDisplayKey(termId: string, providerCode = '') {
+  const cleanTermId = termId.trim()
+  const scopedMatch = cleanTermId.match(/^([^:]+):(.+)$/)
+
+  if (!scopedMatch) return cleanTermId
+
+  const prefix = scopedMatch[1].trim()
+  const scopedId = scopedMatch[2].trim()
+
+  if (!providerCode || prefix.toLowerCase() === providerCode.toLowerCase()) {
+    return scopedId || cleanTermId
+  }
+
+  return cleanTermId
+}
+
+function getTermDisplayAliases(termId: string, providerCode = '') {
+  const cleanTermId = termId.trim()
+  const aliases = new Set([cleanTermId])
+  const key = getTermDisplayKey(cleanTermId, providerCode)
+
+  if (key) aliases.add(key)
+  if (providerCode && key && key === cleanTermId) aliases.add(`${providerCode}:${key}`)
+
+  return [...aliases]
+}
+
+function isProviderScopedTermId(termId: string, providerCode = '') {
+  if (!providerCode) return false
+
+  const scopedMatch = termId.trim().match(/^([^:]+):(.+)$/)
+  return Boolean(scopedMatch && scopedMatch[1].toLowerCase() === providerCode.toLowerCase())
+}
+
+function normalizeTermDisplayLabel(label: string | undefined, termId: string, providerCode = '') {
+  const cleanTermId = termId.trim()
+  const cleanLabel = String(label || '').trim()
+
+  if (isAcademicTermDisplayLabel(cleanLabel)) {
+    return cleanLabel
+  }
+
+  const scopedMatch = cleanTermId.match(/^([^:]+):(.+)$/)
+
+  if (scopedMatch) {
+    const prefix = scopedMatch[1].trim()
+    const scopedId = scopedMatch[2].trim()
+    const providerLabel = providerCode || prefix
+    const formattedTerm = formatProviderTermId(providerLabel, scopedId)
+
+    if (
+      formattedTerm &&
+      (!cleanLabel || cleanLabel === cleanTermId || cleanLabel === scopedId || isGenericTermDisplayLabel(cleanLabel, scopedId, providerLabel))
+    ) {
+      return formattedTerm
+    }
+
+    if (cleanLabel && cleanLabel !== cleanTermId) {
+      return cleanLabel
+    }
+
+    return `${providerLabel.toUpperCase()} 学期 ${scopedId || cleanTermId}`
+  }
+
+  const formattedTerm = formatProviderTermId(providerCode, cleanTermId)
+
+  if (formattedTerm && (!cleanLabel || cleanLabel === cleanTermId || isGenericTermDisplayLabel(cleanLabel, cleanTermId, providerCode))) {
+    return formattedTerm
+  }
+
+  if (cleanLabel && cleanLabel !== cleanTermId) {
+    return cleanLabel
+  }
+
+  if (providerCode && /^\d+$/.test(cleanTermId)) {
+    return `${providerCode.toUpperCase()} 学期 ${cleanTermId}`
+  }
+
+  return cleanLabel || cleanTermId
+}
+
+function isAcademicTermDisplayLabel(value: string) {
+  return /20\d{2}.*20\d{2}.*学期/.test(value)
+}
+
+function isGenericTermDisplayLabel(label: string, termId: string, providerCode = '') {
+  const normalizedLabel = label.trim().toLowerCase().replace(/\s+/g, '')
+  const normalizedTermId = termId.trim().toLowerCase()
+  const normalizedProvider = providerCode.trim().toLowerCase()
+  const genericLabels = new Set([
+    `学期${normalizedTermId}`,
+    `term${normalizedTermId}`,
+    `semester${normalizedTermId}`,
+  ])
+
+  if (normalizedProvider) {
+    genericLabels.add(`${normalizedProvider}学期${normalizedTermId}`)
+    genericLabels.add(`${normalizedProvider}:学期${normalizedTermId}`)
+  }
+
+  return genericLabels.has(normalizedLabel)
+}
+
+function formatProviderTermId(providerCode: string, termId: string) {
+  const normalizedProvider = providerCode.trim().toLowerCase()
+  const match = termId.trim().match(/^(\d{2})([123])$/)
+
+  if (normalizedProvider !== 'wtbu' || !match) {
+    return ''
+  }
+
+  const yearStart = 2000 + Number(match[1])
+  return `${yearStart}-${yearStart + 1}学年第${match[2]}学期`
+}
+
+function isBetterTermDisplayLabel(nextLabel: string, currentLabel: string, nextId: string, currentId: string) {
+  const nextLooksAcademic = /20\d{2}.*20\d{2}.*学期/.test(nextLabel)
+  const currentLooksAcademic = /20\d{2}.*20\d{2}.*学期/.test(currentLabel)
+
+  if (nextLooksAcademic !== currentLooksAcademic) return nextLooksAcademic
+  if (nextLabel !== nextId && currentLabel === currentId) return true
+  return nextLabel.length > currentLabel.length
 }
 
 function termRowsToRecord(rows: TermStartRow[]) {
@@ -1408,8 +1587,11 @@ function SchoolsView(props: {
               </tr>
             </thead>
             <tbody>
-              {props.schools.items.map((school) => (
-                <tr key={school.id}>
+              {props.schools.items.map((school) => {
+                const termStartEntries = getTermStartDisplayEntries(school)
+
+                return (
+                  <tr key={school.id}>
                   <td>
                     <div className="cell-title">{school.name}</div>
                     <div className="cell-meta">{joinFilled([school.id, school.shortName, school.province, school.city])}</div>
@@ -1429,9 +1611,9 @@ function SchoolsView(props: {
                     <div className="cell-meta">{display(school.loginMode, '未设置登录方式')}</div>
                   </td>
                   <td>
-                    <div className="cell-title">{Object.keys(school.termStarts || {}).length ? `${Object.keys(school.termStarts || {}).length} 个学期` : '未配置'}</div>
-                    {Object.entries(school.termStarts || {}).length > 0 && (
-                      <div className="cell-meta">{Object.entries(school.termStarts || {}).map(([termId, date]) => `${termId}: ${date}`).join('；')}</div>
+                    <div className="cell-title">{termStartEntries.length ? `${termStartEntries.length} 个学期` : '未配置'}</div>
+                    {termStartEntries.length > 0 && (
+                      <div className="cell-meta">{termStartEntries.map((entry) => `${entry.label}: ${entry.date}`).join('；')}</div>
                     )}
                     <div className="cell-meta">{school.sectionTimes?.length ? `上课时间：${school.sectionTimes.length} 节` : '上课时间未配置'}</div>
                   </td>
@@ -1446,8 +1628,9 @@ function SchoolsView(props: {
                       <button className="button secondary" type="button" onClick={() => props.onOpenFeedback(school)}><MessageSquareWarning size={16} />反馈</button>
                     </div>
                   </td>
-                </tr>
-              ))}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -2096,7 +2279,7 @@ function SubmissionConfirmModal(props: { action: SubmissionConfirmState; onCance
 function TermStartForm(props: { value: unknown; school?: SchoolItem; onCancel: () => void; onSubmit: (value: Record<string, string>) => void }) {
   const knownTerms = props.school?.terms || []
   const hasKnownTerms = knownTerms.length > 0
-  const [rows, setRows] = useState<TermStartRow[]>(() => createTermStartRows(props.value, knownTerms))
+  const [rows, setRows] = useState<TermStartRow[]>(() => createTermStartRows(props.value, knownTerms, props.school))
 
   const updateRow = (id: string, patch: Partial<TermStartRow>) => {
     setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row))
@@ -2137,7 +2320,6 @@ function TermStartForm(props: { value: unknown; school?: SchoolItem; onCancel: (
             {row.locked ? (
               <div className="term-display">
                 <span className="term-label">{row.label || row.termId}</span>
-                <span className="term-id-code">{row.termId}</span>
               </div>
             ) : (
               <label className="field">

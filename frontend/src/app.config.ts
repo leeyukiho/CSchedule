@@ -10,7 +10,6 @@ export default defineAppConfig({
     'pages/submission/index',
     'pages/settings/index',
     'pages/about/index',
-    'pages/admin/index',
   ],
   window: {
     backgroundTextStyle: 'light',
