@@ -35,28 +35,10 @@ export interface LoginSubmitResponse {
   savedTargets?: DataTarget[]
 }
 
-export interface SessionImportFallbackResponse {
-  status: 'need_webview_client_fetch'
-  accountId: string
-  requiredFetchTargets: DataTarget[]
-  message: string
-}
-
 export function submitLogin(schoolId: string, data: LoginSubmitRequest) {
   return requestApi<LoginSubmitResponse, LoginSubmitRequest>({
     method: 'POST',
     path: `/schools/${encodeURIComponent(schoolId)}/login`,
-    data,
-  })
-}
-
-export function importSession(
-  schoolId: string,
-  data: { contextId?: string; accountId?: string; session?: unknown },
-) {
-  return requestApi<SessionImportFallbackResponse, typeof data>({
-    method: 'POST',
-    path: `/schools/${encodeURIComponent(schoolId)}/session-import`,
     data,
   })
 }

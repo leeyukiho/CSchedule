@@ -4,7 +4,7 @@
   "description": "A Taro multi-platform mini app",
   "appid": "wx4d568590b993fc96",
   "setting": {
-    "urlCheck": true,
+    "urlCheck": false,
     "es6": true,
     "enhance": false,
     "compileHotReLoad": false,

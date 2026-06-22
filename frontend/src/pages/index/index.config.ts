@@ -1,3 +1,4 @@
 export default definePageConfig({
-  navigationBarTitleText: 'CSchedule',
+  navigationBarTitleText: '首页',
+  navigationStyle: 'custom',
 })
