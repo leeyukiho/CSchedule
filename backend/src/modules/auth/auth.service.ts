@@ -151,6 +151,9 @@ export class AuthService {
       const primary =
         writtenCaches.find((item) => item.input.target === "course") ??
         writtenCaches[0];
+      const savedTargets = writtenCaches.map((item) => item.input.target);
+      const cacheResults = (await this.courseSync.getLatestCacheResults(account.id))
+        .filter((item) => savedTargets.includes(item.target));
 
       return {
         accountId: account.id,
@@ -159,7 +162,8 @@ export class AuthService {
         requiredFetchTargets: [],
         cacheId: primary?.cache.cacheId,
         parsedCount: primary?.input.parsedCount ?? primary?.cache.parsedCount,
-        savedTargets: writtenCaches.map((item) => item.input.target),
+        savedTargets,
+        ...(cacheResults.length ? { cacheResults } : {}),
       };
     }
 

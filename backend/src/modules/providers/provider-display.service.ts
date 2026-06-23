@@ -6,6 +6,7 @@ import {
   FeatureDisplayConfig,
   FeatureDisplayField,
   SectionTimeConfig,
+  SectionTimeProfileConfig,
 } from './provider.types'
 import { ProviderRegistryService } from './provider-registry.service'
 
@@ -57,6 +58,27 @@ export class ProviderDisplayService {
 
     try {
       return this.asSectionTimes(this.providers.getProvider(providerId).meta.sectionTimes)
+    } catch {
+      return []
+    }
+  }
+
+  getSectionTimeProfiles(
+    schoolConfig: Prisma.JsonValue | null,
+    providerId: string,
+  ): SectionTimeProfileConfig[] {
+    const config = this.asRecord(schoolConfig)
+    const provider = this.asRecord(config.provider)
+    const schoolProfiles = this.asSectionTimeProfiles(
+      config.sectionTimeProfiles ?? provider.sectionTimeProfiles,
+    )
+
+    if (schoolProfiles.length) {
+      return schoolProfiles
+    }
+
+    try {
+      return this.asSectionTimeProfiles(this.providers.getProvider(providerId).meta.sectionTimeProfiles)
     } catch {
       return []
     }
@@ -241,6 +263,39 @@ export class ProviderDisplayService {
 
       if (Number.isInteger(section) && section > 0 && start && end) {
         result.push({ section, start, end })
+      }
+
+      return result
+    }, [])
+  }
+
+  private asSectionTimeProfiles(value: unknown): SectionTimeProfileConfig[] {
+    if (!Array.isArray(value)) {
+      return []
+    }
+
+    return value.reduce<SectionTimeProfileConfig[]>((result, item, index) => {
+      const source = this.asRecord(item)
+      const sectionTimes = this.asSectionTimes(source.sectionTimes)
+      const buildingKeywords = Array.isArray(source.buildingKeywords)
+        ? source.buildingKeywords
+            .map((keyword) => String(keyword || '').trim())
+            .filter(Boolean)
+        : []
+      const id = typeof source.id === 'string' && source.id.trim()
+        ? source.id.trim()
+        : `profile-${index + 1}`
+      const name = typeof source.name === 'string' && source.name.trim()
+        ? source.name.trim()
+        : id
+
+      if (id && name && sectionTimes.length) {
+        result.push({
+          id,
+          name,
+          buildingKeywords: [...new Set(buildingKeywords)],
+          sectionTimes,
+        })
       }
 
       return result

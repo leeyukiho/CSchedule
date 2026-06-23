@@ -4,17 +4,15 @@ import { Button, Checkbox, Input, ScrollView, Text, View } from '@tarojs/compone
 
 import { submitLogin } from '../../shared/api/auth'
 import {
-  CloudCredentialCacheResult,
   CloudCredentialSyncResult,
   hasCloudCredentialSync,
   runCredentialSyncWithCloud,
 } from '../../shared/api/cloud-sync'
-import { createLoginContext, listSchools, refreshSchoolTermStarts } from '../../shared/api/schools'
+import { createLoginContext, listSchools, refreshSchoolTermStarts, saveSchoolTermStartsFromResponse } from '../../shared/api/schools'
 import {
   FeatureCacheResponse,
   LoginContextResponse,
   LoginField,
-  AccountSessionSummary,
   CloudSyncFunctionConfig,
   DataTarget,
   ProfileData,
@@ -177,10 +175,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
 }
 
-function settleSchoolTermStarts(schoolId: string) {
-  return refreshSchoolTermStarts(schoolId).catch(() => null)
-}
-
 function getText(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
@@ -207,61 +201,11 @@ function getSharedCloudImport(
     : undefined
 }
 
-function createCachedOnlySession(): AccountSessionSummary {
-  return {
-    sessionReusable: false,
-    sessionRefreshable: false,
-    accountStatus: 'cached_only',
-  }
-}
-
 function getCacheResult(
   cacheResults: CloudCredentialSyncResult['cacheResults'],
   target: 'course' | 'profile',
 ) {
   return cacheResults.find((item) => item.target === target)
-}
-
-function createClientCacheData(
-  accountId: string,
-  school: SchoolListItem,
-  cacheResult: CloudCredentialCacheResult,
-): TimetableCacheResponse | FeatureCacheResponse | null {
-  const cacheData = isRecord(cacheResult.cacheData) ? cacheResult.cacheData : {}
-  const providerId = school.providerId || school.id
-  const base = {
-    accountId,
-    schoolId: school.id,
-    providerId,
-    termId: getText(cacheResult.termId) || getText(cacheData.termId),
-    sourceHash: getText(cacheResult.sourceHash) || getText(cacheData.sourceHash),
-    syncedAt: getText(cacheResult.syncedAt) || getText(cacheData.syncedAt),
-    session: createCachedOnlySession(),
-  }
-
-  if (cacheResult.target === 'course') {
-    if (!Array.isArray(cacheData.courses)) {
-      return null
-    }
-
-    return {
-      ...base,
-      courses: cacheData.courses as TimetableCacheResponse['courses'],
-      terms: Array.isArray(cacheData.terms) ? cacheData.terms : [],
-      sectionTimes: Array.isArray(cacheData.sectionTimes) ? cacheData.sectionTimes : [],
-    }
-  }
-
-  if (!['score', 'exam', 'profile'].includes(cacheResult.target)) {
-    return null
-  }
-
-  return {
-    ...base,
-    target: cacheResult.target,
-    data: 'data' in cacheData ? cacheData.data : null,
-    meta: cacheData.meta ?? {},
-  } as FeatureCacheResponse
 }
 
 function persistLoginCache(
@@ -282,6 +226,7 @@ function persistLoginCache(
       sourceHash: timetable.sourceHash,
       syncedAt: timetable.syncedAt,
     })
+    saveSchoolTermStartsFromResponse(timetable.schoolId, timetable.termStarts)
     clearStoredDataCacheTerms(accountId, 'timetable')
 
     return
@@ -312,13 +257,15 @@ function persistLoginCache(
 
 function persistCloudCache(
   accountId: string,
-  school: SchoolListItem,
-  cacheResults: NonNullable<CloudCredentialSyncResult['cacheResults']>,
+  cacheResults: Array<{
+    target: DataTarget
+    cacheData: TimetableCacheResponse | FeatureCacheResponse
+  }>,
 ) {
   const savedCaches: Array<TimetableCacheResponse | FeatureCacheResponse> = []
 
   for (const cacheResult of cacheResults) {
-    const cacheData = createClientCacheData(accountId, school, cacheResult)
+    const cacheData = cacheResult.cacheData
 
     if (!cacheData) {
       continue
@@ -585,7 +532,6 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
       ])
 
       if (context.syncStrategy?.importMode === 'password_server') {
-        const termStartsRequest = settleSchoolTermStarts(selectedSchool.id)
         const sharedCloudImport = getSharedCloudImport(
           context.syncStrategy.cloudFunctions,
           CLOUD_IMPORT_TARGETS,
@@ -633,8 +579,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
         setStoredAccountId(result.accountId, selectedSchool.id)
         const savedCaches = persistCloudCache(
           result.accountId,
-          selectedSchool,
-          cloudResult.cacheResults,
+          result.cacheResults || [],
         )
         const savedCourseCache = getSavedCacheData(savedCaches, 'course')
         const savedProfileCache = getSavedCacheData(savedCaches, 'profile')
@@ -654,7 +599,6 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
             profileCacheData: savedProfileCache,
           }),
         )
-        await termStartsRequest
         setMessage('登录成功')
         Taro.switchTab({ url: '/pages/index/index' })
         return
@@ -701,7 +645,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
         })
         return
       } else {
-        await settleSchoolTermStarts(selectedSchool.id)
+        await refreshSchoolTermStarts(selectedSchool.id).catch(() => null)
         setMessage('登录成功')
       }
 

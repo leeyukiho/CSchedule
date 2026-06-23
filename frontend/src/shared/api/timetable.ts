@@ -15,6 +15,7 @@ function normalizeTimetable(response: TimetableCacheResponse): TimetableCacheRes
     courses: Array.isArray(response.courses) ? response.courses.filter(Boolean) as CourseItem[] : [],
     terms: Array.isArray(response.terms) ? response.terms : [],
     sectionTimes: Array.isArray(response.sectionTimes) ? response.sectionTimes : [],
+    sectionTimeProfiles: Array.isArray(response.sectionTimeProfiles) ? response.sectionTimeProfiles : [],
   }
 }
 

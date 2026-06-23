@@ -3,6 +3,7 @@ import { ReminderSubscription, ReminderType } from '@prisma/client'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { ProviderDisplayService } from '../providers/provider-display.service'
+import { SectionTimeProfileConfig } from '../providers/provider.types'
 import {
   getReminderConfig,
   isWithinReminderWindow,
@@ -446,9 +447,22 @@ export class RemindersService {
       cache?.account.school.config ?? null,
       cache?.account.providerId || '',
     )
+    const sectionTimeProfiles = this.providerDisplay.getSectionTimeProfiles(
+      cache?.account.school.config ?? null,
+      cache?.account.providerId || '',
+    )
     const sectionTimes = cacheSectionTimes.length ? cacheSectionTimes : configuredSectionTimes
     const candidates = courses
-      .map((course) => this.toCourseReminderCandidate(course, weekStart, now, sectionTimes, maxWeek))
+      .map((course) =>
+        this.toCourseReminderCandidate(
+          course,
+          weekStart,
+          now,
+          sectionTimes,
+          maxWeek,
+          sectionTimeProfiles,
+        ),
+      )
       .filter((item): item is CourseReminderCandidate => Boolean(item))
       .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime())
 
@@ -728,6 +742,7 @@ export class RemindersService {
     now: Date,
     sectionTimes: unknown,
     maxWeek: number,
+    sectionTimeProfiles: SectionTimeProfileConfig[] = [],
   ): CourseReminderCandidate | null {
     const weekday = Number(course.weekday)
 
@@ -736,7 +751,7 @@ export class RemindersService {
     }
 
     const weeks = this.getCourseWeeks(course, maxWeek)
-    const startTime = this.getCourseStartTime(course, sectionTimes)
+    const startTime = this.getCourseStartTime(course, sectionTimes, sectionTimeProfiles)
     const timeParts = this.parseTimeParts(startTime)
 
     for (const week of weeks) {
@@ -984,7 +999,11 @@ export class RemindersService {
     return Number(course.startSection || sections[0] || 999)
   }
 
-  private getCourseStartTime(course: Record<string, unknown>, sectionTimes: unknown) {
+  private getCourseStartTime(
+    course: Record<string, unknown>,
+    sectionTimes: unknown,
+    sectionTimeProfiles: SectionTimeProfileConfig[] = [],
+  ) {
     const direct = this.getText(course, ['startTime', 'time'])
 
     if (direct) {
@@ -992,9 +1011,41 @@ export class RemindersService {
     }
 
     const startSection = this.getCourseStartSection(course)
+    const profile = this.matchSectionTimeProfile(course, sectionTimeProfiles)
+
+    if (profile) {
+      const profileStart = profile.sectionTimes.find((item) => item.section === startSection)?.start
+
+      if (profileStart) {
+        return profileStart
+      }
+    }
+
     const timeMap = this.getSectionTimeMap(sectionTimes)
 
     return timeMap[startSection]?.start || ''
+  }
+
+  private matchSectionTimeProfile(
+    course: Record<string, unknown>,
+    profiles: SectionTimeProfileConfig[],
+  ) {
+    const room = [course.building, course.location, course.classroom]
+      .map((value) => String(value || ''))
+      .join('')
+      .replace(/\s+/g, '')
+    const normalizedRoom = room.toLocaleLowerCase()
+
+    if (!normalizedRoom) {
+      return undefined
+    }
+
+    return profiles.find((profile) =>
+      profile.buildingKeywords.some((keyword) => {
+        const normalizedKeyword = keyword.replace(/\s+/g, '').toLocaleLowerCase()
+        return normalizedKeyword && normalizedRoom.includes(normalizedKeyword)
+      }),
+    )
   }
 
   private getSectionTimeMap(sectionTimes: unknown) {

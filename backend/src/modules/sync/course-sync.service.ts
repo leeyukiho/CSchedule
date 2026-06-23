@@ -4,7 +4,11 @@ import { createHash } from "node:crypto";
 
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { StudentIdentityService } from "../accounts/student-identity.service";
-import { DataTarget } from "../providers/provider.types";
+import { ProviderDisplayService } from "../providers/provider-display.service";
+import {
+  DataTarget,
+  SectionTimeProfileConfig,
+} from "../providers/provider.types";
 
 interface CloudFeatureResult {
   data: unknown;
@@ -12,11 +16,17 @@ interface CloudFeatureResult {
   meta?: Record<string, unknown>;
 }
 
+export interface CachedDataResult {
+  target: DataTarget;
+  cacheData: Record<string, unknown>;
+}
+
 @Injectable()
 export class CourseSyncService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly studentIdentity: StudentIdentityService,
+    private readonly providerDisplay: ProviderDisplayService,
   ) {}
 
   async writeCloudCacheResult(input: {
@@ -123,6 +133,158 @@ export class CourseSyncService {
     );
 
     return { cacheId: cache.id, parsedCount: this.countFeatureItems(featureData), syncedAt };
+  }
+
+  async getLatestCacheResults(accountId: string): Promise<CachedDataResult[]> {
+    const account = await this.prisma.studentAccount.findUnique({
+      where: { id: accountId },
+      select: {
+        id: true,
+        schoolId: true,
+        providerId: true,
+        status: true,
+        sessionReusable: true,
+        sessionRefreshable: true,
+        sessionExpireAt: true,
+        school: {
+          select: {
+            config: true,
+          },
+        },
+      },
+    });
+
+    if (!account) {
+      return [];
+    }
+
+    const [courseCache, featureCaches] = await Promise.all([
+      this.prisma.courseCache.findFirst({
+        where: { accountId },
+        orderBy: { syncedAt: "desc" },
+      }),
+      this.prisma.featureCache.findMany({
+        where: { accountId, target: { in: ["profile", "score", "exam"] } },
+        orderBy: [{ target: "asc" }, { syncedAt: "desc" }],
+      }),
+    ]);
+    const latestFeatureCacheByTarget = new Map<
+      DataTarget,
+      (typeof featureCaches)[number]
+    >();
+
+    for (const cache of featureCaches) {
+      if (!latestFeatureCacheByTarget.has(cache.target)) {
+        latestFeatureCacheByTarget.set(cache.target, cache);
+      }
+    }
+
+    const cacheResults = [
+      {
+        target: "course" as DataTarget,
+        cacheData: this.getLatestCacheData(account, "course", courseCache),
+      },
+      ...(["profile", "score", "exam"] as DataTarget[]).map((target) => ({
+        target,
+        cacheData: this.getLatestCacheData(
+          account,
+          target,
+          latestFeatureCacheByTarget.get(target),
+        ),
+      })),
+    ];
+    const results: CachedDataResult[] = [];
+
+    for (const result of cacheResults) {
+      if (result.cacheData) {
+        results.push({
+          target: result.target,
+          cacheData: result.cacheData,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  private getLatestCacheData(
+    account: {
+      id: string;
+      schoolId: string;
+      providerId: string;
+      status: string;
+      sessionReusable: boolean;
+      sessionRefreshable: boolean;
+      sessionExpireAt: Date | null;
+      school: { config: Prisma.JsonValue };
+    },
+    target: DataTarget,
+    cache?: {
+      termId: string | null;
+      coursesJson?: unknown;
+      termsJson?: unknown;
+      sectionTimesJson?: unknown;
+      dataJson?: unknown;
+      metaJson?: unknown;
+      sourceHash: string;
+      syncedAt: Date;
+    } | null,
+  ): Record<string, unknown> | null {
+    if (!cache) {
+      return null;
+    }
+
+    const session = {
+      sessionReusable: account.sessionReusable,
+      sessionRefreshable: account.sessionRefreshable,
+      sessionExpireAt: account.sessionExpireAt?.toISOString(),
+      accountStatus: account.status,
+    };
+
+    if (target === "course") {
+      const cacheSectionTimes = this.asArray(cache.sectionTimesJson);
+      const configuredSectionTimes = this.providerDisplay.getSectionTimes(
+        account.school.config,
+        account.providerId,
+      );
+      const sectionTimeProfiles = this.providerDisplay.getSectionTimeProfiles(
+        account.school.config,
+        account.providerId,
+      );
+
+      return {
+        accountId: account.id,
+        schoolId: account.schoolId,
+        providerId: account.providerId,
+        termId: cache.termId ?? undefined,
+        courses: this.withProfileTimes(
+          this.asArray(cache.coursesJson),
+          sectionTimeProfiles,
+        ),
+        terms: this.asArray(cache.termsJson),
+        termStarts: this.getTermStarts(account.school.config),
+        sectionTimes: cacheSectionTimes.length
+          ? cacheSectionTimes
+          : configuredSectionTimes,
+        ...(sectionTimeProfiles.length ? { sectionTimeProfiles } : {}),
+        sourceHash: cache.sourceHash,
+        syncedAt: cache.syncedAt.toISOString(),
+        session,
+      };
+    }
+
+    return {
+      accountId: account.id,
+      schoolId: account.schoolId,
+      providerId: account.providerId,
+      target,
+      termId: cache.termId ?? undefined,
+      data: cache.dataJson,
+      meta: cache.metaJson,
+      sourceHash: cache.sourceHash,
+      syncedAt: cache.syncedAt.toISOString(),
+      session,
+    };
   }
 
   private async writeFeatureCache(input: {
@@ -275,6 +437,11 @@ export class CourseSyncService {
       teacher: course.teacher,
       location: course.location ?? course.classroom,
       classroom: course.classroom ?? course.location,
+      building: this.asOptionalString(course.building),
+      sectionTimeProfileId: this.asOptionalString(course.sectionTimeProfileId ?? course.timeProfileId),
+      startTime: this.asOptionalString(course.startTime),
+      endTime: this.asOptionalString(course.endTime),
+      time: this.asOptionalString(course.time),
       weekday: Number(course.weekday || 0),
       sections,
       startSection,
@@ -285,6 +452,120 @@ export class CourseSyncService {
       remark: course.remark,
       source: course.source,
     };
+  }
+
+  private withProfileTimes(
+    courses: unknown[],
+    profiles: SectionTimeProfileConfig[],
+  ) {
+    if (!profiles.length) {
+      return courses;
+    }
+
+    return courses.map((course) => {
+      const record = this.asRecord(course);
+
+      if (this.asOptionalString(record.startTime) && this.asOptionalString(record.endTime)) {
+        return course;
+      }
+
+      const profile = this.matchSectionTimeProfile(record, profiles);
+
+      if (!profile) {
+        return course;
+      }
+
+      const startSection = this.getCourseStartSection(record);
+      const endSection = this.getCourseEndSection(record, startSection);
+      const startTime = profile.sectionTimes.find((item) => item.section === startSection)?.start;
+      const endTime = profile.sectionTimes.find((item) => item.section === endSection)?.end;
+
+      if (!startTime || !endTime) {
+        return course;
+      }
+
+      return {
+        ...record,
+        building: this.extractCourseBuilding(record.building ?? record.location ?? record.classroom),
+        sectionTimeProfileId: profile.id,
+        startTime,
+        endTime,
+      };
+    });
+  }
+
+  private matchSectionTimeProfile(
+    course: Record<string, unknown>,
+    profiles: SectionTimeProfileConfig[],
+  ) {
+    const room = [course.building, course.location, course.classroom]
+      .map((value) => String(value || ""))
+      .join("")
+      .replace(/\s+/g, "")
+      .toLocaleLowerCase();
+
+    if (!room) {
+      return undefined;
+    }
+
+    return profiles.find((profile) =>
+      profile.buildingKeywords.some((keyword) => {
+        const normalizedKeyword = keyword.replace(/\s+/g, "").toLocaleLowerCase();
+        return normalizedKeyword && room.includes(normalizedKeyword);
+      }),
+    );
+  }
+
+  private getCourseStartSection(course: Record<string, unknown>) {
+    const sections = Array.isArray(course.sections)
+      ? course.sections.map(Number).filter((section) => Number.isFinite(section) && section > 0)
+      : [];
+
+    return Number(course.startSection ?? sections[0] ?? 0);
+  }
+
+  private getCourseEndSection(course: Record<string, unknown>, startSection: number) {
+    const sections = Array.isArray(course.sections)
+      ? course.sections.map(Number).filter((section) => Number.isFinite(section) && section > 0)
+      : [];
+
+    return Number(course.endSection ?? sections[sections.length - 1] ?? startSection);
+  }
+
+  private extractCourseBuilding(value: unknown) {
+    const text = String(value || "").trim().replace(/\s+/g, "");
+    const numberedTeachingBuilding = text.match(/(教学楼[一二三四五六七八九十\d]+)/);
+
+    if (numberedTeachingBuilding) {
+      return numberedTeachingBuilding[1];
+    }
+
+    const match = text.match(/(.+?(?:教学楼|实验楼|实训楼|楼|馆|中心|校区|院区))/);
+
+    if (match) {
+      return match[1];
+    }
+
+    const prefix = text.match(/^([A-Za-z\u4e00-\u9fa5]+)[-_\d]/);
+    return prefix ? prefix[1] : text;
+  }
+
+  private getTermStarts(config: unknown) {
+    const termStarts = this.asRecord(config).termStarts;
+    const record = this.asRecord(termStarts);
+    const result: Record<string, string> = {};
+
+    for (const [termId, date] of Object.entries(record)) {
+      if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        result[termId] = date;
+      }
+    }
+
+    return result;
+  }
+
+  private asArray(value: unknown) {
+    return Array.isArray(value) ? value : [];
   }
 
   private normalizeSections(course: Record<string, unknown>) {
@@ -311,6 +592,10 @@ export class CourseSyncService {
     return value && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
+  }
+
+  private asOptionalString(value: unknown) {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
   }
 
   private toJson(value: unknown): Prisma.InputJsonValue {

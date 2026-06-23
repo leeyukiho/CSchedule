@@ -946,6 +946,7 @@ export default function HomePage() {
               course,
               timetable?.sectionTimes,
               timetable?.providerId,
+              timetable?.sectionTimeProfiles,
             )
             const timeFallback = formatSections(course)
             const timeText = time || '时间待定'

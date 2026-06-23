@@ -1,4 +1,4 @@
-import { CourseItem, SchoolListItem, SchoolStatus } from './api/types'
+import { CourseItem, SchoolListItem, SchoolStatus, SectionTimeProfile } from './api/types'
 
 export type SectionTimeMap = Record<number, { start: string; end: string }>
 
@@ -26,6 +26,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function getText(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+function normalizeMatchText(value: unknown) {
+  return String(value || '').trim().replace(/\s+/g, '').toLocaleLowerCase()
 }
 
 function getSectionNumber(value: unknown) {
@@ -92,6 +96,55 @@ export function getSectionTimeMap(
   return {}
 }
 
+export function getCourseBuildingText(course: CourseItem) {
+  return [
+    getText(course.building),
+    getText(course.location),
+    getText(course.classroom),
+  ].filter(Boolean).join(' ')
+}
+
+export function getCourseSectionTimeProfile(
+  course: CourseItem,
+  sectionTimeProfiles?: SectionTimeProfile[],
+) {
+  if (!Array.isArray(sectionTimeProfiles) || sectionTimeProfiles.length === 0) {
+    return undefined
+  }
+
+  const room = normalizeMatchText(getCourseBuildingText(course))
+
+  if (!room) {
+    return undefined
+  }
+
+  return sectionTimeProfiles.find((profile) =>
+    Array.isArray(profile.buildingKeywords) &&
+      profile.buildingKeywords.some((keyword) => {
+        const normalizedKeyword = normalizeMatchText(keyword)
+        return normalizedKeyword && room.includes(normalizedKeyword)
+      }),
+  )
+}
+
+export function getCourseProfileTimeText(
+  course: CourseItem,
+  sectionTimeProfiles?: SectionTimeProfile[],
+) {
+  const profile = getCourseSectionTimeProfile(course, sectionTimeProfiles)
+
+  if (!profile) {
+    return ''
+  }
+
+  const sections = getCourseSections(course)
+  const timeMap = getSectionTimeMap(profile.sectionTimes)
+  const first = timeMap[sections[0]]
+  const last = timeMap[sections[sections.length - 1]]
+
+  return first && last ? `${first.start}-${last.end}` : ''
+}
+
 export function getWeekday() {
   const day = new Date().getDay()
   return day === 0 ? 7 : day
@@ -134,11 +187,35 @@ export function formatSections(course: CourseItem) {
   return sections.length > 1 ? `${sections[0]}-${sections[sections.length - 1]}节` : `${sections[0]}节`
 }
 
+export function getCourseTimeText(course: CourseItem) {
+  const startTime = getText(course.startTime)
+  const endTime = getText(course.endTime)
+  const directTime = getText(course.time)
+
+  if (startTime && endTime) {
+    return `${startTime}-${endTime}`
+  }
+
+  return directTime
+}
+
 export function formatCourseTime(
   course: CourseItem,
   sectionTimes?: unknown,
   providerId?: string,
+  sectionTimeProfiles?: SectionTimeProfile[],
 ) {
+  const directTime = getCourseTimeText(course)
+  const profileTime = getCourseProfileTimeText(course, sectionTimeProfiles)
+
+  if (profileTime && (course.sectionTimeProfileId || course.timeProfileId || !directTime)) {
+    return profileTime
+  }
+
+  if (directTime) {
+    return directTime
+  }
+
   const sections = getCourseSections(course)
   const timeMap = {
     ...DEFAULT_SECTION_TIMES,

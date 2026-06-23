@@ -1,5 +1,9 @@
 import { requestApi } from './client'
-import { DataTarget } from './types'
+import {
+  DataTarget,
+  FeatureCacheResponse,
+  TimetableCacheResponse,
+} from './types'
 
 export interface LoginSubmitRequest {
   accountId?: string
@@ -33,6 +37,10 @@ export interface LoginSubmitResponse {
   cacheId?: string
   parsedCount?: number
   savedTargets?: DataTarget[]
+  cacheResults?: Array<{
+    target: DataTarget
+    cacheData: TimetableCacheResponse | FeatureCacheResponse
+  }>
 }
 
 export function submitLogin(schoolId: string, data: LoginSubmitRequest) {

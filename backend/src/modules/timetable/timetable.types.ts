@@ -1,4 +1,4 @@
-import { AccountStatus, FeatureDisplayConfig } from '../providers/provider.types'
+import { AccountStatus, FeatureDisplayConfig, SectionTimeProfileConfig } from '../providers/provider.types'
 
 export interface AccountSessionSummary {
   sessionReusable: boolean
@@ -16,6 +16,7 @@ export interface TimetableCacheDataResponse {
   terms: unknown[]
   termStarts?: Record<string, string>
   sectionTimes: unknown[]
+  sectionTimeProfiles?: SectionTimeProfileConfig[]
   display?: FeatureDisplayConfig
   sourceHash?: string
   notModified?: boolean

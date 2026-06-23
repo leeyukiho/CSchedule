@@ -4,7 +4,12 @@ import { Picker, RootPortal, Text, View, type ITouchEvent } from '@tarojs/compon
 
 import { getTimetable } from '../../shared/api/timetable'
 import { CourseItem, FeatureDisplayField, TimetableCacheResponse } from '../../shared/api/types'
-import { DEFAULT_SECTION_TIMES, getCourseSections, getSectionTimeMap } from '../../shared/format'
+import {
+  DEFAULT_SECTION_TIMES,
+  formatCourseTime,
+  getCourseSections,
+  getSectionTimeMap,
+} from '../../shared/format'
 import { PageShell } from '../../shared/layout'
 import { getStoredAuthState, getStoredTermStarts } from '../../shared/storage'
 import {
@@ -781,7 +786,12 @@ export default function SchedulePage() {
     const room = getCourseValue(course, roomCourseField) || '地点待定'
     const teacher = course.teacher?.trim() || '教师待定'
     const section = formatSectionsText(sections)
-    const timeText = startTime && endTime ? `${startTime}-${endTime}` : '时间待定'
+    const timeText = formatCourseTime(
+      course,
+      timetable?.sectionTimes,
+      timetable?.providerId,
+      timetable?.sectionTimeProfiles,
+    ) || (startTime && endTime ? `${startTime}-${endTime}` : '时间待定')
     const weekdayText = WEEKDAYS[weekday - 1] || ''
     const weeksText = formatWeeksText(course.weeks)
 

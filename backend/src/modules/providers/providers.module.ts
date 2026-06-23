@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 
 import { ProviderDisplayService } from './provider-display.service'
 import { ProviderRegistryService } from './provider-registry.service'
+import { bwuProvider } from './adapters/bwu.provider'
 import { whhxitProvider } from './adapters/whhxit.provider'
 import { whggvcProvider } from './adapters/whggvc.provider'
 import { wtbuProvider } from './adapters/wtbu.provider'
@@ -12,6 +13,7 @@ import { wtbuProvider } from './adapters/wtbu.provider'
       provide: ProviderRegistryService,
       useFactory: () => {
         const registry = new ProviderRegistryService()
+        registry.register(bwuProvider)
         registry.register(wtbuProvider)
         registry.register(whhxitProvider)
         registry.register(whggvcProvider)

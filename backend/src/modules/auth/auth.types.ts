@@ -36,4 +36,8 @@ export interface LoginSubmitResponse {
   cacheId?: string
   parsedCount?: number
   savedTargets?: DataTarget[]
+  cacheResults?: Array<{
+    target: DataTarget
+    cacheData: Record<string, unknown>
+  }>
 }

@@ -7,6 +7,10 @@ import {
   UpdateNotificationInput,
 } from '../notifications/notifications.service'
 
+type AdminSchoolTermMap = Map<string, { id: string; label: string }> & {
+  courseBuildings?: Map<string, number>
+}
+
 export interface AdminSchoolUpdateInput {
   name?: string
   shortName?: string | null
@@ -30,6 +34,12 @@ export interface AdminProviderConfigUpsertInput {
   providerId: string
   loginMode: LoginMode
   sectionTimes?: Array<{ section: number; start: string; end: string }>
+  sectionTimeProfiles?: Array<{
+    id?: string
+    name?: string
+    buildingKeywords?: string[]
+    sectionTimes?: Array<{ section: number; start: string; end: string }>
+  }>
   dataAccess?: Partial<Record<'course' | 'score' | 'exam' | 'profile', DataAccessMode[]>>
   capabilities?: Record<string, boolean>
   eduSystemType?: string | null
@@ -116,6 +126,8 @@ export class AdminService {
             this.getTermStarts(school.config),
           ),
           sectionTimes: this.getSectionTimes(school.config),
+          sectionTimeProfiles: this.getSectionTimeProfiles(school.config),
+          courseBuildings: this.getCourseBuildings(termMap.get(school.id)?.courseBuildings),
           userCount: allUserCountMap.get(school.id) ?? 0,
         })),
         total,
@@ -155,6 +167,8 @@ export class AdminService {
           this.getTermStarts(school.config),
         ),
         sectionTimes: this.getSectionTimes(school.config),
+        sectionTimeProfiles: this.getSectionTimeProfiles(school.config),
+        courseBuildings: this.getCourseBuildings(termMap.get(school.id)?.courseBuildings),
         userCount: userCountMap.get(school.id) ?? 0,
       })),
       total,
@@ -374,12 +388,15 @@ export class AdminService {
         status,
         enabled: status === 'enabled',
         ...(verifiedAt ? { verifiedAt } : {}),
-        ...(shouldUpdateProviderConfig || input.sectionTimes !== undefined
+        ...(shouldUpdateProviderConfig ||
+        input.sectionTimes !== undefined ||
+        input.sectionTimeProfiles !== undefined
           ? {
               config: await this.mergeSchoolConfig(schoolId, {
                 authConfig: input.authConfig,
                 providerConfig: shouldUpdateProviderConfig ? providerConfig : undefined,
                 sectionTimes: input.sectionTimes,
+                sectionTimeProfiles: input.sectionTimeProfiles,
               }),
             }
           : {}),
@@ -659,6 +676,12 @@ export class AdminService {
       providerConfig?: Record<string, unknown> | null
       termStarts?: Record<string, string>
       sectionTimes?: Array<{ section: number; start: string; end: string }>
+      sectionTimeProfiles?: Array<{
+        id?: string
+        name?: string
+        buildingKeywords?: string[]
+        sectionTimes?: Array<{ section: number; start: string; end: string }>
+      }>
     },
   ) {
     const school = await this.prisma.school.findUnique({ where: { id: schoolId } })
@@ -684,6 +707,10 @@ export class AdminService {
 
     if (input.sectionTimes !== undefined) {
       nextConfig.sectionTimes = this.normalizeSectionTimes(input.sectionTimes)
+    }
+
+    if (input.sectionTimeProfiles !== undefined) {
+      nextConfig.sectionTimeProfiles = this.normalizeSectionTimeProfiles(input.sectionTimeProfiles)
     }
 
     return this.toJson(nextConfig)
@@ -712,6 +739,28 @@ export class AdminService {
       .sort((left, right) => left.section - right.section)
   }
 
+  private normalizeSectionTimeProfiles(
+    value: Array<{
+      id?: string
+      name?: string
+      buildingKeywords?: string[]
+      sectionTimes?: Array<{ section: number; start: string; end: string }>
+    }>,
+  ) {
+    return (Array.isArray(value) ? value : [])
+      .map((item, index) => {
+        const id = String(item.id || `profile-${index + 1}`).trim()
+        const name = String(item.name || id).trim()
+        const buildingKeywords = Array.isArray(item.buildingKeywords)
+          ? [...new Set(item.buildingKeywords.map((keyword) => String(keyword || '').trim()).filter(Boolean))]
+          : []
+        const sectionTimes = this.normalizeSectionTimes(item.sectionTimes || [])
+
+        return { id, name, buildingKeywords, sectionTimes }
+      })
+      .filter((item) => item.id && item.name && item.sectionTimes.length > 0)
+  }
+
   private getTermStarts(config: unknown) {
     const record = this.asRecord(this.asRecord(config).termStarts)
     const result: Record<string, string> = {}
@@ -726,12 +775,12 @@ export class AdminService {
   }
 
   private getSchoolTermMap(
-    caches: Array<{ schoolId: string; termId: string | null; termsJson: unknown }>,
+    caches: Array<{ schoolId: string; termId: string | null; termsJson: unknown; coursesJson: unknown }>,
   ) {
-    const map = new Map<string, Map<string, { id: string; label: string }>>()
+    const map = new Map<string, AdminSchoolTermMap>()
 
     for (const cache of caches) {
-      const terms = map.get(cache.schoolId) ?? new Map<string, { id: string; label: string }>()
+      const terms = map.get(cache.schoolId) ?? (new Map<string, { id: string; label: string }>() as AdminSchoolTermMap)
       this.addTermOption(terms, cache.termId, cache.termId)
 
       for (const term of Array.isArray(cache.termsJson) ? cache.termsJson : []) {
@@ -741,6 +790,7 @@ export class AdminService {
         this.addTermOption(terms, id, label)
       }
 
+      this.collectCourseBuildings(terms, cache.coursesJson)
       map.set(cache.schoolId, terms)
     }
 
@@ -757,6 +807,7 @@ export class AdminService {
                 schoolId: true,
                 termId: true,
                 termsJson: true,
+                coursesJson: true,
               },
               orderBy: { syncedAt: 'desc' },
               take: 20,
@@ -802,6 +853,70 @@ export class AdminService {
     const record = this.asRecord(config)
     const source = record.sectionTimes ?? this.asRecord(record.provider).sectionTimes
     return Array.isArray(source) ? this.normalizeSectionTimes(source as Array<{ section: number; start: string; end: string }>) : []
+  }
+
+  private getSectionTimeProfiles(config: unknown) {
+    const record = this.asRecord(config)
+    const source = record.sectionTimeProfiles ?? this.asRecord(record.provider).sectionTimeProfiles
+    return Array.isArray(source)
+      ? this.normalizeSectionTimeProfiles(source as Array<{
+          id?: string
+          name?: string
+          buildingKeywords?: string[]
+          sectionTimes?: Array<{ section: number; start: string; end: string }>
+        }>)
+      : []
+  }
+
+  private collectCourseBuildings(
+    terms: { courseBuildings?: Map<string, number> },
+    coursesJson: unknown,
+  ) {
+    const buildings = terms.courseBuildings ?? new Map<string, number>()
+
+    for (const course of Array.isArray(coursesJson) ? coursesJson : []) {
+      const record = this.asRecord(course)
+      const building = this.extractCourseBuilding(
+        record.building ?? record.location ?? record.classroom ?? record.room,
+      )
+
+      if (building) {
+        buildings.set(building, (buildings.get(building) ?? 0) + 1)
+      }
+    }
+
+    terms.courseBuildings = buildings
+  }
+
+  private getCourseBuildings(buildings?: Map<string, number>) {
+    return [...(buildings ?? new Map<string, number>()).entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], 'zh-CN'))
+      .slice(0, 50)
+      .map(([name, count]) => ({ name, count }))
+  }
+
+  private extractCourseBuilding(value: unknown) {
+    const text = String(value || '').trim()
+
+    if (!text) {
+      return ''
+    }
+
+    const normalized = text.replace(/\s+/g, '')
+    const numberedTeachingBuilding = normalized.match(/(教学楼[一二三四五六七八九十\d]+)/)
+
+    if (numberedTeachingBuilding) {
+      return numberedTeachingBuilding[1]
+    }
+
+    const explicit = normalized.match(/(.+?(?:教学楼|实验楼|实训楼|楼|馆|中心|校区|院区))/)
+
+    if (explicit) {
+      return explicit[1]
+    }
+
+    const roomMatch = normalized.match(/^([A-Za-z\u4e00-\u9fa5]+)[-_\d]/)
+    return roomMatch ? roomMatch[1] : normalized
   }
 
   private async findSchoolIdsByKeyword(keyword: string) {

@@ -89,6 +89,8 @@ interface SchoolItem {
   termStarts?: Record<string, string>
   terms?: TermOption[]
   sectionTimes?: SectionTimeItem[]
+  sectionTimeProfiles?: SectionTimeProfile[]
+  courseBuildings?: CourseBuildingItem[]
   userCount?: number
 }
 
@@ -271,11 +273,34 @@ interface SectionTimeRow {
   end: string
 }
 
+interface SectionTimeProfile {
+  id: string
+  name: string
+  buildingKeywords: string[]
+  sectionTimes: SectionTimeItem[]
+}
+
+interface SectionTimeProfileRow {
+  id: string
+  profileId: string
+  name: string
+  buildingKeywords: string
+  sectionRows: SectionTimeRow[]
+}
+
+interface CourseBuildingItem {
+  name: string
+  count: number
+}
+
 interface ProviderDraft {
   providerId: string
   loginMode: string
   sectionTimes?: SectionTimeItem[]
+  sectionTimeProfiles?: SectionTimeProfile[]
 }
+
+type ProviderConfigTab = 'basic' | 'sectionTimes' | 'buildingTimes'
 
 interface ConfirmState {
   school: SchoolItem
@@ -1371,6 +1396,7 @@ function getProviderDraft(school: SchoolItem) {
     providerId: school.providerId || school.id,
     loginMode: school.loginMode || 'direct_password',
     sectionTimes: school.sectionTimes || [],
+    sectionTimeProfiles: school.sectionTimeProfiles || [],
   }
 }
 
@@ -1641,6 +1667,7 @@ function createEmptyProviderDraft(): ProviderDraft {
     providerId: '',
     loginMode: 'direct_password',
     sectionTimes: [],
+    sectionTimeProfiles: [],
   }
 }
 
@@ -1674,6 +1701,175 @@ function sectionRowsToItems(rows: SectionTimeRow[]) {
     }))
     .filter((item) => Number.isInteger(item.section) && item.section > 0 && item.start && item.end)
     .sort((left, right) => left.section - right.section)
+}
+
+function createSectionTimeProfileRows(profiles: unknown): SectionTimeProfileRow[] {
+  const source = Array.isArray(profiles) ? profiles as Array<Partial<SectionTimeProfile>> : []
+
+  return source
+    .map((profile, index) => {
+      const profileId = String(profile.id || `profile-${index + 1}`).trim()
+
+      return {
+        id: `time-profile-${profileId}-${index}`,
+        profileId,
+        name: String(profile.name || profileId).trim(),
+        buildingKeywords: Array.isArray(profile.buildingKeywords)
+          ? profile.buildingKeywords.join(', ')
+          : '',
+        sectionRows: createSectionTimeRows(profile.sectionTimes || []),
+      }
+    })
+    .filter((profile) => profile.profileId || profile.name || profile.buildingKeywords || sectionRowsToItems(profile.sectionRows).length > 0)
+}
+
+function createSingleBuildingProfileRows(profiles: unknown, buildings: CourseBuildingItem[] = []): SectionTimeProfileRow[] {
+  const sourceRows = createSectionTimeProfileRows(profiles)
+  const rows: SectionTimeProfileRow[] = []
+  const usedBuildingKeys = new Set<string>()
+
+  const addProfile = (source: SectionTimeProfileRow, sourceIndex: number, buildingName: string) => {
+    const name = buildingName.trim()
+    const key = normalizeBuildingKeyword(name)
+
+    if (!name || usedBuildingKeys.has(key)) return
+
+    const sourceBuildingNames = splitBuildingKeywords(source.buildingKeywords || source.name)
+    const profileId = sourceBuildingNames.length <= 1 && source.profileId.trim()
+      ? getUniqueProfileId(source.profileId.trim(), rows)
+      : getUniqueProfileId(createSectionTimeProfileId(name, rows.length), rows)
+
+    rows.push({
+      ...source,
+      id: `${source.id}-building-${key || rows.length}`,
+      profileId,
+      name,
+      buildingKeywords: name,
+      sectionRows: source.sectionRows.map((row, rowIndex) => ({
+        ...row,
+        id: `${row.id}-${key || sourceIndex}-${rowIndex}`,
+      })),
+    })
+    usedBuildingKeys.add(key)
+  }
+
+  buildings.forEach((building) => {
+    const name = building.name.trim()
+    const key = normalizeBuildingKeyword(name)
+    const sourceIndex = sourceRows.findIndex((profile) =>
+      splitBuildingKeywords(profile.buildingKeywords || profile.name)
+        .some((keyword) => normalizeBuildingKeyword(keyword) === key),
+    )
+
+    if (sourceIndex >= 0) {
+      addProfile(sourceRows[sourceIndex], sourceIndex, name)
+    }
+  })
+
+  sourceRows.forEach((profile, profileIndex) => {
+    const names = splitBuildingKeywords(profile.buildingKeywords || profile.name)
+
+    if (names.length) {
+      names.forEach((name) => addProfile(profile, profileIndex, name))
+      return
+    }
+
+    if (sectionRowsToItems(profile.sectionRows).length > 0) {
+      addProfile(profile, profileIndex, getProfileDisplayName(profile, profileIndex))
+    }
+  })
+
+  return rows
+}
+
+function createSectionTimeProfileRow(
+  index: number,
+  sectionTimes: SectionTimeItem[],
+  buildingName = '',
+): SectionTimeProfileRow {
+  const name = buildingName.trim()
+
+  return {
+    id: `time-profile-new-${Date.now()}-${index}`,
+    profileId: name ? createSectionTimeProfileId(name, index) : '',
+    name,
+    buildingKeywords: name,
+    sectionRows: createSectionTimeRows(sectionTimes),
+  }
+}
+
+function createSectionTimeProfileId(value: string, index: number) {
+  const asciiSlug = value
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+
+  if (asciiSlug) {
+    return `building-${asciiSlug}`
+  }
+
+  const codeSlug = Array.from(value.trim())
+    .map((char) => char.codePointAt(0)?.toString(36))
+    .filter(Boolean)
+    .slice(0, 8)
+    .join('-')
+
+  return `building-${codeSlug || index + 1}`
+}
+
+function normalizeBuildingKeyword(value: string) {
+  return value.replace(/\s+/g, '').toLocaleLowerCase()
+}
+
+function splitBuildingKeywords(value: string) {
+  return [...new Set(
+    value
+      .split(/[,;，、\n]/)
+      .map((keyword) => keyword.trim())
+      .filter(Boolean),
+  )]
+}
+
+function profileRowsToItems(rows: SectionTimeProfileRow[]) {
+  return rows
+    .map((row, index) => {
+      const rowName = row.name.trim()
+      const buildingKeywords = splitBuildingKeywords(row.buildingKeywords || rowName)
+      const name = rowName || buildingKeywords[0] || `楼栋时间 ${index + 1}`
+      const id = row.profileId.trim() || createSectionTimeProfileId(name, index)
+
+      return {
+        id,
+        name,
+        buildingKeywords,
+        sectionTimes: sectionRowsToItems(row.sectionRows),
+      }
+    })
+    .filter((profile) => profile.id && profile.name && profile.buildingKeywords.length > 0 && profile.sectionTimes.length > 0)
+}
+
+function getProfileDisplayName(row: SectionTimeProfileRow, index: number) {
+  return row.name.trim() || splitBuildingKeywords(row.buildingKeywords)[0] || `楼栋时间 ${index + 1}`
+}
+
+function getUniqueProfileId(profileId: string, rows: SectionTimeProfileRow[]) {
+  const usedIds = new Set(rows.map((row) => row.profileId.trim()).filter(Boolean))
+
+  if (!usedIds.has(profileId)) {
+    return profileId
+  }
+
+  let suffix = 2
+  let nextId = `${profileId}-${suffix}`
+
+  while (usedIds.has(nextId)) {
+    suffix += 1
+    nextId = `${profileId}-${suffix}`
+  }
+
+  return nextId
 }
 
 function getSchoolProviderCode(school?: SchoolItem) {
@@ -2749,7 +2945,7 @@ function ConfigModal({ modal, onClose, onSubmit }: { modal: ModalState; onClose:
           </div>
           <button className="button ghost" type="button" aria-label="关闭" onClick={onClose}><X size={16} /></button>
         </header>
-        <div className="modal-body">
+        <div className={`modal-body ${modal.mode === 'provider' ? 'provider-modal-body' : ''}`}>
           {modal.mode === 'json' && <pre className="json-output">{JSON.stringify(modal.value, null, 2)}</pre>}
           {modal.mode === 'term' && (
             <TermStartForm
@@ -2948,8 +3144,44 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
     ? props.value as ProviderDraft
     : createEmptyProviderDraft()
   const schoolProviderCode = getSchoolProviderCode(props.school)
+  const courseBuildings = props.school?.courseBuildings || []
   const [draft, setDraft] = useState<ProviderDraft>(initial)
   const [sectionRows, setSectionRows] = useState<SectionTimeRow[]>(() => createSectionTimeRows(initial.sectionTimes))
+  const [profileRows, setProfileRows] = useState<SectionTimeProfileRow[]>(() => createSingleBuildingProfileRows(initial.sectionTimeProfiles, courseBuildings))
+  const [activeTab, setActiveTab] = useState<ProviderConfigTab>('basic')
+  const [activeProfileId, setActiveProfileId] = useState('')
+  const buildingOptions = useMemo(() => {
+    const options = new Map<string, CourseBuildingItem>()
+
+    courseBuildings.forEach((building) => {
+      const name = building.name.trim()
+      const key = normalizeBuildingKeyword(name)
+      if (name && !options.has(key)) options.set(key, building)
+    })
+
+    profileRows.forEach((profile, profileIndex) => {
+      const name = getProfileDisplayName(profile, profileIndex)
+      const key = normalizeBuildingKeyword(name)
+      if (name && !options.has(key)) options.set(key, { name, count: 0 })
+    })
+
+    return [...options.values()]
+  }, [courseBuildings, profileRows])
+  const activeProfileMatchIndex = profileRows.findIndex((profile) => profile.id === activeProfileId)
+  const activeProfileIndex = activeProfileMatchIndex >= 0 ? activeProfileMatchIndex : 0
+  const activeProfile = profileRows[activeProfileIndex]
+  const providerTabs: Array<{ id: ProviderConfigTab; label: string; detail: string }> = [
+    { id: 'basic', label: '基础配置', detail: draft.providerId || schoolProviderCode || 'Provider' },
+    { id: 'sectionTimes', label: '默认上课时间', detail: `${sectionRowsToItems(sectionRows).length || 0} 节` },
+    { id: 'buildingTimes', label: '楼栋上课时间', detail: buildingOptions.length ? `${profileRows.length}/${buildingOptions.length} 栋` : `${profileRows.length} 栋` },
+  ]
+
+  useEffect(() => {
+    setActiveProfileId((current) => {
+      if (current && profileRows.some((profile) => profile.id === current)) return current
+      return profileRows[0]?.id || ''
+    })
+  }, [profileRows])
 
   const setValue = <K extends keyof ProviderDraft>(key: K, value: ProviderDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }))
@@ -2974,93 +3206,299 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
       },
     ])
   }
+  const removeProfileRow = (id: string) => {
+    const nextRows = profileRows.filter((row) => row.id !== id)
+    setProfileRows(nextRows)
+
+    if (activeProfileId === id) {
+      const nextActiveIndex = Math.min(Math.max(activeProfileIndex, 0), nextRows.length - 1)
+      setActiveProfileId(nextRows[nextActiveIndex]?.id || '')
+    }
+  }
+  const createProfileRowForBuilding = (buildingName: string, rows: SectionTimeProfileRow[]) => {
+    const row = createSectionTimeProfileRow(rows.length, sectionRowsToItems(sectionRows), buildingName)
+
+    return {
+      ...row,
+      profileId: getUniqueProfileId(row.profileId || createSectionTimeProfileId(buildingName, rows.length), rows),
+      name: buildingName,
+      buildingKeywords: buildingName,
+    }
+  }
+  const findProfileForBuilding = (rows: SectionTimeProfileRow[], buildingName: string) => {
+    const buildingKey = normalizeBuildingKeyword(buildingName)
+
+    return rows.find((profile) =>
+      splitBuildingKeywords(profile.buildingKeywords || profile.name)
+        .some((keyword) => normalizeBuildingKeyword(keyword) === buildingKey),
+    )
+  }
+  const openBuildingProfile = (buildingName: string) => {
+    const name = buildingName.trim()
+
+    if (!name) return
+
+    const existing = findProfileForBuilding(profileRows, name)
+
+    if (existing) {
+      setActiveProfileId(existing.id)
+      setActiveTab('buildingTimes')
+      return
+    }
+
+    const row = createProfileRowForBuilding(name, profileRows)
+    setProfileRows((current) => [...current, row])
+    setActiveProfileId(row.id)
+    setActiveTab('buildingTimes')
+  }
+  const updateProfileSectionRow = (profileId: string, rowId: string, patch: Partial<SectionTimeRow>) => {
+    setProfileRows((current) => current.map((profile) => profile.id === profileId
+      ? {
+          ...profile,
+          sectionRows: profile.sectionRows.map((row) => row.id === rowId ? { ...row, ...patch } : row),
+        }
+      : profile,
+    ))
+  }
+  const removeProfileSectionRow = (profileId: string, rowId: string) => {
+    setProfileRows((current) => current.map((profile) => {
+      if (profile.id !== profileId) return profile
+      const nextRows = profile.sectionRows.filter((row) => row.id !== rowId)
+      return {
+        ...profile,
+        sectionRows: nextRows.length ? nextRows : [{ id: `${Date.now()}`, section: '', start: '', end: '' }],
+      }
+    }))
+  }
+  const addProfileSectionRow = (profileId: string) => {
+    setProfileRows((current) => current.map((profile) => {
+      if (profile.id !== profileId) return profile
+      return {
+        ...profile,
+        sectionRows: [
+          ...profile.sectionRows,
+          {
+            id: `${Date.now()}-${profile.sectionRows.length}`,
+            section: String(Math.max(0, ...profile.sectionRows.map((row) => Number(row.section) || 0)) + 1),
+            start: '',
+            end: '',
+          },
+        ],
+      }
+    }))
+  }
 
   return (
     <form className="config-form" onSubmit={(event) => {
       event.preventDefault()
       const sectionTimes = sectionRowsToItems(sectionRows)
+      const sectionTimeProfiles = profileRowsToItems(profileRows)
       const shouldSubmitSectionTimes = Boolean(initial.sectionTimes?.length) || sectionTimes.length > 0
+      const shouldSubmitSectionTimeProfiles = Boolean(initial.sectionTimeProfiles?.length) || sectionTimeProfiles.length > 0
       props.onSubmit({
         ...draft,
         ...(shouldSubmitSectionTimes ? { sectionTimes } : {}),
+        ...(shouldSubmitSectionTimeProfiles ? { sectionTimeProfiles } : {}),
       })
     }}>
-      <section className="form-section">
-        <header className="form-section-header">
-          <div>
-            <h3>Provider</h3>
-            <p>只维护 Provider、学校简写和登录方式。</p>
-          </div>
-        </header>
-        <div className="form-grid provider-simple-grid">
-          <label className="field">
-            <span>Provider</span>
-            <input value={draft.providerId} placeholder={schoolProviderCode || 'wtbu'} onChange={(event) => setValue('providerId', event.target.value.trim())} />
-          </label>
-          <label className="field">
-            <span>学校简写</span>
-            <input value={schoolProviderCode} disabled />
-          </label>
-          <SelectField
-            label="登录方式"
-            value={draft.loginMode}
-            options={LOGIN_MODE_OPTIONS}
-            onChange={(loginMode) => setValue('loginMode', loginMode)}
-          />
-        </div>
-      </section>
-      <section className="form-section">
-        <header className="form-section-header">
-          <div>
-            <h3>上课时间</h3>
-            <p>用于前端课表按节次显示时间，未填完整的行不会保存。</p>
-          </div>
-          <button className="button secondary" type="button" onClick={addSectionRow}>
-            <Plus size={16} />
-            添加节次
+      <div className="provider-tabs" role="tablist" aria-label="Provider 配置">
+        {providerTabs.map((tab) => (
+          <button
+            className={`provider-tab-button ${activeTab === tab.id ? 'is-active' : ''}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            <span>{tab.label}</span>
+            <small>{tab.detail}</small>
           </button>
-        </header>
-        <div className="section-time-table">
-          <div className="section-time-head">
-            <span>节次</span>
-            <span>开始</span>
-            <span>结束</span>
-            <span />
-          </div>
-          {sectionRows.map((row) => (
-            <div className="section-time-row" key={row.id}>
-              <label className="field compact-field">
-                <span>节次</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={row.section}
-                  onChange={(event) => updateSectionRow(row.id, { section: event.target.value })}
-                />
+        ))}
+      </div>
+      <div className="provider-tab-panel">
+        {activeTab === 'basic' && (
+          <section className="form-section provider-tab-section">
+            <header className="form-section-header">
+              <div>
+                <h3>Provider</h3>
+                <p>只维护 Provider、学校简写和登录方式。</p>
+              </div>
+            </header>
+            <div className="form-grid provider-simple-grid">
+              <label className="field">
+                <span>Provider</span>
+                <input value={draft.providerId} placeholder={schoolProviderCode || 'wtbu'} onChange={(event) => setValue('providerId', event.target.value.trim())} />
               </label>
-              <label className="field compact-field">
-                <span>开始</span>
-                <input
-                  type="time"
-                  value={row.start}
-                  onChange={(event) => updateSectionRow(row.id, { start: event.target.value })}
-                />
+              <label className="field">
+                <span>学校简写</span>
+                <input value={schoolProviderCode} disabled />
               </label>
-              <label className="field compact-field">
-                <span>结束</span>
-                <input
-                  type="time"
-                  value={row.end}
-                  onChange={(event) => updateSectionRow(row.id, { end: event.target.value })}
-                />
-              </label>
-              <button className="button ghost icon-button" type="button" aria-label="删除节次" onClick={() => removeSectionRow(row.id)}>
-                <Trash2 size={16} />
-              </button>
+              <SelectField
+                label="登录方式"
+                value={draft.loginMode}
+                options={LOGIN_MODE_OPTIONS}
+                onChange={(loginMode) => setValue('loginMode', loginMode)}
+              />
             </div>
-          ))}
-        </div>
-      </section>
+          </section>
+        )}
+        {activeTab === 'sectionTimes' && (
+          <section className="form-section provider-tab-section">
+            <header className="form-section-header">
+              <div>
+                <h3>上课时间</h3>
+                <p>用于前端课表按节次显示时间，未填完整的行不会保存。</p>
+              </div>
+              <button className="button secondary" type="button" onClick={addSectionRow}>
+                <Plus size={16} />
+                添加节次
+              </button>
+            </header>
+            <div className="section-time-table">
+              <div className="section-time-head">
+                <span>节次</span>
+                <span>开始</span>
+                <span>结束</span>
+                <span />
+              </div>
+              {sectionRows.map((row) => (
+                <div className="section-time-row" key={row.id}>
+                  <label className="field compact-field">
+                    <span>节次</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={row.section}
+                      onChange={(event) => updateSectionRow(row.id, { section: event.target.value })}
+                    />
+                  </label>
+                  <label className="field compact-field">
+                    <span>开始</span>
+                    <input
+                      type="time"
+                      value={row.start}
+                      onChange={(event) => updateSectionRow(row.id, { start: event.target.value })}
+                    />
+                  </label>
+                  <label className="field compact-field">
+                    <span>结束</span>
+                    <input
+                      type="time"
+                      value={row.end}
+                      onChange={(event) => updateSectionRow(row.id, { end: event.target.value })}
+                    />
+                  </label>
+                  <button className="button ghost icon-button" type="button" aria-label="删除节次" onClick={() => removeSectionRow(row.id)}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+        {activeTab === 'buildingTimes' && (
+          <section className="form-section provider-tab-section">
+            <header className="form-section-header">
+              <div>
+                <h3>楼栋上课时间</h3>
+                <p>点击楼栋，单独设置这栋楼的节次时间。</p>
+              </div>
+            </header>
+            <div className="building-times-layout">
+              <div className="building-list-panel">
+                {buildingOptions.length ? (
+                  <div className="building-setting-list">
+                    {buildingOptions.map((building) => {
+                      const profile = findProfileForBuilding(profileRows, building.name)
+                      const isActive = Boolean(profile && activeProfile?.id === profile.id)
+                      const configuredSections = profile ? sectionRowsToItems(profile.sectionRows).length : 0
+
+                      return (
+                        <button
+                          className={'building-setting-button' + (isActive ? ' is-active' : '') + (profile ? ' is-configured' : '')}
+                          type="button"
+                          key={normalizeBuildingKeyword(building.name)}
+                          onClick={() => openBuildingProfile(building.name)}
+                        >
+                          <span>{building.name}</span>
+                          <small>{configuredSections ? `${configuredSections} 节` : '点击设置'}</small>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="empty compact-empty">暂无识别楼栋。</div>
+                )}
+              </div>
+              <div className="time-profile-editor">
+                {activeProfile ? (
+                  <div className="time-profile-card active-time-profile-card" key={activeProfile.id}>
+                    <div className="time-profile-head">
+                      <div className="time-profile-summary">
+                        <strong>{getProfileDisplayName(activeProfile, activeProfileIndex)}</strong>
+                        <span>{sectionRowsToItems(activeProfile.sectionRows).length || 0} 节已配置</span>
+                      </div>
+                      <button className="button ghost icon-button" type="button" aria-label="删除楼栋时间" onClick={() => removeProfileRow(activeProfile.id)}>
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                    <div className="time-profile-section-header">
+                      <span>节次时间</span>
+                      <button className="button secondary" type="button" onClick={() => addProfileSectionRow(activeProfile.id)}>
+                        <Plus size={16} />
+                        添加节次
+                      </button>
+                    </div>
+                    <div className="section-time-table nested-section-time-table">
+                      <div className="section-time-head">
+                        <span>节次</span>
+                        <span>开始</span>
+                        <span>结束</span>
+                        <span />
+                      </div>
+                      {activeProfile.sectionRows.map((row) => (
+                        <div className="section-time-row" key={row.id}>
+                          <label className="field compact-field">
+                            <span>节次</span>
+                            <input
+                              type="number"
+                              min={1}
+                              value={row.section}
+                              onChange={(event) => updateProfileSectionRow(activeProfile.id, row.id, { section: event.target.value })}
+                            />
+                          </label>
+                          <label className="field compact-field">
+                            <span>开始</span>
+                            <input
+                              type="time"
+                              value={row.start}
+                              onChange={(event) => updateProfileSectionRow(activeProfile.id, row.id, { start: event.target.value })}
+                            />
+                          </label>
+                          <label className="field compact-field">
+                            <span>结束</span>
+                            <input
+                              type="time"
+                              value={row.end}
+                              onChange={(event) => updateProfileSectionRow(activeProfile.id, row.id, { end: event.target.value })}
+                            />
+                          </label>
+                          <button className="button ghost icon-button" type="button" aria-label="删除节次" onClick={() => removeProfileSectionRow(activeProfile.id, row.id)}>
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="empty compact-empty">点击左侧楼栋开始设置。</div>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+      </div>
       <div className="modal-footer inline-footer">
         <button className="button secondary" type="button" onClick={props.onCancel}><X size={16} />关闭</button>
         <button className="button primary" type="submit"><Save size={16} />保存</button>

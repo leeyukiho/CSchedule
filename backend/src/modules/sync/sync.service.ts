@@ -10,7 +10,6 @@ import { Prisma } from '@prisma/client'
 import { CredentialVaultService } from '../../common/crypto/credential-vault.service'
 import { EncryptedPayload } from '../../common/crypto/encrypted-payload.type'
 import { PrismaService } from '../../common/prisma/prisma.service'
-import { ProviderDisplayService } from '../providers/provider-display.service'
 import { ProviderRegistryService } from '../providers/provider-registry.service'
 import { DataTarget } from '../providers/provider.types'
 import { CloudCredentialSyncService } from './cloud-credential-sync.service'
@@ -120,7 +119,6 @@ export class SyncService implements OnModuleInit {
     private readonly cloudSync: CloudCredentialSyncService,
     private readonly credentialVault: CredentialVaultService,
     private readonly providers: ProviderRegistryService,
-    private readonly providerDisplay: ProviderDisplayService,
   ) {}
 
   async onModuleInit() {
@@ -506,141 +504,6 @@ export class SyncService implements OnModuleInit {
     return record ? this.toSyncJobResponse(record) : null
   }
 
-  private getLatestCacheData(
-    account: {
-      id: string
-      schoolId: string
-      providerId: string
-      status: SyncStatus | string
-      sessionReusable: boolean
-      sessionRefreshable: boolean
-      sessionExpireAt: Date | null
-      school: { config: Prisma.JsonValue }
-    },
-    target: DataTarget,
-    cache?: {
-      termId: string | null
-      coursesJson?: unknown
-      termsJson?: unknown
-      sectionTimesJson?: unknown
-      dataJson?: unknown
-      metaJson?: unknown
-      sourceHash: string
-      syncedAt: Date
-    } | null,
-  ) {
-    if (!cache) {
-      return null
-    }
-
-    const accountId = account.id
-    const session = {
-      sessionReusable: account.sessionReusable,
-      sessionRefreshable: account.sessionRefreshable,
-      sessionExpireAt: account.sessionExpireAt?.toISOString(),
-      accountStatus: account.status,
-    }
-
-    if (target === 'course') {
-      const cacheSectionTimes = this.asArray(cache.sectionTimesJson)
-      const configuredSectionTimes = this.providerDisplay.getSectionTimes(
-        account.school.config,
-        account.providerId,
-      )
-
-      return {
-        accountId,
-        schoolId: account.schoolId,
-        providerId: account.providerId,
-        termId: cache.termId ?? undefined,
-        courses: this.asArray(cache.coursesJson),
-        terms: this.asArray(cache.termsJson),
-        sectionTimes: cacheSectionTimes.length ? cacheSectionTimes : configuredSectionTimes,
-        sourceHash: cache.sourceHash,
-        syncedAt: cache.syncedAt.toISOString(),
-        session,
-      }
-    }
-
-    return {
-      accountId,
-      schoolId: account.schoolId,
-      providerId: account.providerId,
-      target,
-      termId: cache.termId ?? undefined,
-      data: cache.dataJson,
-      meta: cache.metaJson,
-      sourceHash: cache.sourceHash,
-      syncedAt: cache.syncedAt.toISOString(),
-      session,
-    }
-  }
-
-  private async getLatestCacheResults(accountId: string): Promise<NonNullable<SyncJobResponse['cacheResults']>> {
-    const account = await this.prisma.studentAccount.findUnique({
-      where: { id: accountId },
-      select: {
-        id: true,
-        schoolId: true,
-        providerId: true,
-        status: true,
-        sessionReusable: true,
-        sessionRefreshable: true,
-        sessionExpireAt: true,
-        school: {
-          select: {
-            config: true,
-          },
-        },
-      },
-    })
-
-    if (!account) {
-      return []
-    }
-
-    const [courseCache, featureCaches] = await Promise.all([
-      this.prisma.courseCache.findFirst({
-        where: { accountId },
-        orderBy: { syncedAt: 'desc' },
-      }),
-      this.prisma.featureCache.findMany({
-        where: { accountId, target: { in: ['profile', 'score', 'exam'] } },
-        orderBy: [{ target: 'asc' }, { syncedAt: 'desc' }],
-      }),
-    ])
-    const latestFeatureCacheByTarget = new Map<DataTarget, (typeof featureCaches)[number]>()
-
-    for (const cache of featureCaches) {
-      if (!latestFeatureCacheByTarget.has(cache.target)) {
-        latestFeatureCacheByTarget.set(cache.target, cache)
-      }
-    }
-
-    const cacheResults = [
-      {
-        target: 'course' as DataTarget,
-        cacheData: this.getLatestCacheData(account, 'course', courseCache),
-      },
-      ...(['profile', 'score', 'exam'] as DataTarget[]).map((target) => ({
-        target,
-        cacheData: this.getLatestCacheData(account, target, latestFeatureCacheByTarget.get(target)),
-      })),
-    ]
-    const results: NonNullable<SyncJobResponse['cacheResults']> = []
-
-    for (const result of cacheResults) {
-      if (result.cacheData) {
-        results.push({
-          target: result.target,
-          cacheData: result.cacheData as Record<string, unknown>,
-        })
-      }
-    }
-
-    return results
-  }
-
   private async toSyncJobResponseWithCache(record: SyncRecordSnapshot): Promise<SyncJobResponse> {
     const response = this.toSyncJobResponse(record)
 
@@ -648,7 +511,7 @@ export class SyncService implements OnModuleInit {
       return response
     }
 
-    const cacheResults = await this.getLatestCacheResults(record.accountId)
+    const cacheResults = await this.courseSync.getLatestCacheResults(record.accountId)
 
     return {
       ...response,
@@ -926,10 +789,6 @@ export class SyncService implements OnModuleInit {
     const access = source[target]
 
     return Array.isArray(access) ? access.filter((item) => typeof item === 'string') : []
-  }
-
-  private asArray(value: unknown) {
-    return Array.isArray(value) ? value : []
   }
 
   private normalizeTargets(targets: DataTarget[] | undefined) {

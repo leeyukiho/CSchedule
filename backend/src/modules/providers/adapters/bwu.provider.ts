@@ -1,0 +1,177 @@
+import { SchoolProvider } from '../provider.types'
+
+const BWU_SECTION_TIMES = [
+  { section: 1, start: '08:00', end: '08:45' },
+  { section: 2, start: '08:55', end: '09:40' },
+  { section: 3, start: '10:00', end: '10:45' },
+  { section: 4, start: '10:55', end: '11:40' },
+  { section: 5, start: '13:30', end: '14:15' },
+  { section: 6, start: '14:25', end: '15:10' },
+  { section: 7, start: '15:30', end: '16:15' },
+  { section: 8, start: '16:25', end: '17:10' },
+  { section: 9, start: '18:10', end: '18:55' },
+  { section: 10, start: '19:05', end: '19:50' },
+  { section: 11, start: '20:10', end: '20:55' },
+  { section: 12, start: '21:05', end: '21:50' },
+]
+
+const BWU_SECOND_TEACHING_BUILDING_SECTION_TIMES = [
+  { section: 1, start: '08:00', end: '08:45' },
+  { section: 2, start: '08:55', end: '09:40' },
+  { section: 3, start: '10:20', end: '11:05' },
+  { section: 4, start: '11:15', end: '12:00' },
+  { section: 5, start: '13:30', end: '14:15' },
+  { section: 6, start: '14:25', end: '15:10' },
+  { section: 7, start: '15:30', end: '16:15' },
+  { section: 8, start: '16:25', end: '17:10' },
+  { section: 9, start: '18:10', end: '18:55' },
+  { section: 10, start: '19:05', end: '19:50' },
+  { section: 11, start: '20:10', end: '20:55' },
+  { section: 12, start: '21:05', end: '21:50' },
+]
+
+const BWU_RESEARCH_LAB_SECTION_TIMES = [
+  { section: 1, start: '08:00', end: '08:45' },
+  { section: 2, start: '08:45', end: '09:30' },
+  { section: 3, start: '09:50', end: '10:35' },
+  { section: 4, start: '10:35', end: '11:20' },
+  { section: 5, start: '13:30', end: '14:15' },
+  { section: 6, start: '14:15', end: '15:00' },
+  { section: 7, start: '15:20', end: '16:05' },
+  { section: 8, start: '16:05', end: '16:50' },
+  { section: 9, start: '18:10', end: '18:55' },
+  { section: 10, start: '18:55', end: '19:40' },
+  { section: 11, start: '20:00', end: '20:45' },
+  { section: 12, start: '20:45', end: '21:30' },
+]
+
+const BWU_SECTION_TIME_PROFILES = [
+  {
+    id: 'bwu-teaching-building-1',
+    name: '第一教学楼',
+    buildingKeywords: ['教学楼1', '教学楼一', '第一教学楼', '一教', '1教'],
+    sectionTimes: BWU_SECTION_TIMES,
+  },
+  {
+    id: 'bwu-teaching-building-2',
+    name: '第二教学楼',
+    buildingKeywords: ['教学楼2', '教学楼二', '第二教学楼', '二教', '2教'],
+    sectionTimes: BWU_SECOND_TEACHING_BUILDING_SECTION_TIMES,
+  },
+  {
+    id: 'bwu-research-lab-area',
+    name: '研究生及实验科研楼区',
+    buildingKeywords: ['研究生', '实验教学中心', '实验教学楼区', '南北实验楼', '科研楼'],
+    sectionTimes: BWU_RESEARCH_LAB_SECTION_TIMES,
+  },
+]
+
+export const bwuProvider: SchoolProvider = {
+  id: 'bwu',
+  meta: {
+    id: 'bwu',
+    name: '北京物资学院',
+    shortName: '北物',
+    providerId: 'bwu',
+    loginMode: 'cas_simple',
+    eduSystemType: 'eams',
+    status: 'enabled',
+    verifiedAt: '2026-06-24T00:00:00.000Z',
+    capabilities: { course: true, score: true, exam: true, profile: true },
+    credentialSave: {
+      passwordVaultAllowed: true,
+      autoSync: 'password_login',
+      scheduledSyncSupported: true,
+      title: '支持保存登录信息',
+      notice:
+        '保存统一身份认证账号密码后，可通过云函数完成首次导入和后续自动同步。账号密码会加密保存在后端，不会用于后端直连学校系统。',
+      consentLabel: '加密保存账号密码，用于自动同步',
+    },
+    dataAccess: {
+      course: ['cloud_worker', 'webview_client_fetch', 'manual_import'],
+      score: ['cloud_worker', 'webview_client_fetch', 'manual_import'],
+      exam: ['cloud_worker', 'webview_client_fetch', 'manual_import'],
+      profile: ['cloud_worker', 'webview_client_fetch', 'manual_import'],
+    },
+    sectionTimes: BWU_SECTION_TIMES,
+    sectionTimeProfiles: BWU_SECTION_TIME_PROFILES,
+    featureDisplay: {
+      course: {
+        title: '课表',
+        kind: 'course_grid',
+        itemFields: [
+          { key: 'name', label: '课程', primary: true },
+          { key: 'teacher', label: '教师' },
+          { key: 'classroom', label: '教室', fallbackKeys: ['location'] },
+          { key: 'weeks', label: '周次' },
+        ],
+        itemPath: 'courses',
+        emptyText: '暂无课表数据',
+      },
+      score: {
+        title: '成绩',
+        kind: 'score_semesters',
+        summaryFields: [
+          { key: 'totalCredit', label: '总学分' },
+          { key: 'average', label: '平均分' },
+          { key: 'gpa', label: '绩点' },
+        ],
+        groupPath: 'semesters',
+        itemPath: 'grades',
+        itemFields: [
+          { key: 'name', label: '课程' },
+          { key: 'credit', label: '学分' },
+          { key: 'score', label: '成绩', primary: true },
+          { key: 'gpa', label: '绩点' },
+        ],
+        emptyText: '暂无成绩缓存',
+      },
+      exam: {
+        title: '考试',
+        kind: 'exam_list',
+        emptyText: '暂无考试安排',
+      },
+      profile: {
+        title: '个人资料',
+        kind: 'profile_fields',
+        summaryFields: [
+          { key: 'name', label: '姓名' },
+          { key: 'maskedStudentId', label: '学号', fallbackKeys: ['studentId'] },
+          { key: 'major', label: '专业' },
+          { key: 'className', label: '班级' },
+          { key: 'level', label: '层次', fallbackKeys: ['grade'] },
+        ],
+        detailFields: [
+          { key: 'studentId', label: '学号', editable: false },
+          { key: 'grade', label: '年级', editable: true },
+          { key: 'gender', label: '性别', editable: true },
+          { key: 'phone', label: '手机号', editable: true },
+          { key: 'email', label: '邮箱', editable: true },
+          { key: 'nativePlace', label: '籍贯', editable: true },
+          { key: 'enrollmentDate', label: '入学时间', editable: true },
+          { key: 'studentStatus', label: '学籍状态', editable: true },
+          { key: 'dormitory', label: '宿舍信息', editable: true },
+          { key: 'counselor', label: '辅导员', editable: true },
+        ],
+        editableFields: [
+          { key: 'name', label: '姓名' },
+          { key: 'major', label: '专业' },
+          { key: 'grade', label: '年级' },
+          { key: 'level', label: '层次' },
+          { key: 'className', label: '班级' },
+          { key: 'gender', label: '性别' },
+          { key: 'birthDate', label: '出生年月' },
+          { key: 'politicalStatus', label: '政治面貌' },
+          { key: 'phone', label: '手机号' },
+          { key: 'email', label: '邮箱' },
+          { key: 'nativePlace', label: '籍贯' },
+          { key: 'enrollmentDate', label: '入学时间' },
+          { key: 'studentStatus', label: '学籍状态' },
+          { key: 'dormitory', label: '宿舍信息' },
+          { key: 'counselor', label: '辅导员' },
+        ],
+        emptyText: '暂无个人资料',
+      },
+    },
+  },
+}

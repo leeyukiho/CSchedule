@@ -647,6 +647,13 @@ export class RawDataService {
         this.asOptionalString(course.classroom) ??
         this.asOptionalString(course.location) ??
         this.asOptionalString(course.room),
+      building: this.asOptionalString(course.building),
+      sectionTimeProfileId:
+        this.asOptionalString(course.sectionTimeProfileId) ??
+        this.asOptionalString(course.timeProfileId),
+      startTime: this.asOptionalString(course.startTime),
+      endTime: this.asOptionalString(course.endTime),
+      time: this.asOptionalString(course.time),
       weekday: Number(course.weekday ?? course.dayOfWeek ?? course.week ?? 0),
       startSection,
       endSection,

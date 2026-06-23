@@ -42,6 +42,19 @@ export interface CloudSyncFunctionConfig {
   url?: string
 }
 
+export interface SectionTimeItem {
+  section: number
+  start: string
+  end: string
+}
+
+export interface SectionTimeProfile {
+  id: string
+  name: string
+  buildingKeywords: string[]
+  sectionTimes: SectionTimeItem[]
+}
+
 export type CloudSyncFunctionMap = Partial<
   Record<DataTarget, CloudSyncFunctionConfig>
 >
@@ -175,6 +188,12 @@ export interface CourseItem {
   teacher?: string
   location?: string
   classroom?: string
+  building?: string
+  sectionTimeProfileId?: string
+  timeProfileId?: string
+  startTime?: string
+  endTime?: string
+  time?: string
   weekday?: number
   sections?: number[]
   startSection?: number
@@ -191,6 +210,7 @@ export interface TimetableCacheResponse {
   terms: unknown[]
   termStarts?: Record<string, string>
   sectionTimes: unknown[]
+  sectionTimeProfiles?: SectionTimeProfile[]
   display?: FeatureDisplayConfig
   sourceHash?: string
   notModified?: boolean

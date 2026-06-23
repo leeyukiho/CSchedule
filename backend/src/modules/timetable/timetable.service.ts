@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { ProviderDisplayService } from '../providers/provider-display.service'
+import { SectionTimeProfileConfig } from '../providers/provider.types'
 import { TimetableCacheResponse } from './timetable.types'
 
 const ENCODED_TERM_SEMESTERS: Record<string, number> = {
@@ -47,6 +48,10 @@ export class TimetableService {
       account.school.config,
       account.providerId,
     )
+    const sectionTimeProfiles = this.providerDisplay.getSectionTimeProfiles(
+      account.school.config,
+      account.providerId,
+    )
     const cache = await this.prisma.courseCache.findFirst({
       where: {
         accountId,
@@ -60,7 +65,8 @@ export class TimetableService {
       cache?.sourceHash &&
       knownHash &&
       knownHash === cache.sourceHash &&
-      (cacheSectionTimes.length || !configuredSectionTimes.length)
+      (cacheSectionTimes.length || !configuredSectionTimes.length) &&
+      !sectionTimeProfiles.length
     ) {
       return {
         termId: this.cleanTermLabel(cache.termId ?? termId),
@@ -95,10 +101,14 @@ export class TimetableService {
       schoolId: account.schoolId,
       providerId: account.providerId,
       termId: canonicalTermId,
-      courses: this.asArray(cache?.coursesJson),
+      courses: this.withProfileTimes(
+        this.asArray(cache?.coursesJson),
+        sectionTimeProfiles,
+      ),
       terms: terms.map((term) => this.cleanTermRecord(term)),
       termStarts: this.getTermStarts(account.school.config),
       sectionTimes: cacheSectionTimes.length ? cacheSectionTimes : configuredSectionTimes,
+      ...(sectionTimeProfiles.length ? { sectionTimeProfiles } : {}),
       display,
       sourceHash: cache?.sourceHash,
       syncedAt: cache?.syncedAt.toISOString(),
@@ -108,6 +118,106 @@ export class TimetableService {
 
   private asArray(value: unknown) {
     return Array.isArray(value) ? value : []
+  }
+
+  private withProfileTimes(
+    courses: unknown[],
+    profiles: SectionTimeProfileConfig[],
+  ) {
+    if (!profiles.length) {
+      return courses
+    }
+
+    return courses.map((course) => {
+      const record = this.asRecord(course)
+
+      if (this.getText(record.startTime) && this.getText(record.endTime)) {
+        return course
+      }
+
+      const profile = this.matchSectionTimeProfile(record, profiles)
+
+      if (!profile) {
+        return course
+      }
+
+      const startSection = this.getCourseStartSection(record)
+      const endSection = this.getCourseEndSection(record, startSection)
+      const startTime = profile.sectionTimes.find((item) => item.section === startSection)?.start
+      const endTime = profile.sectionTimes.find((item) => item.section === endSection)?.end
+
+      if (!startTime || !endTime) {
+        return course
+      }
+
+      return {
+        ...record,
+        building: this.extractCourseBuilding(record.building ?? record.location ?? record.classroom),
+        sectionTimeProfileId: profile.id,
+        startTime,
+        endTime,
+      }
+    })
+  }
+
+  private matchSectionTimeProfile(
+    course: Record<string, unknown>,
+    profiles: SectionTimeProfileConfig[],
+  ) {
+    const room = [course.building, course.location, course.classroom]
+      .map((value) => String(value || ''))
+      .join('')
+      .replace(/\s+/g, '')
+    const normalizedRoom = room.toLocaleLowerCase()
+
+    if (!normalizedRoom) {
+      return undefined
+    }
+
+    return profiles.find((profile) =>
+      profile.buildingKeywords.some((keyword) => {
+        const normalizedKeyword = keyword.replace(/\s+/g, '').toLocaleLowerCase()
+        return normalizedKeyword && normalizedRoom.includes(normalizedKeyword)
+      }),
+    )
+  }
+
+  private getCourseStartSection(course: Record<string, unknown>) {
+    const sections = Array.isArray(course.sections)
+      ? course.sections.map(Number).filter((section) => Number.isFinite(section) && section > 0)
+      : []
+
+    return Number(course.startSection ?? sections[0] ?? 0)
+  }
+
+  private getCourseEndSection(course: Record<string, unknown>, startSection: number) {
+    const sections = Array.isArray(course.sections)
+      ? course.sections.map(Number).filter((section) => Number.isFinite(section) && section > 0)
+      : []
+
+    return Number(course.endSection ?? sections[sections.length - 1] ?? startSection)
+  }
+
+  private extractCourseBuilding(value: unknown) {
+    const text = String(value || '').trim().replace(/\s+/g, '')
+    const numberedTeachingBuilding = text.match(/(教学楼[一二三四五六七八九十\d]+)/)
+
+    if (numberedTeachingBuilding) {
+      return numberedTeachingBuilding[1]
+    }
+
+    const match = text.match(/(.+?(?:教学楼|实验楼|实训楼|楼|馆|中心|校区|院区))/)
+
+    if (match) {
+      return match[1]
+    }
+
+    const prefix = text.match(/^([A-Za-z\u4e00-\u9fa5]+)[-_\d]/)
+    return prefix ? prefix[1] : text
+  }
+
+  private getText(value: unknown) {
+    return typeof value === 'string' && value.trim() ? value.trim() : ''
   }
 
   private mergeTerms(

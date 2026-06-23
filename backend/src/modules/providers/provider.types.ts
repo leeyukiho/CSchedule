@@ -101,6 +101,13 @@ export interface SectionTimeConfig {
   end: string
 }
 
+export interface SectionTimeProfileConfig {
+  id: string
+  name: string
+  buildingKeywords: string[]
+  sectionTimes: SectionTimeConfig[]
+}
+
 export type FeatureDisplayMap = Partial<
   Record<DataTarget, FeatureDisplayConfig>
 >
@@ -221,6 +228,7 @@ export interface SchoolProviderMeta {
   credentialSave?: CredentialSaveCapability
   featureDisplay?: FeatureDisplayMap
   sectionTimes?: SectionTimeConfig[]
+  sectionTimeProfiles?: SectionTimeProfileConfig[]
   status?: ProviderStatus
   verifiedAt?: string
 }
