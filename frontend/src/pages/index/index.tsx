@@ -957,11 +957,11 @@ export default function HomePage() {
             return (
               <View className='soft-card course-card home-arrangement-card' key={course.id || `${course.name}-${index}`}>
                 <View className='course-main home-card-main'>
-                  <View className='home-card-head'>
+                  <View className={`home-card-head ${teacher ? 'home-card-head-with-teacher' : ''}`}>
                     <Text className='home-primary-value'>{course.name || '未命名课程'}</Text>
                     {teacher && <Text className='home-side-meta home-side-meta-teacher'>{teacher}</Text>}
                   </View>
-                  <Text className='home-info-value home-info-secondary'>{timeWithSections}</Text>
+                  <Text className='home-time-value'>{timeWithSections}</Text>
                   <Text className='home-info-value home-info-secondary'>{location}</Text>
                 </View>
                 <View className='home-card-icon-side'>
@@ -992,9 +992,9 @@ export default function HomePage() {
                   <View className='home-card-head'>
                     <Text className='home-primary-value'>{exam.courseName}</Text>
                   </View>
-                  <Text className='home-info-value home-info-secondary'>{getExamTimeText(exam)}</Text>
+                  <Text className='home-time-value'>{getExamTimeText(exam)}</Text>
                   <Text className='home-info-value home-info-secondary'>{exam.location || '地点待安排'}</Text>
-                  <Text className='home-info-value home-info-secondary'>{exam.seatNo || '座位待安排'}</Text>
+                  <Text className='home-info-value home-info-secondary'>座位：{exam.seatNo || '待安排'}</Text>
                 </View>
                 <View className='home-card-icon-side'>
                   <View className='class-icon class-icon-red'>

@@ -125,24 +125,41 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 8rpx;
+  gap: 10rpx;
 }
 
 .home-content .home-card-head {
   min-height: 40rpx;
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 16rpx;
+  gap: 10rpx;
+  min-width: 0;
+  width: 100%;
+}
+
+.home-content .home-card-head-with-teacher .home-primary-value {
+  max-width: calc(100% - 150rpx);
 }
 
 .home-content .home-primary-value {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
   color: #101828;
   font-size: 30rpx;
   font-weight: 800;
   line-height: 1.24;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-content .home-time-value {
+  width: 100%;
+  color: #175cd3;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -255,30 +272,26 @@
 }
 
 .home-content .home-side-meta {
+  flex: 0 0 140rpx;
   min-width: 0;
-  max-width: 150rpx;
-  min-height: 34rpx;
+  max-width: 140rpx;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding: 0 12rpx;
-  border-radius: 999rpx;
+  justify-content: flex-start;
   color: #1d4ed8;
-  background: #eef4ff;
-  font-size: 20rpx;
+  font-size: 23rpx;
   font-weight: 800;
   line-height: 1.2;
-  text-align: right;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .home-content .home-side-meta-teacher {
-  color: #475467;
-  background: #f2f4f7;
-  font-weight: 700;
+  color: #667085;
+  font-weight: 600;
 }
 
 .home-content .home-card-side-green .home-side-meta-section {
