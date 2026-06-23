@@ -202,18 +202,25 @@
 }
 
 .status {
-  margin: 0 0 22rpx;
+  position: fixed;
+  top: calc(190rpx + env(safe-area-inset-top));
+  left: 32rpx;
+  right: 32rpx;
+  z-index: 220;
+  margin: 0;
   padding: 22rpx 24rpx;
   border: 1rpx solid #dbeafe;
   border-radius: 16rpx;
   background: #eff6ff;
+  box-shadow: 0 18rpx 42rpx rgba(16, 24, 40, 0.14);
   color: #1d4ed8;
   font-size: 25rpx;
   line-height: 1.45;
+  pointer-events: none;
 }
 
 .status+.status {
-  margin-top: -8rpx;
+  top: calc(286rpx + env(safe-area-inset-top));
 }
 
 .status-error,
