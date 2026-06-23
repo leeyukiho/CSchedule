@@ -8,6 +8,7 @@ import { AccountsModule } from './modules/accounts/accounts.module'
 import { FeaturesModule } from './modules/features/features.module'
 import { FeedbackModule } from './modules/feedback/feedback.module'
 import { HealthModule } from './modules/health/health.module'
+import { NotificationsModule } from './modules/notifications/notifications.module'
 import { ProvidersModule } from './modules/providers/providers.module'
 import { RawDataModule } from './modules/raw-data/raw-data.module'
 import { RemindersModule } from './modules/reminders/reminders.module'
@@ -34,6 +35,7 @@ import { TimetableModule } from './modules/timetable/timetable.module'
     RemindersModule,
     RawDataModule,
     FeedbackModule,
+    NotificationsModule,
     SubmissionsModule,
     AdminModule,
   ],

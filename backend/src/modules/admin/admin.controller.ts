@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Param, Patch, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common'
 import { AdminGuard } from './admin.guard'
 import {
   AdminProviderConfigUpsertInput,
   AdminSchoolUpdateInput,
   AdminService,
 } from './admin.service'
-import { AccountStatus, SchoolStatus } from '@prisma/client'
+import { AccountStatus, NotificationTargetType, SchoolStatus } from '@prisma/client'
 
 @Controller('admin')
 @UseGuards(AdminGuard)
@@ -22,6 +22,8 @@ export class AdminController {
     @Query('keyword') keyword?: string,
     @Query('status') status?: SchoolStatus,
     @Query('enabled') enabled?: string,
+    @Query('sortBy') sortBy?: 'default' | 'userCount',
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
@@ -29,6 +31,8 @@ export class AdminController {
       keyword,
       status,
       enabled: enabled === 'true' ? true : enabled === 'false' ? false : undefined,
+      sortBy,
+      sortOrder,
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
     })
@@ -75,6 +79,8 @@ export class AdminController {
     @Query('status') status?: string,
     @Query('extraVerification') extraVerification?: string,
     @Query('adaptationHelp') adaptationHelp?: string,
+    @Query('sortBy') sortBy?: 'createdAt' | 'requestCount',
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
@@ -83,6 +89,8 @@ export class AdminController {
       status,
       extraVerification,
       adaptationHelp,
+      sortBy,
+      sortOrder,
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
     })
@@ -111,5 +119,45 @@ export class AdminController {
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
     })
+  }
+
+  @Get('notifications')
+  listNotifications(
+    @Query('keyword') keyword?: string,
+    @Query('targetType') targetType?: NotificationTargetType,
+    @Query('active') active?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.adminService.listNotifications({
+      keyword,
+      targetType,
+      active: active === 'true' ? true : active === 'false' ? false : undefined,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+    })
+  }
+
+  @Post('notifications')
+    createNotification(@Body() input: {
+      title?: string
+      content?: string
+      targetType?: NotificationTargetType
+      targetAccountId?: string | null
+      active?: boolean
+    }) {
+      return this.adminService.createNotification(input, 'admin')
+    }
+
+  @Patch('notifications/:notificationId')
+  updateNotification(
+    @Param('notificationId') notificationId: string,
+      @Body() input: {
+        title?: string
+        content?: string
+        active?: boolean
+      },
+    ) {
+      return this.adminService.updateNotification(notificationId, input)
   }
 }

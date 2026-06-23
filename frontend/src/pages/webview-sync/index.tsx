@@ -33,7 +33,7 @@ interface WebviewPayload {
 const DEFAULT_TARGETS: DataTarget[] = ['course']
 const DATA_TARGETS: DataTarget[] = ['course', 'score', 'exam', 'profile']
 const BACKEND_JSON_TARGETS = new Set<DataTarget>(DATA_TARGETS)
-const INITIAL_MESSAGE = '请在学校页面完成登录，数据同步完成后会自动返回小程序。'
+const INITIAL_MESSAGE = '请完成学校登录'
 const STATUS_CLEAR_DELAY_MS = 3000
 
 function parseTargets(value?: string) {
@@ -404,7 +404,7 @@ export default function WebviewSyncPage() {
 
   async function handlePayload(item: unknown) {
     if (!activeAccountId) {
-      setErrorText('缺少账号信息，请返回重新登录。')
+      setErrorText('缺少账号信息')
       return
     }
 
@@ -417,14 +417,14 @@ export default function WebviewSyncPage() {
     }
 
     if (contentType !== 'json') {
-      setErrorText('当前数据暂时无法导入。')
+      setErrorText('暂时无法导入')
       return
     }
 
     const payload = compactPayload(target, data.payload)
 
     if (!payload) {
-      setErrorText('当前数据暂时无法导入。')
+      setErrorText('暂时无法导入')
       return
     }
 
@@ -514,11 +514,11 @@ export default function WebviewSyncPage() {
       if (result.canCloseWebview && !closingRef.current) {
         await termStartsRequestRef.current
         closingRef.current = true
-        setMessage('同步完成，正在进入小程序。')
+        setMessage('同步完成')
         Taro.switchTab({ url: '/pages/index/index' })
       } else {
         setMessage(
-          `已同步 ${nextTargets.length} 项，仍需继续：${result.missingRequiredTargets.join(', ')}`,
+          `已同步 ${nextTargets.length} 项`,
         )
       }
     } catch (error) {
@@ -555,7 +555,7 @@ export default function WebviewSyncPage() {
       })
       .catch((error) =>
         setErrorText(
-          error instanceof Error ? error.message : '同步状态确认失败',
+          error instanceof Error ? error.message : '同步确认失败',
         ),
       )
   }

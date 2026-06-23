@@ -465,7 +465,7 @@ td {
   padding: 8px 10px;
   border-bottom: 1px solid var(--line);
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
   font-size: 13px;
 }
 
@@ -568,6 +568,7 @@ tbody tr:hover {
 .submission-card {
   position: relative;
   display: grid;
+  align-items: center;
   grid-template-columns: minmax(0, 1fr) 34px;
   gap: 8px;
   margin-top: 6px;
@@ -668,9 +669,11 @@ tbody tr:hover {
 }
 
 .count-link {
-  display: inline-flex;
+  display: inline-grid;
   align-items: center;
+  justify-content: center;
   min-height: 26px;
+  width: 5ch;
   padding: 0 8px;
   border: 1px solid #bfdbfe;
   border-radius: var(--radius);
@@ -678,6 +681,8 @@ tbody tr:hover {
   color: var(--primary-strong);
   font-size: 13px;
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .count-link:hover {
@@ -748,6 +753,7 @@ tbody tr:hover {
 
 .feedback-row {
   display: grid;
+  align-items: center;
   grid-template-columns: minmax(0, 1fr) minmax(170px, 240px);
   gap: 10px;
   width: 100%;
@@ -847,6 +853,175 @@ tbody tr:hover {
   gap: 8px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
+}
+
+.notification-workspace {
+  gap: 12px;
+}
+
+.notification-form {
+  background: #f8fafc;
+}
+
+.notification-composer {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+}
+
+.notification-target-card,
+.notification-message-card {
+  min-width: 0;
+  border: 1px solid #dbe3ee;
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.notification-target-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+}
+
+.notification-message-card {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.notification-target-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.notification-kicker {
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.notification-note {
+  padding: 9px 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius);
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.notification-grid {
+  grid-template-columns: 1fr;
+  padding: 12px;
+}
+
+.notification-content-field textarea {
+  min-height: 138px;
+  font-family: inherit;
+}
+
+.notification-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  background: #fbfdff;
+}
+
+.notification-submit-hint {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.notification-summary {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.notification-summary span {
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid #dbe3ee;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.notification-row.inactive {
+  background: #fcfcfd;
+}
+
+.notification-row.inactive .notification-title-line,
+.notification-row.inactive .notification-content-preview {
+  opacity: 0.62;
+}
+
+.notification-title-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #0f172a;
+  font-weight: 850;
+}
+
+.notification-title-line svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.notification-title-line span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-content-preview {
+  max-width: 520px;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.notification-id {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Fira Code", Consolas, "Courier New", monospace;
+}
+
+.notification-read-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius);
+  background: #eff6ff;
+  color: var(--primary-strong);
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
 }
 
 .check-field {
@@ -1174,6 +1349,10 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
+  .notification-composer {
+    grid-template-columns: 1fr;
+  }
+
   .submission-fields {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1260,6 +1439,23 @@ tbody tr:hover {
 
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .notification-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notification-actions .button {
+    width: 100%;
+  }
+
+  .notification-summary {
+    justify-content: flex-start;
+  }
+
+  .notification-id {
+    max-width: 180px;
   }
 
   .form-grid.two,

@@ -6,6 +6,7 @@ export default defineAppConfig({
     'pages/profile/index',
     'pages/bind/index',
     'pages/webview-sync/index',
+    'pages/messages/index',
     'pages/feedback/index',
     'pages/submission/index',
     'pages/settings/index',

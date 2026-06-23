@@ -61,11 +61,11 @@ export default function SubmissionPage() {
       return
     }
     if (extraVerificationIndex < 0) {
-      setErrorText('请选择除账号密码外是否需要验证')
+      setErrorText('请选择验证方式')
       return
     }
     if (isContactRequired && !contact.trim()) {
-      setErrorText('请填写联系方式，方便后续沟通适配进度')
+      setErrorText('请填写联系方式')
       return
     }
     setLoading(true)
@@ -83,7 +83,7 @@ export default function SubmissionPage() {
         ].filter(Boolean).join('\n') || undefined,
         requestedTargets: ['course'],
       })
-      setMessage('提交成功，我们会尽快评估接入信息。')
+      setMessage('申请已提交')
       setSchoolName('')
       setEduSystemWebsite('')
       setContact('')
@@ -91,7 +91,7 @@ export default function SubmissionPage() {
       setAdaptationHelpIndex(0)
       setNote('')
     } catch (error) {
-      setErrorText(error instanceof Error ? error.message : '提交失败')
+      setErrorText(error instanceof Error ? error.message : '申请提交失败')
     } finally {
       setLoading(false)
     }
@@ -99,7 +99,7 @@ export default function SubmissionPage() {
 
   return (
     <PageShell title='学校接入申请' back subPage>
-      <Text className='page-subtitle'>提交学校和教务系统信息，方便后续评估接入。</Text>
+      <Text className='page-subtitle'>提交学校和教务系统信息。</Text>
       {message && <View className='status'>{message}</View>}
       {errorText && <View className='status status-error'>{errorText}</View>}
       <View className='panel'>

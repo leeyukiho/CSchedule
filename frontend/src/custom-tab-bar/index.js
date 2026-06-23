@@ -54,7 +54,17 @@ Component({
     switchTab(event) {
       const { index, path } = event.currentTarget.dataset
 
-      if (Number(index) === this.data.selected || !path) {
+      if (!path) {
+        return
+      }
+
+      if (Number(index) === this.data.selected) {
+        const pages = getCurrentPages()
+        const currentPage = pages[pages.length - 1]
+
+        if (currentPage && typeof currentPage.onTabReselect === 'function') {
+          currentPage.onTabReselect(list[Number(index)])
+        }
         return
       }
 

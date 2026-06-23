@@ -83,6 +83,11 @@ enum ReminderDeliveryStatus {
   failed
 }
 
+enum NotificationTargetType {
+  global
+  user
+}
+
 model School {
   id            String       @id
   name          String
@@ -139,11 +144,43 @@ model StudentAccount {
   syncRecords           SyncRecord[]
   reminderSubscriptions ReminderSubscription[]
   reminderDeliveries    ReminderDelivery[]
+  notificationReceipts  NotificationReceipt[]
 
   @@unique([schoolId, studentNoHash])
   @@index([schoolId])
   @@index([providerId])
   @@index([wechatOpenid])
+}
+
+model AdminNotification {
+  id              String                 @id @default(cuid())
+  title           String
+  content         String
+  targetType      NotificationTargetType @default(global)
+  targetAccountId String?
+  active          Boolean                @default(true)
+  expiresAt       DateTime?
+  createdBy       String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  receipts NotificationReceipt[]
+
+  @@index([active, targetType, createdAt])
+  @@index([targetAccountId])
+}
+
+model NotificationReceipt {
+  id             String            @id @default(cuid())
+  notificationId String
+  accountId      String
+  readAt         DateTime          @default(now())
+  notification   AdminNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  account        StudentAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+
+  @@unique([notificationId, accountId])
+  @@index([accountId])
 }
 
 model CourseCache {

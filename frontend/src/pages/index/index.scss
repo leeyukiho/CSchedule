@@ -57,7 +57,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 34rpx 0 16rpx;
+  margin: 28rpx 0 12rpx;
   color: #667085;
   font-size: 26rpx;
 }
@@ -96,12 +96,18 @@
 }
 
 .home-content .course-card {
-  height: 208rpx;
-  padding: 28rpx 30rpx 24rpx;
+  min-height: 190rpx;
+  padding: 18rpx 20rpx 16rpx;
+  box-sizing: border-box;
   display: flex;
+  align-items: stretch;
   justify-content: space-between;
-  gap: 18rpx;
-  margin-bottom: 16rpx;
+  gap: 14rpx;
+  margin-bottom: 12rpx;
+}
+
+.home-content .home-arrangement-card-full {
+  min-height: 202rpx;
 }
 
 .home-content .exam-card {
@@ -112,7 +118,87 @@
 .home-content .course-main {
   flex: 1;
   min-width: 0;
-  padding-right: 24rpx;
+  padding-right: 0;
+}
+
+.home-content .home-card-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8rpx;
+}
+
+.home-content .home-card-head {
+  min-height: 40rpx;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.home-content .home-primary-value {
+  flex: 1;
+  min-width: 0;
+  color: #101828;
+  font-size: 30rpx;
+  font-weight: 800;
+  line-height: 1.24;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-content .home-card-icon-side {
+  flex: 0 0 104rpx;
+  min-width: 104rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.home-content .home-info-row {
+  min-height: 28rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  color: #667085;
+  font-size: 23rpx;
+  line-height: 1.25;
+}
+
+.home-content .home-info-row-primary {
+  color: #101828;
+}
+
+.home-content .home-info-label {
+  flex: 0 0 52rpx;
+  color: #98a2b3;
+  font-size: 21rpx;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.home-content .home-info-value {
+  flex: 1;
+  min-width: 0;
+  color: #344054;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-content .home-info-secondary {
+  flex: 0 0 auto;
+  width: 100%;
+  color: #475467;
+  font-size: 23rpx;
+  line-height: 1.25;
+}
+
+.home-content .home-info-row-primary .home-info-value {
+  color: #101828;
+  font-size: 29rpx;
+  font-weight: 800;
 }
 
 .home-content .course-meta {
@@ -156,12 +242,58 @@
 }
 
 .home-content .course-side {
-  flex: 0 0 100rpx;
+  flex: 0 0 112rpx;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  justify-content: space-between;
+  justify-content: center;
   min-width: 0;
+}
+
+.home-content .home-card-side {
+  gap: 10rpx;
+}
+
+.home-content .home-side-meta {
+  min-width: 0;
+  max-width: 150rpx;
+  min-height: 34rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12rpx;
+  border-radius: 999rpx;
+  color: #1d4ed8;
+  background: #eef4ff;
+  font-size: 20rpx;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-content .home-side-meta-teacher {
+  color: #475467;
+  background: #f2f4f7;
+  font-weight: 700;
+}
+
+.home-content .home-card-side-green .home-side-meta-section {
+  color: #047857;
+  background: #dcfce7;
+}
+
+.home-content .home-card-side-purple .home-side-meta-section {
+  color: #6d28d9;
+  background: #f3e8ff;
+}
+
+.home-content .home-card-side-red .home-side-meta-section {
+  color: #e11d48;
+  background: #ffe4e9;
 }
 
 .home-content .teacher {
@@ -173,6 +305,7 @@
 }
 
 .home-content .class-icon {
+  flex: 0 0 92rpx;
   width: 92rpx;
   height: 92rpx;
   display: flex;
@@ -202,8 +335,8 @@
 }
 
 .home-content .card-symbol {
-  width: 52rpx;
-  height: 52rpx;
+  width: 54rpx;
+  height: 54rpx;
   position: relative;
 }
 
@@ -218,9 +351,9 @@
 .home-content .symbol-book::after {
   content: "";
   position: absolute;
-  left: 14rpx;
-  right: 10rpx;
-  bottom: 10rpx;
+  left: 15rpx;
+  right: 11rpx;
+  bottom: 11rpx;
   border-top: 4rpx solid currentColor;
 }
 
@@ -236,7 +369,7 @@
   content: "";
   position: absolute;
   left: 17rpx;
-  top: 17rpx;
+  top: 18rpx;
   width: 18rpx;
   height: 10rpx;
   border-left: 4rpx solid currentColor;

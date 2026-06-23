@@ -13,6 +13,14 @@ import {
 import { WechatSubscribeMessageService } from './wechat-subscribe-message.service'
 
 const REMINDER_SETTING_KEY = 'reminders.worker'
+const PERMANENT_REMINDER_DELIVERY_ERROR_CODES = new Set([
+  '40003',
+  '40037',
+  '41030',
+  '43101',
+  '47003',
+  'TEMPLATE_ID_MISSING',
+])
 
 interface ReminderRunOptions {
   force?: boolean
@@ -532,6 +540,9 @@ export class RemindersService {
     response?: unknown,
   ) {
     const sentAt = status === 'sent' ? new Date() : undefined
+    const shouldDisable = status === 'sent' ||
+      status === 'skipped' ||
+      (status === 'failed' && this.isPermanentDeliveryError(errorCode))
 
     await this.prisma.reminderDelivery.upsert({
       where: {
@@ -570,13 +581,17 @@ export class RemindersService {
     await this.prisma.reminderSubscription.update({
       where: { id: subscription.id },
       data: {
-        ...(status === 'sent' || status === 'skipped'
+        ...(shouldDisable
           ? {
             status: 'disabled',
-            lastSentDate: dateKey,
-            lastSentAt: new Date(),
-            lastErrorCode: null,
-            lastErrorMessage: null,
+            ...(status === 'failed'
+              ? { lastErrorCode: errorCode, lastErrorMessage: errorMessage }
+              : {
+                lastSentDate: dateKey,
+                lastSentAt: new Date(),
+                lastErrorCode: null,
+                lastErrorMessage: null,
+              }),
           }
           : { lastErrorCode: errorCode, lastErrorMessage: errorMessage }),
       },
@@ -1083,7 +1098,17 @@ export class RemindersService {
   }
 
   private getErrorCode(message: string) {
+    const subscribeSendMatch = message.match(/^WECHAT_SUBSCRIBE_SEND_FAILED:([^:]+)/)
+
+    if (subscribeSendMatch) {
+      return subscribeSendMatch[1] || 'WECHAT_SUBSCRIBE_SEND_FAILED'
+    }
+
     return message.includes(':') ? message.split(':')[0] : 'REMINDER_SEND_FAILED'
+  }
+
+  private isPermanentDeliveryError(errorCode?: string) {
+    return Boolean(errorCode && PERMANENT_REMINDER_DELIVERY_ERROR_CODES.has(errorCode))
   }
 
   private delay(ms: number) {

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { useDidShow } from '@tarojs/taro'
+import Taro, { useDidShow } from '@tarojs/taro'
 import { Picker, RootPortal, Text, View, type ITouchEvent } from '@tarojs/components'
 
 import { getTimetable } from '../../shared/api/timetable'
@@ -29,13 +29,36 @@ const ROW_HEIGHT = 110
 const LESSON_HORIZONTAL_GAP = 3
 const LESSON_VERTICAL_GAP = 3
 const WEEK_SWIPE_THRESHOLD = 48
-const LESSON_TONES = ['blue', 'green', 'purple', 'yellow', 'red', 'cyan'] as const
+const COURSE_COLOR_HUE_STEP = 137.508
+const COURSE_COLOR_GENERATION_LIMIT = 2160
+const COURSE_COLOR_YELLOW_MIN_HUE = 35
+const COURSE_COLOR_YELLOW_MAX_HUE = 70
 const DEFAULT_COURSE_FIELDS: FeatureDisplayField[] = [
   { key: 'name', label: '课程', primary: true },
   { key: 'classroom', label: '教室', fallbackKeys: ['location'] },
 ]
 
-type LessonTone = typeof LESSON_TONES[number]
+interface CourseColor {
+  text: string
+  border: string
+  background: string
+}
+
+const LESSON_COLOR_PRESETS: CourseColor[] = [
+  { text: '#1d4ed8', border: '#9cc4ff', background: '#d9ebff' },
+  { text: '#047857', border: '#a7e4be', background: '#daf8e5' },
+  { text: '#6d28d9', border: '#d6b7ff', background: '#efe0ff' },
+  { text: '#e11d48', border: '#ffc1ca', background: '#ffe0e3' },
+  { text: '#0f766e', border: '#99f6e4', background: '#d8fbf6' },
+  { text: '#be185d', border: '#f9a8d4', background: '#fce7f3' },
+  { text: '#4338ca', border: '#a5b4fc', background: '#e0e7ff' },
+  { text: '#0369a1', border: '#7dd3fc', background: '#e0f2fe' },
+  { text: '#4d7c0f', border: '#bef264', background: '#ecfccb' },
+  { text: '#a21caf', border: '#f0abfc', background: '#fae8ff' },
+  { text: '#0e7490', border: '#67e8f9', background: '#cffafe' },
+  { text: '#166534', border: '#86efac', background: '#dcfce7' },
+  { text: '#7e22ce', border: '#d8b4fe', background: '#f3e8ff' },
+]
 
 interface LessonDetailRow {
   label: string
@@ -47,8 +70,8 @@ interface PositionedLesson {
   name: string
   nameLines: string[]
   room: string
+  roomLines: string[]
   teacher: string
-  tone: LessonTone
   weekdayText: string
   section: string
   weeksText: string
@@ -65,7 +88,17 @@ interface WeekOption {
 interface WeekdayColumn {
   weekday: string
   dateText: string
+  isToday: boolean
   style: string
+}
+
+interface TimetableGridLine {
+  id: string
+  style: string
+}
+
+interface SchedulePageInstance {
+  onTabReselect?: () => void
 }
 
 function getCourseValue(course: CourseItem, field: FeatureDisplayField) {
@@ -80,13 +113,153 @@ function getCourseValue(course: CourseItem, field: FeatureDisplayField) {
   return ''
 }
 
-function getLessonTone(course: CourseItem, index: number): LessonTone {
-  const source = `${course.name || ''}${course.classroom || course.location || ''}`
-  const hash = source
-    .split('')
-    .reduce((sum, char) => sum + char.charCodeAt(0), index)
+function normalizeCourseColorKey(name: string) {
+  return String(name || '').trim().replace(/\s+/g, '').toLowerCase()
+}
 
-  return LESSON_TONES[Math.abs(hash) % LESSON_TONES.length]
+function hashCourseName(name: string) {
+  return Array.from(name).reduce((hash, char) => {
+    return ((hash << 5) - hash + char.charCodeAt(0)) | 0
+  }, 0)
+}
+
+function hueToRgb(p: number, q: number, t: number) {
+  let next = t
+
+  if (next < 0) {
+    next += 1
+  }
+
+  if (next > 1) {
+    next -= 1
+  }
+
+  if (next < 1 / 6) {
+    return p + (q - p) * 6 * next
+  }
+
+  if (next < 1 / 2) {
+    return q
+  }
+
+  if (next < 2 / 3) {
+    return p + (q - p) * (2 / 3 - next) * 6
+  }
+
+  return p
+}
+
+function hslToHex(hue: number, saturation: number, lightness: number) {
+  const h = ((hue % 360) + 360) % 360 / 360
+  const s = saturation / 100
+  const l = lightness / 100
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s
+  const p = 2 * l - q
+  const channels = [
+    hueToRgb(p, q, h + 1 / 3),
+    hueToRgb(p, q, h),
+    hueToRgb(p, q, h - 1 / 3),
+  ]
+
+  return `#${channels
+    .map((channel) => Math.round(channel * 255).toString(16).padStart(2, '0'))
+    .join('')}`
+}
+
+function normalizeCourseHue(hue: number) {
+  const normalized = ((hue % 360) + 360) % 360
+
+  if (normalized >= COURSE_COLOR_YELLOW_MIN_HUE && normalized <= COURSE_COLOR_YELLOW_MAX_HUE) {
+    return COURSE_COLOR_YELLOW_MAX_HUE + 14 + (normalized - COURSE_COLOR_YELLOW_MIN_HUE)
+  }
+
+  return normalized
+}
+
+function getCourseColorSignature(color: CourseColor) {
+  return `${color.text}|${color.border}|${color.background}`
+}
+
+function findPresetCourseColor(name: string, usedColors: Set<string>) {
+  const start = Math.abs(hashCourseName(name)) % LESSON_COLOR_PRESETS.length
+
+  for (let offset = 0; offset < LESSON_COLOR_PRESETS.length; offset += 1) {
+    const color = LESSON_COLOR_PRESETS[(start + offset) % LESSON_COLOR_PRESETS.length]
+
+    if (!usedColors.has(getCourseColorSignature(color))) {
+      return color
+    }
+  }
+
+  return null
+}
+
+function generateCourseColor(name: string, usedColors: Set<string>): CourseColor {
+  const presetColor = findPresetCourseColor(name, usedColors)
+
+  if (presetColor) {
+    return presetColor
+  }
+
+  const hash = Math.abs(hashCourseName(name))
+  let attempt = 0
+
+  while (attempt < COURSE_COLOR_GENERATION_LIMIT) {
+    const hue = normalizeCourseHue(hash + attempt * COURSE_COLOR_HUE_STEP)
+    const variant = Math.floor(attempt / 360)
+    const color = {
+      text: hslToHex(hue, 64 + (variant % 3) * 4, 32 + (variant % 3) * 2),
+      border: hslToHex(hue, 76 + (variant % 3) * 3, 76 + (variant % 2) * 3),
+      background: hslToHex(hue, 82 + (variant % 3) * 2, 91 + (variant % 2)),
+    }
+
+    if (!usedColors.has(getCourseColorSignature(color))) {
+      return color
+    }
+
+    attempt += 1
+  }
+
+  return {
+    text: hslToHex(normalizeCourseHue(hash), 68, 35),
+    border: hslToHex(normalizeCourseHue(hash), 82, 78),
+    background: hslToHex(normalizeCourseHue(hash), 86, 92),
+  }
+}
+
+function buildCourseColorMap(courses: CourseItem[], primaryCourseField: FeatureDisplayField) {
+  const courseNames = new Map<string, string>()
+
+  courses.forEach((course) => {
+    const name = (getCourseValue(course, primaryCourseField) || course.name || '').trim()
+
+    if (name) {
+      courseNames.set(normalizeCourseColorKey(name), name)
+    }
+  })
+
+  const names = Array.from(courseNames.values()).sort((left, right) => {
+    const hashDelta = hashCourseName(left) - hashCourseName(right)
+
+    return hashDelta || left.localeCompare(right, 'zh-Hans-CN')
+  })
+  const colors = new Map<string, CourseColor>()
+  const usedColors = new Set<string>()
+
+  names.forEach((name) => {
+    const color = generateCourseColor(name, usedColors)
+
+    usedColors.add(getCourseColorSignature(color))
+    colors.set(normalizeCourseColorKey(name), color)
+  })
+
+  return colors
+}
+
+function getCourseColorStyle(name: string, colors: Map<string, CourseColor>) {
+  const color = colors.get(normalizeCourseColorKey(name)) || LESSON_COLOR_PRESETS[0]
+
+  return `color:${color.text};border:1rpx solid ${color.border};background:${color.background}`
 }
 
 function mergeTermOptions(current: TermOption[], next: TermOption[]) {
@@ -155,18 +328,23 @@ function formatWeeksText(weeks: number[] | undefined) {
   return `第${ranges.join('、')}周`
 }
 
+function splitLessonText(value: string, fallback: string, lineLength: number) {
+  const chars = Array.from((String(value || '').trim() || fallback))
+  const lines: string[] = []
+
+  for (let index = 0; index < chars.length; index += lineLength) {
+    lines.push(chars.slice(index, index + lineLength).join(''))
+  }
+
+  return lines.length > 0 ? lines : [fallback]
+}
+
 function splitCourseName(name: string) {
-  const value = String(name || '课程')
+  return splitLessonText(name, '课程', 3)
+}
 
-  if (value.length <= 2) {
-    return [value]
-  }
-
-  if (value.length <= 4) {
-    return [value.slice(0, 2), value.slice(2)]
-  }
-
-  return [value.slice(0, 2), value.slice(2, 4), value.slice(4, 8)]
+function splitRoomName(room: string) {
+  return splitLessonText(room, '地点', 4)
 }
 
 export default function SchedulePage() {
@@ -181,6 +359,7 @@ export default function SchedulePage() {
   const [errorText, setErrorText] = useState('')
   const [selectedLesson, setSelectedLesson] = useState<PositionedLesson | null>(null)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+  const resetToTodayRef = useRef<() => void>(() => undefined)
 
   const sectionTimeMap = useMemo(
     () => getSectionTimeMap(timetable?.sectionTimes, timetable?.providerId),
@@ -211,7 +390,7 @@ export default function SchedulePage() {
     return Math.max(DEFAULT_SECTION_COUNT, maxCourseSection, maxConfiguredSection)
   }, [maxCourseSection, sectionTimeMap])
   const timetableStyle = useMemo(
-    () => `height:${HEADER_HEIGHT + sectionCount * ROW_HEIGHT + 2}rpx;`,
+    () => `height:${HEADER_HEIGHT + sectionCount * ROW_HEIGHT}rpx;`,
     [sectionCount],
   )
   const periods = useMemo(
@@ -219,6 +398,7 @@ export default function SchedulePage() {
       Array.from({ length: sectionCount }, (_, index) => {
         const section = index + 1
         const time = sectionTimeMap[section] || DEFAULT_SECTION_TIMES[section]
+        const isLastSection = section === sectionCount
 
         return {
           section,
@@ -228,11 +408,36 @@ export default function SchedulePage() {
             'left:0;',
             `top:${HEADER_HEIGHT + index * ROW_HEIGHT}rpx`,
             `width:${LEFT_WIDTH_PERCENT}%;`,
-            `height:${ROW_HEIGHT}rpx`,
+            isLastSection ? 'bottom:0;' : `height:${ROW_HEIGHT}rpx`,
           ].join(';'),
         }
       }),
     [sectionCount, sectionTimeMap],
+  )
+  const rowGridLines = useMemo<TimetableGridLine[]>(
+    () =>
+      Array.from({ length: sectionCount + 1 }, (_, index) => ({
+        id: `row-${index}`,
+        style: index === sectionCount ? 'bottom:0;' : `top:${HEADER_HEIGHT + index * ROW_HEIGHT}rpx;`,
+      })),
+    [sectionCount],
+  )
+  const columnGridLines = useMemo<TimetableGridLine[]>(
+    () => {
+      const dayBoundaries = Array.from({ length: WEEKDAYS.length }, (_, index) => ({
+        id: `day-${index + 1}`,
+        style: index === WEEKDAYS.length - 1
+          ? 'right:0;'
+          : `left:${LEFT_WIDTH_PERCENT + DAY_WIDTH_PERCENT * (index + 1)}%;`,
+      }))
+
+      return [
+        { id: 'start', style: 'left:0;' },
+        { id: 'time', style: `left:${LEFT_WIDTH_PERCENT}%;` },
+        ...dayBoundaries,
+      ]
+    },
+    [],
   )
 
   const selectedTermIndex = Math.max(
@@ -290,23 +495,34 @@ export default function SchedulePage() {
   )
   const weekdays = useMemo<WeekdayColumn[]>(() => {
     const startDate = getWeekStartDate(selectedTerm, selectedWeek, timetable?.termId, effectiveTermStarts)
+    const today = new Date()
 
     return WEEKDAYS.map((weekday, index) => {
       const date = new Date(startDate)
       date.setDate(startDate.getDate() + index)
+      const isToday =
+        date.getFullYear() === today.getFullYear() &&
+        date.getMonth() === today.getMonth() &&
+        date.getDate() === today.getDate()
+      const dateText = formatMonthDay(date)
 
       return {
         weekday,
-        dateText: formatMonthDay(date),
+        dateText,
+        isToday,
         style: [
           `left:${LEFT_WIDTH_PERCENT + DAY_WIDTH_PERCENT * index}%;`,
           'top:0;',
-          `width:${DAY_WIDTH_PERCENT}%;`,
+          index === WEEKDAYS.length - 1 ? 'right:0;' : `width:${DAY_WIDTH_PERCENT}%;`,
           `height:${HEADER_HEIGHT}rpx`,
         ].join(''),
       }
     })
   }, [effectiveTermStarts, selectedTerm, selectedWeek, timetable?.termId])
+  const courseColorMap = useMemo(
+    () => buildCourseColorMap(timetable?.courses || [], primaryCourseField),
+    [primaryCourseField, timetable?.courses],
+  )
 
   const lessons = useMemo<PositionedLesson[]>(() => {
     return (timetable ? timetable.courses : [])
@@ -317,9 +533,10 @@ export default function SchedulePage() {
 
         return courseRunsInWeek(course, selectedWeek)
       })
-      .map((course, index) => toLesson(course, index))
+      .map((course, index) => toLesson(course, index, courseColorMap))
       .filter((lesson): lesson is PositionedLesson => Boolean(lesson))
   }, [
+    courseColorMap,
     primaryCourseField,
     roomCourseField,
     sectionCount,
@@ -332,6 +549,11 @@ export default function SchedulePage() {
     const authState = getStoredAuthState()
     const id = authState.accountId
     const storedTermStarts = getStoredTermStarts()
+    const page = Taro.getCurrentInstance().page as SchedulePageInstance | undefined
+    if (page) {
+      page.onTabReselect = () => resetToTodayRef.current()
+    }
+
     setAccountId(id)
     setTermStarts(storedTermStarts)
 
@@ -347,7 +569,7 @@ export default function SchedulePage() {
     }
 
     if (id) {
-      void loadTimetable(id, selectedTermId, storedTermStarts)
+      void loadTimetable(id, '', storedTermStarts, { resetToToday: true })
     }
   })
 
@@ -355,6 +577,7 @@ export default function SchedulePage() {
     id = accountId,
     termId = selectedTermId,
     starts = termStarts,
+    options?: { resetToToday?: boolean },
   ) {
     if (!id) {
       return
@@ -364,11 +587,12 @@ export default function SchedulePage() {
     setErrorText('')
 
     try {
-      const nextTimetable = await getTimetable(id, termId || undefined)
+      const requestedTermId = options?.resetToToday ? '' : termId
+      const nextTimetable = await getTimetable(id, requestedTermId || undefined)
       const nextTermOptions = buildTermOptions(nextTimetable)
-      const todayTerm = termId ? null : getTodayTermOption(nextTermOptions)
+      const todayTerm = requestedTermId ? null : getTodayTermOption(nextTermOptions)
 
-      if (!termId && nextTimetable.termId) {
+      if (!requestedTermId && nextTimetable.termId) {
         setLatestTermId(nextTimetable.termId)
       }
 
@@ -392,10 +616,10 @@ export default function SchedulePage() {
       }
 
       const nextSelectedTerm =
-        nextTermOptions.find((term) => term.id === (nextTimetable.termId || termId)) || null
-      const nextSelectedTermId = nextTimetable.termId || termId || ''
+        nextTermOptions.find((term) => term.id === (nextTimetable.termId || requestedTermId)) || null
+      const nextSelectedTermId = nextTimetable.termId || requestedTermId || ''
 
-      if (!termId && nextSelectedTermId) {
+      if (!requestedTermId && nextSelectedTermId) {
         setLatestTermId(nextSelectedTermId)
       }
 
@@ -403,7 +627,7 @@ export default function SchedulePage() {
       setTermOptions((current) => mergeTermOptions(current, nextTermOptions))
       setSelectedTermId(nextSelectedTermId)
       setSelectedWeek((current) =>
-        current === null
+        options?.resetToToday || current === null
           ? getCurrentTeachingWeek(
             nextSelectedTerm,
             nextTimetable.termId,
@@ -474,6 +698,8 @@ export default function SchedulePage() {
     setSelectedWeek(todayWeek)
   }
 
+  resetToTodayRef.current = handleBackThisWeek
+
   function handleScheduleTouchStart(event: ITouchEvent) {
     const touch = event.touches[0]
 
@@ -514,7 +740,7 @@ export default function SchedulePage() {
     setSelectedLesson(null)
   }
 
-  function toLesson(course: CourseItem, index: number): PositionedLesson | null {
+  function toLesson(course: CourseItem, index: number, colors: Map<string, CourseColor>): PositionedLesson | null {
     const weekday = Number(course.weekday)
 
     if (weekday < 1 || weekday > 7) {
@@ -537,17 +763,21 @@ export default function SchedulePage() {
     const top = HEADER_HEIGHT + (start - 1) * ROW_HEIGHT
     const height = span * ROW_HEIGHT
     const leftIndex = weekday - 1
+    const isLastDay = leftIndex === WEEKDAYS.length - 1
+    const endsAtLastSection = end === sectionCount
+    const name = getCourseValue(course, primaryCourseField) || '未命名课程'
     const style = [
       `left:calc(${LEFT_WIDTH_PERCENT + leftIndex * DAY_WIDTH_PERCENT}% + ${LESSON_HORIZONTAL_GAP}rpx)`,
+      isLastDay ? `right:${LESSON_HORIZONTAL_GAP}rpx` : '',
       `top:${top + LESSON_VERTICAL_GAP}rpx`,
-      `width:calc(${DAY_WIDTH_PERCENT}% - ${LESSON_HORIZONTAL_GAP * 2}rpx)`,
-      `height:${height - LESSON_VERTICAL_GAP * 2}rpx`,
-    ].join(';')
+      isLastDay ? '' : `width:calc(${DAY_WIDTH_PERCENT}% - ${LESSON_HORIZONTAL_GAP * 2}rpx)`,
+      endsAtLastSection ? `bottom:${LESSON_VERTICAL_GAP}rpx` : `height:${height - LESSON_VERTICAL_GAP * 2}rpx`,
+      getCourseColorStyle(name, colors),
+    ].filter(Boolean).join(';')
     const detailStart = Number(sections[0] || start)
     const detailEnd = Number(sections[sections.length - 1] || end)
     const startTime = (sectionTimeMap[detailStart] || DEFAULT_SECTION_TIMES[detailStart])?.start || ''
     const endTime = (sectionTimeMap[detailEnd] || DEFAULT_SECTION_TIMES[detailEnd])?.end || ''
-    const name = getCourseValue(course, primaryCourseField) || '未命名课程'
     const room = getCourseValue(course, roomCourseField) || '地点待定'
     const teacher = course.teacher?.trim() || '教师待定'
     const section = formatSectionsText(sections)
@@ -560,8 +790,8 @@ export default function SchedulePage() {
       name,
       nameLines: splitCourseName(name),
       room,
+      roomLines: splitRoomName(room),
       teacher,
-      tone: getLessonTone(course, index),
       weekdayText,
       section,
       weeksText,
@@ -609,12 +839,12 @@ export default function SchedulePage() {
         </Picker>
       </View>
 
-      {loading && <View className='soft-card state-card'>正在读取课表...</View>}
+      {loading && <View className='soft-card state-card'>正在读取课表</View>}
       {errorText && <View className='soft-card state-card state-error'>{errorText}</View>}
 
       {showBackThisWeekButton && (
         <View className='schedule-back-this-week-button' onClick={handleBackThisWeek}>
-          回到本周
+          回到今天
         </View>
       )}
 
@@ -625,8 +855,15 @@ export default function SchedulePage() {
         onTouchEnd={handleScheduleTouchEnd}
         onTouchCancel={handleScheduleTouchCancel}
       >
+        {rowGridLines.map((line) => (
+          <View className='timetable-grid-line timetable-row-line' key={line.id} style={line.style} />
+        ))}
+        {columnGridLines.map((line) => (
+          <View className='timetable-grid-line timetable-column-line' key={line.id} style={line.style} />
+        ))}
+
         {weekdays.map((item) => (
-          <View className='weekday' key={item.weekday} style={item.style}>
+          <View className={`weekday ${item.isToday ? 'weekday-today' : ''}`} key={item.weekday} style={item.style}>
             <View className='weekday-name'>{item.weekday}</View>
             <View className='weekday-date'>{item.dateText}</View>
           </View>
@@ -642,15 +879,21 @@ export default function SchedulePage() {
 
         {lessons.map((lesson) => (
           <View
-            className={`lesson-block lesson-${lesson.tone}`}
+            className='lesson-block'
             key={lesson.id}
             style={lesson.style}
             onClick={() => setSelectedLesson(lesson)}
           >
-            {lesson.nameLines.map((line, index) => (
-              <View key={`${lesson.id}-${line}-${index}`}>{line}</View>
-            ))}
-            <View className='lesson-room'>{lesson.room}</View>
+            <View className='lesson-name'>
+              {lesson.nameLines.map((line, index) => (
+                <Text className='lesson-name-text' key={`${lesson.id}-name-${line}-${index}`}>{line}</Text>
+              ))}
+            </View>
+            <View className='lesson-room'>
+              {lesson.roomLines.map((line, index) => (
+                <Text className='lesson-room-text' key={`${lesson.id}-room-${line}-${index}`}>{line}</Text>
+              ))}
+            </View>
           </View>
         ))}
       </View>
@@ -663,7 +906,7 @@ export default function SchedulePage() {
         <RootPortal>
           <View className='lesson-detail-mask' onClick={closeLessonDetail}>
             <View
-              className={`lesson-detail-card lesson-detail-${selectedLesson.tone}`}
+              className='lesson-detail-card'
               onClick={(event) => event.stopPropagation()}
             >
               <View className='lesson-detail-head'>

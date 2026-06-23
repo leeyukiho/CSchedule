@@ -74,24 +74,19 @@
 .timetable {
   background: #ffffff;
   position: relative;
+  width: 100%;
+  box-sizing: border-box;
   overflow: hidden;
-  border: 1rpx solid #eef0f4;
-}
-
-.timetable::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image: linear-gradient(#f8fafc 1rpx, transparent 1rpx);
-  background-size: 100% 110rpx;
-  background-position: 0 100rpx;
+  box-shadow: inset 0 0 0 1rpx #eef0f4;
 }
 
 .weekday,
 .time-cell {
   position: absolute;
   z-index: 1;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -102,79 +97,133 @@
   line-height: 1.2;
 }
 
+.timetable-grid-line {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  background: #f8fafc;
+}
+
+.timetable-row-line {
+  left: 0;
+  right: 0;
+  height: 1rpx;
+}
+
+.timetable-column-line {
+  top: 0;
+  bottom: 0;
+  width: 1rpx;
+}
+
+.weekday {
+  gap: 6rpx;
+}
+
+.time-cell {
+  gap: 4rpx;
+}
+
+.weekday > view,
+.time-cell > view {
+  display: block;
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .weekday-name {
-  margin-bottom: 8rpx;
   color: #111827;
   font-size: 24rpx;
   font-weight: 800;
+  line-height: 1;
+}
+
+.weekday-date {
+  color: #667085;
+  font-size: 21rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.weekday-today .weekday-name,
+.weekday-today .weekday-date {
+  color: #1d4ed8;
 }
 
 .period-index {
-  margin-bottom: 8rpx;
   color: #111827;
   font-size: 26rpx;
   font-weight: 800;
+  line-height: 1;
 }
 
 .lesson-block {
   position: absolute;
   z-index: 2;
-  padding: 18rpx 10rpx;
+  padding: 8rpx 5rpx;
+  box-sizing: border-box;
   border-radius: 10rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  font-size: 22rpx;
-  line-height: 1.28;
+  gap: 8rpx;
+  font-size: 18rpx;
+  line-height: 1.14;
   font-weight: 800;
   overflow: hidden;
   word-break: break-all;
 }
 
+.lesson-name,
 .lesson-room {
   width: 100%;
-  margin-top: 16rpx;
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rpx;
+}
+
+.lesson-name-text {
+  display: block;
+  width: 3em;
+  max-width: 100%;
+  color: currentColor;
+  font-size: 18rpx;
+  line-height: 1.12;
+  text-align: center;
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+.lesson-room {
+  width: 100%;
+  color: currentColor;
+  font-size: 16rpx;
   font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.12;
+  opacity: 0.82;
 }
 
-.lesson-blue {
-  color: #1d4ed8;
-  border: 1rpx solid #9cc4ff;
-  background: #d9ebff;
-}
-
-.lesson-green {
-  color: #047857;
-  border: 1rpx solid #a7e4be;
-  background: #daf8e5;
-}
-
-.lesson-purple {
-  color: #6d28d9;
-  border: 1rpx solid #d6b7ff;
-  background: #efe0ff;
-}
-
-.lesson-yellow {
-  color: #92400e;
-  border: 1rpx solid #f4d17f;
-  background: #fff2c7;
-}
-
-.lesson-red {
-  color: #e11d48;
-  border: 1rpx solid #ffc1ca;
-  background: #ffe0e3;
-}
-
-.lesson-cyan {
-  color: #0f766e;
-  border: 1rpx solid #99f6e4;
-  background: #d8fbf6;
+.lesson-room-text {
+  display: block;
+  width: 4em;
+  max-width: 100%;
+  text-align: center;
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .state-card {
@@ -204,18 +253,18 @@
   left: 0;
   right: 0;
   top: 0;
-  bottom: 142rpx;
-  bottom: calc(142rpx + env(safe-area-inset-bottom));
-  z-index: 60;
+  bottom: 0;
+  z-index: 160;
+  box-sizing: border-box;
   display: flex;
   align-items: flex-end;
-  padding: 32rpx;
+  padding: 32rpx 32rpx calc(150rpx + env(safe-area-inset-bottom));
   background: rgba(15, 23, 42, 0.46);
 }
 
 .lesson-detail-card {
   width: 100%;
-  max-height: 100%;
+  max-height: calc(100vh - 214rpx - env(safe-area-inset-bottom));
   padding: 32rpx 30rpx 34rpx;
   box-sizing: border-box;
   overflow-y: auto;

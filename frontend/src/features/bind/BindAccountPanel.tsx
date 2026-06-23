@@ -156,7 +156,7 @@ function getBindErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : ''
 
   if (message.includes('SYNC_INPUT_INVALID')) {
-    return '云函数同步参数不匹配，请更新云函数后重试。'
+    return '同步配置异常'
   }
 
   if (
@@ -167,7 +167,7 @@ function getBindErrorMessage(error: unknown) {
     message.includes('无法定位学生课表参数') ||
     message.includes('登录后未返回有效会话')
   ) {
-    return '教务系统响应不稳定，请进入学校页面完成首次导入，或稍后再试。'
+    return '教务系统不稳定'
   }
 
   return message || '绑定失败'
@@ -425,8 +425,8 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
   const canBind = Boolean(selectedSchool) && !loading && !contextLoading
   const bindButtonText = loading
     ? isPasswordServerImport
-      ? '正在导入...'
-      : '正在进入学校页面...'
+      ? '正在导入'
+      : '正在进入学校页面'
     : isPasswordServerImport
       ? '登录并导入'
       : '进入学校页面导入'
@@ -575,7 +575,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
     }
 
     setLoading(true)
-    setMessage(isPasswordServerImport ? '正在导入课表。' : '正在登录。')
+    setMessage(isPasswordServerImport ? '正在导入课表' : '正在进入学校页面')
     setErrorText('')
 
     try {
@@ -592,7 +592,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
         )
 
         if (!sharedCloudImport || !hasCloudCredentialSync(sharedCloudImport.cloudFunction)) {
-          throw new Error('暂时无法导入该学校。')
+          throw new Error('暂时无法导入')
         }
 
         const cloudResult = await runCredentialSyncWithCloud({
@@ -611,10 +611,10 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
           !isRecord(primaryCourseResult.cacheData) ||
           !Array.isArray(primaryCourseResult.cacheData.courses)
         ) {
-          throw new Error('课表导入失败，请稍后再试。')
+          throw new Error('课表导入失败')
         }
 
-        setMessage('正在保存账号。')
+        setMessage('正在保存账号')
 
         const cloudWarnings = cloudResult.cacheResults.flatMap((item) => item.warnings || [])
         const result = await submitLogin(selectedSchool.id, {
@@ -641,7 +641,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
         const courseCache = savedCourseCache
 
         if (!courseCache) {
-          throw new Error('课表导入失败，请稍后再试。')
+          throw new Error('课表导入失败')
         }
 
         setStoredAccountSummary(
@@ -655,7 +655,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
           }),
         )
         await termStartsRequest
-        setMessage('登录成功，数据已获取。')
+        setMessage('登录成功')
         Taro.switchTab({ url: '/pages/index/index' })
         return
       }
@@ -676,7 +676,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
         const webviewUrl = webview ? webview.url : ''
 
         if (!webviewUrl || webviewUrl === 'about:blank') {
-          throw new Error('暂时无法导入该学校。')
+          throw new Error('暂时无法导入')
         }
 
         const targets = (webview ? webview.requiredFetchTargets : undefined) || result.requiredFetchTargets || ['course']
@@ -702,7 +702,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
         return
       } else {
         await settleSchoolTermStarts(selectedSchool.id)
-        setMessage('登录成功，课表已获取。')
+        setMessage('登录成功')
       }
 
       Taro.switchTab({ url: '/pages/index/index' })
@@ -771,7 +771,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
                   ) : (
                     !searching && (
                       <View className='empty-state'>
-                        <Text className='empty-title'>未找到匹配学校</Text>
+                        <Text className='empty-title'>未找到学校</Text>
                       </View>
                     )
                   )}
@@ -799,7 +799,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
                 </View>
               </View>
 
-              {contextLoading && <View className='inline-status'>正在加载登录表单...</View>}
+              {contextLoading && <View className='inline-status'>正在加载登录表单</View>}
 
               {!contextLoading &&
                 shouldCollectCredentials &&

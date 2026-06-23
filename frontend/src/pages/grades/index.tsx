@@ -652,7 +652,7 @@ export default function GradesPage() {
     ? `${visibleCollapsedExamItems[0].exam.courseName} ${getExamStatusText(visibleCollapsedExamItems[0].status)}`
     : (examCount ? '点击展开查看全部考试记录' : '请同步后查看最新考试信息')
   const toggleSemester = (id: string) => {
-    setCollapsedSemesters((current) => ({ ...current, [id]: !current[id] }))
+    setCollapsedSemesters((current) => ({ ...current, [id]: !(current[id] ?? true) }))
   }
   const toggleExamSection = () => {
     setShowAllExams((current) => !current)
@@ -676,7 +676,7 @@ export default function GradesPage() {
       </View>
 
       {errorText && <View className='status status-error'>{errorText}</View>}
-      {loading && <View className='soft-card state-card'>正在读取成绩...</View>}
+      {loading && <View className='soft-card state-card'>正在读取成绩</View>}
 
       <View className='exam-section'>
         <View className='filter'>考试安排 <View className='exam-count'>{examCount}</View></View>
@@ -767,9 +767,9 @@ export default function GradesPage() {
                 )}
               </View>
             </View>
-            <View className={collapsedSemesters[group.id] ? 'chevron-down' : 'chevron-down chevron-up'} />
+            <View className={(collapsedSemesters[group.id] ?? true) ? 'chevron-down' : 'chevron-down chevron-up'} />
           </View>
-          {!collapsedSemesters[group.id] && (
+          {!(collapsedSemesters[group.id] ?? true) && (
             <View className='grade-table'>
               <View className='grade-row'>
                 <View className='grade-cell grade-head grade-name'>课程名称</View>

@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clipboard,
+  Bell,
   Eye,
   FileJson,
   Inbox,
@@ -53,7 +54,7 @@ const SCHOOL_STATUS_OPTIONS = [
 const SUBMISSION_EXTRA_VERIFICATION_OPTIONS = ['不需要', '需要验证码或短信', '需要扫码或校内验证', '不确定'] as const
 const SUBMISSION_ADAPTATION_HELP_OPTIONS = ['愿意沟通', '先了解，愿意等', '暂不方便'] as const
 
-type ViewKey = 'overview' | 'schools' | 'users' | 'submissions' | 'feedback' | 'reminders'
+type ViewKey = 'overview' | 'schools' | 'users' | 'submissions' | 'feedback' | 'notifications' | 'reminders'
 type StatusType = 'success' | 'error'
 
 interface AdminStats {
@@ -61,6 +62,7 @@ interface AdminStats {
   accounts: number
   pendingSubmissions: number
   pendingFeedback: number
+  activeNotifications?: number
 }
 
 interface PageResult<T> {
@@ -171,6 +173,27 @@ interface UserItem {
   } | null
 }
 
+interface NotificationItem {
+  id: string
+  title: string
+  content: string
+  targetType: 'global' | 'user'
+  targetAccountId: string | null
+  active: boolean
+  expiresAt?: string | null
+  createdAt: string
+  updatedAt?: string
+  readCount?: number
+  targetAccount?: UserItem | null
+}
+
+interface NotificationDraft {
+  title: string
+  content: string
+  targetType: 'global' | 'user'
+  targetAccountId: string
+}
+
 interface ReminderConfig {
   enabled: boolean
   dryRun: boolean
@@ -258,10 +281,11 @@ interface SubmissionConfirmState {
   nextStatus: string
 }
 
-type SchoolFilters = { keyword: string; status: string; enabled: string; offset: number }
+type SchoolFilters = { keyword: string; status: string; enabled: string; sortBy: string; sortOrder: string; offset: number }
 type UserFilters = { keyword: string; schoolId: string; schoolKeyword: string; status: string; offset: number }
-type SubmissionFilters = { keyword: string; status: string; extraVerification: string; adaptationHelp: string; offset: number }
+type SubmissionFilters = { keyword: string; status: string; extraVerification: string; adaptationHelp: string; sortBy: string; sortOrder: string; offset: number }
 type FeedbackFilters = { status: string; schoolKeyword: string; offset: number }
+type NotificationFilters = { keyword: string; targetType: string; active: string; offset: number }
 type SubmissionStatus = 'submitted' | 'catalog_only' | 'candidate' | 'researching' | 'beta' | 'enabled' | 'disabled'
 
 const viewMeta: Record<ViewKey, { title: string; description: string }> = {
@@ -284,6 +308,10 @@ const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   feedback: {
     title: '用户反馈',
     description: '查看用户反馈和关联学生信息。',
+  },
+  notifications: {
+    title: '通知管理',
+    description: '向指定用户或全平台发送通知，用户下次打开项目时弹窗并进入消息历史。',
   },
   reminders: {
     title: '提醒设置',
@@ -332,6 +360,51 @@ function joinFilled(values: Array<string | number | null | undefined>) {
 function display(value: unknown, fallback = '--') {
   if (value === null || value === undefined || value === '') return fallback
   return String(value)
+}
+
+function displayUserContact(contact?: UserItem['contact']) {
+  const values = [contact?.value, contact?.phone, contact?.email]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+  const uniqueValues = [...new Set(values)]
+
+  return uniqueValues.length ? uniqueValues.join(' / ') : '--'
+}
+
+function displayCount(value: number | undefined) {
+  return String(Math.min(Math.max(0, Math.floor(value ?? 0)), 99999))
+}
+
+function getSortValue(sortBy: string, sortOrder: string) {
+  return sortBy ? `${sortBy}:${sortOrder || 'desc'}` : ''
+}
+
+function parseSortValue(value: string) {
+  const [sortBy = '', sortOrder = 'desc'] = value.split(':')
+  return { sortBy, sortOrder }
+}
+
+function compareByOrder(left: number, right: number, sortOrder: string) {
+  return (left - right) * (sortOrder === 'asc' ? 1 : -1)
+}
+
+function getSubmissionGroupTime(group: { items: SubmissionItem[] }, mode: 'min' | 'max') {
+  const times = group.items
+    .map((item) => new Date(item.createdAt).getTime())
+    .filter((time) => Number.isFinite(time))
+
+  if (!times.length) return 0
+  return mode === 'min' ? Math.min(...times) : Math.max(...times)
+}
+
+function getFeedbackTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    experience: '体验反馈',
+    bug: '问题反馈',
+    suggestion: '功能建议',
+  }
+
+  return labels[type] || display(type, '反馈')
 }
 
 function formatDate(value: string | null | undefined) {
@@ -438,19 +511,29 @@ export function App() {
   const [users, setUsers] = useState<PageResult<UserItem>>({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
   const [submissions, setSubmissions] = useState<PageResult<SubmissionItem>>({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
   const [feedback, setFeedback] = useState<PageResult<FeedbackItem>>({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
+  const [notifications, setNotifications] = useState<PageResult<NotificationItem>>({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
   const [reminderConfig, setReminderConfig] = useState<ReminderConfig | null>(null)
   const [reminderRun, setReminderRun] = useState<ReminderRunResult | null>(null)
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null)
-  const [schoolFilters, setSchoolFilters] = useState({ keyword: '', status: '', enabled: '', offset: 0 })
+  const [schoolFilters, setSchoolFilters] = useState<SchoolFilters>({ keyword: '', status: '', enabled: '', sortBy: '', sortOrder: 'desc', offset: 0 })
   const [userFilters, setUserFilters] = useState<UserFilters>({ keyword: '', schoolId: '', schoolKeyword: '', status: '', offset: 0 })
   const [submissionFilters, setSubmissionFilters] = useState<SubmissionFilters>({
     keyword: '',
     status: '',
     extraVerification: '',
     adaptationHelp: '',
+    sortBy: '',
+    sortOrder: 'desc',
     offset: 0,
   })
   const [feedbackFilters, setFeedbackFilters] = useState<FeedbackFilters>({ status: '', schoolKeyword: '', offset: 0 })
+  const [notificationFilters, setNotificationFilters] = useState<NotificationFilters>({ keyword: '', targetType: '', active: '', offset: 0 })
+  const [notificationDraft, setNotificationDraft] = useState<NotificationDraft>({
+    title: '',
+    content: '',
+    targetType: 'global',
+    targetAccountId: '',
+  })
   const [modal, setModal] = useState<ModalState | null>(null)
   const [confirmAction, setConfirmAction] = useState<ConfirmState | null>(null)
   const [submissionConfirmAction, setSubmissionConfirmAction] = useState<SubmissionConfirmState | null>(null)
@@ -538,6 +621,15 @@ export function App() {
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, feedbackFilters.status, feedbackFilters.schoolKeyword])
+
+  useEffect(() => {
+    if (!authed || activeView !== 'notifications') return undefined
+    const timer = window.setTimeout(() => {
+      void refreshNotificationsWithFilters(notificationFilters)
+    }, FILTER_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, notificationFilters.keyword, notificationFilters.targetType, notificationFilters.active])
 
   useEffect(() => {
     if (!saved.adminKey) return
@@ -649,6 +741,17 @@ export function App() {
       const nextFeedback = await load<PageResult<FeedbackItem>>('/admin/feedback?' + query)
       setFeedback(nextFeedback)
       setSelectedFeedback(nextFeedback.items[0] || null)
+    }
+
+    if (view === 'notifications') {
+      const query = buildQuery({
+        keyword: notificationFilters.keyword,
+        targetType: notificationFilters.targetType,
+        active: notificationFilters.active,
+        limit: PAGE_SIZE,
+        offset: notificationFilters.offset,
+      })
+      setNotifications(await load<PageResult<NotificationItem>>('/admin/notifications?' + query))
     }
 
     if (view === 'reminders') {
@@ -774,6 +877,32 @@ export function App() {
     }
   }
 
+  async function refreshNotificationsWithFilters(nextFilters: NotificationFilters, successMessage: string | null = null) {
+    const showSpinner = successMessage !== null
+    setNotificationFilters(nextFilters)
+    try {
+      if (showSpinner) setLoading(true)
+      const query = buildQuery({
+        keyword: nextFilters.keyword,
+        targetType: nextFilters.targetType,
+        active: nextFilters.active,
+        limit: PAGE_SIZE,
+        offset: nextFilters.offset,
+      })
+      const [nextStats, nextNotifications] = await Promise.all([
+        requestApi<AdminStats>('/admin/stats'),
+        requestApi<PageResult<NotificationItem>>('/admin/notifications?' + query),
+      ])
+      setStats(nextStats)
+      setNotifications(nextNotifications)
+      if (successMessage) showStatus(successMessage)
+    } catch (error) {
+      showStatus(describeFetchError(error, baseUrl), 'error')
+    } finally {
+      if (showSpinner) setLoading(false)
+    }
+  }
+
   async function switchView(view: ViewKey) {
     setActiveView(view)
     try {
@@ -809,6 +938,7 @@ export function App() {
     setUsers({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
     setSubmissions({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
     setFeedback({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
+    setNotifications({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
     setSelectedFeedback(null)
   }
 
@@ -852,6 +982,57 @@ export function App() {
   function requestUpdateSubmissions(schoolName: string, items: SubmissionItem[], nextStatus: string) {
     if (!items.length) return
     setSubmissionConfirmAction({ schoolName, items, nextStatus })
+  }
+
+  function openUserNotification(user: UserItem) {
+    setNotificationDraft({
+      title: '',
+      content: '',
+      targetType: 'user',
+      targetAccountId: user.id,
+    })
+    setActiveView('notifications')
+  }
+
+  async function createNotification(draft: NotificationDraft) {
+    try {
+      setLoading(true)
+      await requestApi('/admin/notifications', {
+        method: 'POST',
+        bodyData: {
+          title: draft.title,
+          content: draft.content,
+          targetType: draft.targetType,
+          targetAccountId: draft.targetType === 'user' ? draft.targetAccountId : null,
+        },
+      })
+      setNotificationDraft({
+        title: '',
+        content: '',
+        targetType: 'global',
+        targetAccountId: '',
+      })
+      await refreshNotificationsWithFilters({ ...notificationFilters, offset: 0 }, '通知已发送。')
+    } catch (error) {
+      showStatus(describeFetchError(error, baseUrl), 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function deactivateNotification(notification: NotificationItem) {
+    try {
+      setLoading(true)
+      await requestApi(`/admin/notifications/${encodeURIComponent(notification.id)}`, {
+        method: 'PATCH',
+        bodyData: { active: false },
+      })
+      await refreshNotificationsWithFilters(notificationFilters, '通知已停用。')
+    } catch (error) {
+      showStatus(describeFetchError(error, baseUrl), 'error')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function submitModal(value: unknown) {
@@ -962,6 +1143,7 @@ export function App() {
           <NavButton active={activeView === 'submissions'} icon={<Inbox size={18} />} label="接入申请" onClick={() => void switchView('submissions')} />
           <NavButton active={activeView === 'feedback'} icon={<MessageSquareWarning size={18} />} label="用户反馈" onClick={() => void switchView('feedback')} />
           <NavButton active={activeView === 'reminders'} icon={<BellRing size={18} />} label="提醒设置" onClick={() => void switchView('reminders')} />
+          <NavButton active={activeView === 'notifications'} icon={<Bell size={18} />} label="通知管理" onClick={() => void switchView('notifications')} />
         </nav>
         <div className="sidebar-footer">管理端仅面向网站浏览器使用。请在可信设备保存密钥，离开时退出登录。</div>
       </aside>
@@ -1044,6 +1226,7 @@ export function App() {
                 setUserFilters(nextFilters)
                 void refreshUsersWithFilters(nextFilters, '数据已刷新。')
               }}
+              onNotify={openUserNotification}
             />
           )}
           {!loading && activeView === 'submissions' && (
@@ -1074,6 +1257,22 @@ export function App() {
               }}
               onSelect={setSelectedFeedback}
               onShowJson={(item) => setModal({ title: '反馈原始数据', description: item.id, mode: 'json', value: item })}
+            />
+          )}
+          {!loading && activeView === 'notifications' && (
+            <NotificationsView
+              data={notifications}
+              filters={notificationFilters}
+              draft={notificationDraft}
+              onFiltersChange={setNotificationFilters}
+              onDraftChange={setNotificationDraft}
+              onSubmit={(draft) => void createNotification(draft)}
+              onDeactivate={(item) => void deactivateNotification(item)}
+              onPage={(offset) => {
+                const nextFilters = { ...notificationFilters, offset }
+                setNotificationFilters(nextFilters)
+                void refreshNotificationsWithFilters(nextFilters, '数据已刷新。')
+              }}
             />
           )}
           {!loading && activeView === 'reminders' && (
@@ -1189,7 +1388,10 @@ function groupTermOptionsForDisplay(terms: TermOption[], school?: SchoolItem) {
     }
   }
 
-  return [...groups.values()]
+  return [...groups.values()].sort((left, right) => (
+    getTermDisplaySortKey(right.label, right.preferredId, providerCode) -
+    getTermDisplaySortKey(left.label, left.preferredId, providerCode)
+  ))
 }
 
 function getTermDisplayLabel(termId: string, terms: TermOption[] = [], school?: SchoolItem) {
@@ -1203,11 +1405,28 @@ function getTermDisplayLabel(termId: string, terms: TermOption[] = [], school?: 
 }
 
 function getTermStartDisplayEntries(school: SchoolItem) {
-  return Object.entries(school.termStarts || {}).map(([termId, date]) => ({
-    termId,
-    date,
-    label: getTermDisplayLabel(termId, school.terms || [], school),
-  }))
+  return Object.entries(school.termStarts || {})
+    .map(([termId, date]) => ({
+      termId,
+      date,
+      label: getTermDisplayLabel(termId, school.terms || [], school),
+    }))
+    .sort((left, right) => (
+      getTermDisplaySortKey(right.label, right.termId, getSchoolProviderCode(school)) -
+      getTermDisplaySortKey(left.label, left.termId, getSchoolProviderCode(school))
+    ))
+}
+
+function getPrimaryTermStartDisplay(school: SchoolItem) {
+  const knownTerm = groupTermOptionsForDisplay(school.terms || [], school)[0]
+  const entries = getTermStartDisplayEntries(school)
+
+  if (!knownTerm) {
+    return entries[0] ? `${entries[0].label}: ${entries[0].date}` : '未配置'
+  }
+
+  const matchedEntry = entries.find((entry) => knownTerm.ids.includes(entry.termId))
+  return `${knownTerm.label}: ${matchedEntry?.date || '未配置'}`
 }
 
 function getTermDisplayKey(termId: string, providerCode = '') {
@@ -1323,6 +1542,25 @@ function formatProviderTermId(providerCode: string, termId: string) {
 
   const yearStart = 2000 + Number(match[1])
   return `${yearStart}-${yearStart + 1}学年第${match[2]}学期`
+}
+
+function getTermDisplaySortKey(label: string, termId: string, providerCode = '') {
+  const text = `${label || ''} ${termId || ''}`
+  const academicMatch = text.match(/(20\d{2})\s*[-~—至]\s*(20\d{2}).*第?\s*([123一二三])\s*学期/)
+  const semesterMap: Record<string, number> = { 一: 1, 二: 2, 三: 3 }
+
+  if (academicMatch) {
+    return Number(academicMatch[1]) * 10 + (semesterMap[academicMatch[3]] || Number(academicMatch[3]) || 0)
+  }
+
+  const key = getTermDisplayKey(termId, providerCode)
+  const providerMatch = key.match(/^(\d{2})([123])$/)
+
+  if (providerMatch) {
+    return (2000 + Number(providerMatch[1])) * 10 + Number(providerMatch[2])
+  }
+
+  return Number.NEGATIVE_INFINITY
 }
 
 function isBetterTermDisplayLabel(nextLabel: string, currentLabel: string, nextId: string, currentId: string) {
@@ -1542,6 +1780,24 @@ function SchoolsView(props: {
   const updateFilters = (patch: Partial<SchoolFilters>) => {
     props.onFiltersChange((current) => ({ ...current, ...patch, offset: 0 }))
   }
+  const sortedSchools = useMemo(() => {
+    const items = [...props.schools.items]
+
+    if (props.filters.sortBy !== 'userCount') {
+      return items
+    }
+
+    return items.sort((left, right) => {
+      const enabledDiff = Number(right.enabled) - Number(left.enabled)
+      if (enabledDiff) return enabledDiff
+      if (!left.enabled && !right.enabled) {
+        return left.status.localeCompare(right.status) || left.name.localeCompare(right.name, 'zh-CN')
+      }
+
+      return compareByOrder(left.userCount ?? 0, right.userCount ?? 0, props.filters.sortOrder) ||
+        left.name.localeCompare(right.name, 'zh-CN')
+    })
+  }, [props.schools.items, props.filters.sortBy, props.filters.sortOrder])
 
   return (
     <Panel>
@@ -1571,6 +1827,16 @@ function SchoolsView(props: {
           ]}
           onChange={(enabled) => updateFilters({ enabled })}
         />
+        <SelectField
+          label="排序"
+          value={getSortValue(props.filters.sortBy, props.filters.sortOrder)}
+          options={[
+            ['', '默认'],
+            ['userCount:desc', '使用人数倒序'],
+            ['userCount:asc', '使用人数顺序'],
+          ]}
+          onChange={(value) => updateFilters(parseSortValue(value))}
+        />
       </div>
 
       {props.schools.items.length ? (
@@ -1587,7 +1853,7 @@ function SchoolsView(props: {
               </tr>
             </thead>
             <tbody>
-              {props.schools.items.map((school) => {
+              {sortedSchools.map((school) => {
                 const termStartEntries = getTermStartDisplayEntries(school)
 
                 return (
@@ -1601,17 +1867,16 @@ function SchoolsView(props: {
                     <div className="cell-meta">{school.status}</div>
                   </td>
                   <td>
-                    <button className="count-link" type="button" onClick={() => props.onOpenUsers(school)}>
-                      {school.userCount ?? 0}
+                    <button className="count-link" type="button" title={`${school.userCount ?? 0}`} onClick={() => props.onOpenUsers(school)}>
+                      {displayCount(school.userCount)}
                     </button>
-                    <div className="cell-meta">点击查看用户</div>
                   </td>
                   <td>
                     <div className="cell-title">{display(school.providerId || school.id)}</div>
                     <div className="cell-meta">{display(school.loginMode, '未设置登录方式')}</div>
                   </td>
                   <td>
-                    <div className="cell-title">{termStartEntries.length ? `${termStartEntries.length} 个学期` : '未配置'}</div>
+                    <div className="cell-title">{getPrimaryTermStartDisplay(school)}</div>
                     {termStartEntries.length > 0 && (
                       <div className="cell-meta">{termStartEntries.map((entry) => `${entry.label}: ${entry.date}`).join('；')}</div>
                     )}
@@ -1645,6 +1910,7 @@ function UsersView(props: {
   filters: UserFilters
   onFiltersChange: React.Dispatch<React.SetStateAction<UserFilters>>
   onPage: (offset: number) => void
+  onNotify: (user: UserItem) => void
 }) {
   const updateFilters = (patch: Partial<UserFilters>) => {
     props.onFiltersChange((current) => ({ ...current, ...patch, offset: 0 }))
@@ -1701,6 +1967,7 @@ function UsersView(props: {
                 <th>专业</th>
                 <th>状态</th>
                 <th>Provider</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -1711,8 +1978,7 @@ function UsersView(props: {
                     <div className="cell-meta">{joinFilled([item.student?.studentNo, item.student?.grade, item.student?.className])}</div>
                   </td>
                   <td>
-                    <div className="cell-title">{display(item.contact?.value)}</div>
-                    <div className="cell-meta">{joinFilled([item.contact?.phone, item.contact?.email])}</div>
+                    {displayUserContact(item.contact)}
                   </td>
                   <td>
                     <div className="cell-title">{display(item.school?.name || item.schoolId)}</div>
@@ -1729,6 +1995,12 @@ function UsersView(props: {
                   <td>
                     <div className="cell-title">{display(item.providerId)}</div>
                     <div className="cell-meta">{item.id}</div>
+                  </td>
+                  <td>
+                    <button className="button secondary" type="button" onClick={() => props.onNotify(item)}>
+                      <Bell size={16} />
+                      发送通知
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -1767,8 +2039,17 @@ function SubmissionsView(props: {
 
     return Array.from(groupMap.values())
       .filter((group) => group.items.some((item) => matchesSubmissionKeyword(item, keyword)))
-      .sort((a, b) => b.items.length - a.items.length || a.schoolName.localeCompare(b.schoolName, 'zh-CN'))
-  }, [props.data.items, props.filters.keyword])
+      .sort((a, b) => {
+        if (props.filters.sortBy === 'requestCount') {
+          return compareByOrder(a.items.length, b.items.length, props.filters.sortOrder) ||
+            a.schoolName.localeCompare(b.schoolName, 'zh-CN')
+        }
+
+        const mode = props.filters.sortOrder === 'asc' ? 'min' : 'max'
+        return compareByOrder(getSubmissionGroupTime(a, mode), getSubmissionGroupTime(b, mode), props.filters.sortOrder) ||
+          a.schoolName.localeCompare(b.schoolName, 'zh-CN')
+      })
+  }, [props.data.items, props.filters.keyword, props.filters.sortBy, props.filters.sortOrder])
 
   return (
     <Panel>
@@ -1799,6 +2080,17 @@ function SubmissionsView(props: {
           value={props.filters.adaptationHelp}
           options={[['', '全部'], ...SUBMISSION_ADAPTATION_HELP_OPTIONS.map((value) => [value, value] as const)]}
           onChange={(adaptationHelp) => updateFilters({ adaptationHelp })}
+        />
+        <SelectField
+          label="排序"
+          value={getSortValue(props.filters.sortBy, props.filters.sortOrder)}
+          options={[
+            ['', '最新申请'],
+            ['createdAt:asc', '最早申请'],
+            ['requestCount:desc', '申请人数倒序'],
+            ['requestCount:asc', '申请人数顺序'],
+          ]}
+          onChange={(value) => updateFilters(parseSortValue(value))}
         />
       </div>
       {groups.length ? (
@@ -1983,7 +2275,7 @@ function FeedbackView(props: {
                 >
                   <span className="feedback-row-main">
                     <span className="feedback-row-title">
-                      {display(item.type, '反馈')}
+                      {getFeedbackTypeLabel(item.type)}
                       <Badge tone={statusTone(item.status)}>{item.status}</Badge>
                     </span>
                     <span className="feedback-row-content">{display(item.content).slice(0, 120)}</span>
@@ -2009,6 +2301,7 @@ function FeedbackView(props: {
           <>
             <div className="detail-list">
               <DetailItem label="内容" value={display(props.selected.content)} />
+              <DetailItem label="类型" value={getFeedbackTypeLabel(props.selected.type)} />
               <DetailItem label="联系方式" value={display(props.selected.contact)} />
               <DetailItem label="学校" value={display(props.selected.account?.school?.name || props.selected.school?.name || props.selected.schoolId)} />
               <DetailItem label="学生" value={joinFilled([props.selected.student?.name, props.selected.student?.studentNo, props.selected.student?.grade, props.selected.student?.major, props.selected.student?.className]) || '--'} />
@@ -2022,6 +2315,201 @@ function FeedbackView(props: {
           </>
         ) : <div className="empty">选择一条反馈查看详情。</div>}
       </aside>
+    </div>
+  )
+}
+
+function NotificationsView(props: {
+  data: PageResult<NotificationItem>
+  filters: NotificationFilters
+  draft: NotificationDraft
+  onFiltersChange: React.Dispatch<React.SetStateAction<NotificationFilters>>
+  onDraftChange: React.Dispatch<React.SetStateAction<NotificationDraft>>
+  onSubmit: (draft: NotificationDraft) => void
+  onDeactivate: (item: NotificationItem) => void
+  onPage: (offset: number) => void
+}) {
+  const updateFilters = (patch: Partial<NotificationFilters>) => {
+    props.onFiltersChange((current) => ({ ...current, ...patch, offset: 0 }))
+  }
+  const setDraftValue = <K extends keyof NotificationDraft>(key: K, value: NotificationDraft[K]) => {
+    props.onDraftChange((current) => ({ ...current, [key]: value }))
+  }
+  const canSubmit = Boolean(
+    props.draft.title.trim() &&
+    props.draft.content.trim() &&
+    (props.draft.targetType === 'global' || props.draft.targetAccountId.trim()),
+  )
+  const activeCount = props.data.items.filter((item) => item.active).length
+  const globalCount = props.data.items.filter((item) => item.targetType === 'global').length
+  const userCount = props.data.items.filter((item) => item.targetType === 'user').length
+
+  return (
+    <div className="workspace notification-workspace">
+      <Panel>
+        <PanelHeader title="发送通知" description={viewMeta.notifications.description} />
+        <form className="notification-form" onSubmit={(event) => {
+          event.preventDefault()
+          if (canSubmit) props.onSubmit(props.draft)
+        }}>
+          <div className="notification-composer">
+            <div className="notification-target-card">
+              <div className="notification-target-head">
+                <span className="notification-kicker">投放方式</span>
+                <Badge tone={props.draft.targetType === 'global' ? 'amber' : 'green'}>
+                  {props.draft.targetType === 'global' ? '下次打开弹窗' : '个人消息'}
+                </Badge>
+              </div>
+              <SelectField
+                label="通知范围"
+                value={props.draft.targetType}
+                options={[
+                  ['global', '全平台通知'],
+                  ['user', '指定用户'],
+                ]}
+                onChange={(targetType) => setDraftValue('targetType', targetType as NotificationDraft['targetType'])}
+              />
+              <label className="field">
+                <span>目标用户 ID</span>
+                <input
+                  value={props.draft.targetAccountId}
+                  disabled={props.draft.targetType === 'global'}
+                  placeholder={props.draft.targetType === 'global' ? '全平台通知无需填写' : 'accountId'}
+                  onChange={(event) => setDraftValue('targetAccountId', event.target.value.trim())}
+                />
+              </label>
+              <div className="notification-note">
+                全平台通知和指定用户消息都会在用户下次打开项目时弹窗，并同步进入个人中心的消息页。
+              </div>
+            </div>
+            <div className="notification-message-card">
+              <div className="settings-grid notification-grid">
+                <label className="field">
+                  <span>标题</span>
+                  <input
+                    value={props.draft.title}
+                    placeholder="用于弹窗标题和消息列表标题"
+                    onChange={(event) => setDraftValue('title', event.target.value)}
+                  />
+                </label>
+                <label className="field notification-content-field">
+                  <span>内容</span>
+                  <textarea
+                    value={props.draft.content}
+                    placeholder="请输入通知内容"
+                    onChange={(event) => setDraftValue('content', event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="notification-actions">
+                <div className="notification-submit-hint">
+                  {canSubmit ? '内容完整，可以发送。' : '请填写标题、内容和必要的目标用户 ID。'}
+                </div>
+                <button className="button primary" type="submit" disabled={!canSubmit}>
+                  <Bell size={16} />
+                  发送通知
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </Panel>
+
+      <Panel>
+        <PanelHeader
+          title="通知记录"
+          description="已发送的通知记录。停用后不会再对未读用户弹窗。"
+          actions={
+            <div className="notification-summary">
+              <span>本页 {props.data.items.length}</span>
+              <span>生效 {activeCount}</span>
+              <span>全平台 {globalCount}</span>
+              <span>指定用户 {userCount}</span>
+            </div>
+          }
+        />
+        <div className="panel-tools">
+          <label className="field grow">
+            <span>搜索</span>
+            <input
+              value={props.filters.keyword}
+              placeholder="标题、内容或用户 ID"
+              onChange={(event) => updateFilters({ keyword: event.target.value })}
+            />
+          </label>
+          <SelectField
+            label="范围"
+            value={props.filters.targetType}
+            options={[
+              ['', '全部'],
+              ['global', '全平台'],
+              ['user', '指定用户'],
+            ]}
+            onChange={(targetType) => updateFilters({ targetType })}
+          />
+          <SelectField
+            label="状态"
+            value={props.filters.active}
+            options={[
+              ['', '全部'],
+              ['true', '生效中'],
+              ['false', '已停用'],
+            ]}
+            onChange={(active) => updateFilters({ active })}
+          />
+        </div>
+        {props.data.items.length ? (
+          <div className="table-wrap">
+            <table className="dense-table">
+              <thead>
+                <tr>
+                  <th>通知</th>
+                  <th>范围</th>
+                  <th>状态</th>
+                  <th>阅读</th>
+                  <th>时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {props.data.items.map((item) => (
+                  <tr className={!item.active ? 'notification-row inactive' : 'notification-row'} key={item.id}>
+                    <td>
+                      <div className="notification-title-line">
+                        <BellRing size={15} />
+                        <span>{item.title}</span>
+                      </div>
+                      <div className="cell-meta notification-content-preview">{item.content}</div>
+                    </td>
+                    <td>
+                      <Badge tone={item.targetType === 'global' ? 'amber' : 'green'}>
+                        {item.targetType === 'global' ? '全平台' : '指定用户'}
+                      </Badge>
+                      <div className="cell-meta notification-id">{item.targetAccountId || '--'}</div>
+                    </td>
+                    <td>
+                      <Badge tone={item.active ? 'green' : 'red'}>{item.active ? '生效中' : '已停用'}</Badge>
+                      <div className="cell-meta">{item.active ? '等待用户确认' : '不再弹窗'}</div>
+                    </td>
+                    <td><span className="notification-read-count">{item.readCount ?? 0}</span></td>
+                    <td>
+                      <div className="cell-title">{formatDate(item.createdAt)}</div>
+                      <div className="cell-meta notification-id">{item.id}</div>
+                    </td>
+                    <td>
+                      <button className="button danger" type="button" disabled={!item.active} onClick={() => props.onDeactivate(item)}>
+                        <PowerOff size={16} />
+                        停用
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <div className="empty">暂无通知。</div>}
+        <Pagination page={props.data} offset={props.filters.offset} onPage={props.onPage} />
+      </Panel>
     </div>
   )
 }

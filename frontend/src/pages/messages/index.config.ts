@@ -1,4 +1,4 @@
 export default definePageConfig({
   navigationStyle: 'custom',
-  navigationBarTitleText: '网页同步',
+  navigationBarTitleText: '消息',
 })

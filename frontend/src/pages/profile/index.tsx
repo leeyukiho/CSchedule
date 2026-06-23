@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import Taro, { useDidShow } from '@tarojs/taro'
+import Taro, { useDidShow, useShareAppMessage } from '@tarojs/taro'
 import { Button, Image, Input, ScrollView, Text, View } from '@tarojs/components'
 
 import { getAccount } from '../../shared/api/accounts'
@@ -52,6 +52,8 @@ const EDIT_FIELDS: EditField[] = [
 const SYNC_POLL_INTERVAL_MS = 2500
 const SYNC_POLL_TIMEOUT_MS = 120000
 const STATUS_CLEAR_DELAY_MS = 3000
+const SHARE_TITLE = 'CSchedule 课表助手'
+const SHARE_PATH = '/pages/index/index'
 
 function formatAccountStatus(status?: StudentAccountSummary['status']) {
   if (status === 'unbound' || status === 'disabled') {
@@ -105,18 +107,18 @@ function isTerminalSyncStatus(status: SyncJobResponse['status']) {
 
 function getSyncResultMessage(status: SyncJobResponse['status']) {
   if (status === 'success') {
-    return '课表已同步'
+    return '同步完成'
   }
 
   if (status === 'need_login' || status === 'need_webview_fetch') {
-    return '请重新导入课表。'
+    return '请重新导入'
   }
 
   if (status === 'rate_limited') {
-    return '同步太频繁，请稍后再试。'
+    return '操作太频繁'
   }
 
-  return '同步未完成，请稍后再试。'
+  return '同步未完成'
 }
 
 function getUserSyncResultMessage(status: SyncJobResponse['status'], errorCode?: string) {
@@ -130,14 +132,14 @@ function getUserSyncResultMessage(status: SyncJobResponse['status'], errorCode?:
     errorCode === 'SAVED_CREDENTIAL_REQUIRED' ||
     errorCode === 'SESSION_EXPIRED'
   ) {
-    return '账号密码有问题，请重新登录并保存账号信息'
+    return '请重新登录'
   }
 
   if (status === 'rate_limited') {
-    return '同步太频繁，请稍后再试'
+    return '操作太频繁'
   }
 
-  return '系统错误，请稍后再试'
+  return '同步失败'
 }
 
 function isCredentialSyncError(error: unknown) {
@@ -170,10 +172,6 @@ function getBindUrl(account?: StudentAccountSummary | null) {
     .join('&')
 
   return params ? `/pages/bind/index?${params}` : '/pages/bind/index'
-}
-
-function openSchoolSubmission() {
-  Taro.navigateTo({ url: '/pages/submission/index' })
 }
 
 function shouldOpenBindForManualSync(account: StudentAccountSummary) {
@@ -300,6 +298,11 @@ export default function ProfilePage() {
   const [errorText, setErrorText] = useState('')
   const shouldShowSchoolLogin = needsSchoolLogin(account, hasStoredAccount)
 
+  useShareAppMessage(() => ({
+    title: SHARE_TITLE,
+    path: SHARE_PATH,
+  }))
+
   useDidShow(() => {
     const accountId = getStoredAccountId()
 
@@ -377,7 +380,7 @@ export default function ProfilePage() {
         return
       }
 
-      setErrorText(error instanceof Error ? error.message : '账号信息读取失败')
+      setErrorText(error instanceof Error ? error.message : '账号读取失败')
     }
   }
 
@@ -541,25 +544,25 @@ export default function ProfilePage() {
       </View>
 
       <View className='soft-card action-panel'>
+        <View className='action-panel-head'>
+          <Text>常用功能</Text>
+        </View>
         <View className='action-row' onClick={openSchoolAccount}>
           <View className='action-icon action-refresh' />
-          <View className='action-text'>
-            <Text className='action-title'>同步最新教务系统数据</Text>
-            <Text className='action-desc'>刷新课表、成绩等信息</Text>
-          </View>
+          <Text>同步数据</Text>
           {loading && <Text className='action-loading'>同步中</Text>}
           <View className='row-arrow' />
         </View>
-        <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/feedback/index' })}>
-          <View className='action-icon action-feedback' />
-          <Text>意见反馈</Text>
+        <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/messages/index' })}>
+          <View className='action-icon action-message' />
+          <Text>消息</Text>
           <View className='row-arrow' />
         </View>
-        <View className='action-row' onClick={openSchoolSubmission}>
-          <View className='action-icon action-school' />
-          <Text>申请添加新学校</Text>
+        <Button className='action-row action-share-button' openType='share'>
+          <View className='action-icon action-share' />
+          <Text>分享给好友</Text>
           <View className='row-arrow' />
-        </View>
+        </Button>
         <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/settings/index' })}>
           <View className='action-icon action-settings' />
           <Text>设置</Text>

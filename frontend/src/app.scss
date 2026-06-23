@@ -26,3 +26,166 @@ button {
 button::after {
   border: 0;
 }
+
+.notification-modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(84rpx + env(safe-area-inset-top)) 38rpx calc(84rpx + env(safe-area-inset-bottom));
+  background: rgba(15, 23, 42, 0.48);
+  box-sizing: border-box;
+}
+
+.notification-modal-panel {
+  width: 100%;
+  max-width: 640rpx;
+  max-height: calc(100vh - 168rpx - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1rpx solid rgba(255, 255, 255, 0.78);
+  border-radius: 24rpx;
+  background: #ffffff;
+  box-shadow: 0 34rpx 88rpx rgba(15, 23, 42, 0.24);
+}
+
+.notification-modal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 20rpx;
+  padding: 30rpx 30rpx 20rpx;
+}
+
+.notification-modal-mark {
+  flex: 0 0 62rpx;
+  width: 62rpx;
+  height: 62rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18rpx;
+}
+
+.notification-modal-mark.global {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.notification-modal-mark.user {
+  background: #ecfdf3;
+  color: #16a34a;
+}
+
+.notification-modal-icon {
+  width: 32rpx;
+  height: 24rpx;
+  border: 4rpx solid currentColor;
+  border-radius: 8rpx;
+  position: relative;
+}
+
+.notification-modal-icon::after {
+  content: "";
+  position: absolute;
+  left: 8rpx;
+  top: 18rpx;
+  width: 10rpx;
+  height: 10rpx;
+  border-left: 4rpx solid currentColor;
+  border-bottom: 4rpx solid currentColor;
+  background: inherit;
+  transform: rotate(-45deg);
+}
+
+.notification-modal-heading {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 10rpx;
+}
+
+.notification-modal-badge {
+  width: fit-content;
+  max-width: 180rpx;
+  height: 38rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  font-size: 21rpx;
+  font-weight: 800;
+  line-height: 38rpx;
+}
+
+.notification-modal-badge.global {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.notification-modal-badge.user {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.notification-modal-title {
+  display: block;
+  color: #101828;
+  font-size: 34rpx;
+  font-weight: 850;
+  line-height: 1.32;
+  word-break: break-word;
+}
+
+.notification-modal-scroll {
+  flex: 1;
+  min-height: 120rpx;
+  max-height: 52vh;
+  padding: 0 30rpx;
+  box-sizing: border-box;
+}
+
+.notification-modal-content {
+  display: block;
+  color: #344054;
+  font-size: 28rpx;
+  line-height: 1.62;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.notification-modal-footer {
+  min-height: 104rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 22rpx 30rpx 28rpx;
+  border-top: 1rpx solid #eef0f4;
+  background: #fbfcff;
+}
+
+.notification-modal-count {
+  flex: 0 0 auto;
+  color: #667085;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.notification-modal-button {
+  flex: 0 0 204rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12rpx;
+  background: #2f7bff;
+  color: #ffffff;
+  font-size: 27rpx;
+  font-weight: 800;
+  line-height: 72rpx;
+}
+
+.notification-modal-button[disabled] {
+  opacity: 0.72;
+}

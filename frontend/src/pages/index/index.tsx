@@ -9,6 +9,7 @@ import {
   getReminderPreferences,
   ReminderPreferencesResponse,
   resolveReminderOpenid,
+  setLocalReminderPreferenceState,
   updateReminderPreference,
 } from '../../shared/api/reminders'
 import { getTimetable } from '../../shared/api/timetable'
@@ -28,10 +29,10 @@ import './index.scss'
 const STATUS_CLEAR_DELAY_MS = 3000
 const WEATHER_CACHE_TTL_MS = 10 * 60 * 1000
 const REMINDER_STATE_REFRESH_PREFIX = 'cschedule.reminderStateRefreshAt.'
+const REMINDER_STATE_EXPIRE_PREFIX = 'cschedule.reminderStateExpireAt.'
 const REMINDER_STATE_REFRESH_GRACE_MS = 2 * 60 * 1000
 const REMINDER_STATE_RETRY_MS = 2 * 60 * 1000
 const REMINDER_STATE_FAST_RETRY_WINDOW_MS = 30 * 60 * 1000
-const REMINDER_STATE_SLOW_RETRY_MS = 5 * 60 * 1000
 const REMINDER_STATE_STALE_RETRY_MS = 30 * 60 * 1000
 const WEATHER_API_URL = 'https://api.open-meteo.com/v1/forecast'
 const AIR_QUALITY_API_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality'
@@ -365,13 +366,25 @@ function getReminderRefreshKey(accountId: string, date = new Date()) {
   return `${REMINDER_STATE_REFRESH_PREFIX}${accountId}.${getLocalDateKey(date)}`
 }
 
+function getReminderExpireKey(accountId: string, date = new Date()) {
+  return `${REMINDER_STATE_EXPIRE_PREFIX}${accountId}.${getLocalDateKey(date)}`
+}
+
 function getReminderRefreshAt(accountId: string) {
   const value = Number(Taro.getStorageSync(getReminderRefreshKey(accountId)))
   return Number.isFinite(value) ? value : 0
 }
 
+function hasReminderExpired(accountId: string) {
+  return Boolean(Taro.getStorageSync(getReminderExpireKey(accountId)))
+}
+
 function markReminderRefresh(accountId: string) {
   Taro.setStorageSync(getReminderRefreshKey(accountId), Date.now())
+}
+
+function markReminderExpired(accountId: string) {
+  Taro.setStorageSync(getReminderExpireKey(accountId), Date.now())
 }
 
 function getPreferredTimeMs(preferredTime: string, date = new Date()) {
@@ -393,20 +406,21 @@ function getPreferredTimeMs(preferredTime: string, date = new Date()) {
   return result.getTime()
 }
 
-function shouldRefreshReminderState(
+function getReminderStateRefreshAction(
   accountId: string,
   preference: ReminderPreferencesResponse | null,
   now = Date.now(),
   hasFreshCache = false,
 ) {
   if (!accountId) {
-    return false
+    return 'none'
   }
 
-  const msSinceRefresh = now - getReminderRefreshAt(accountId)
+  const lastRefreshAt = getReminderRefreshAt(accountId)
+  const msSinceRefresh = now - lastRefreshAt
 
   if (!preference) {
-    return msSinceRefresh >= REMINDER_STATE_RETRY_MS
+    return msSinceRefresh >= REMINDER_STATE_RETRY_MS ? 'refresh' : 'none'
   }
 
   if (preference.enabled) {
@@ -414,15 +428,15 @@ function shouldRefreshReminderState(
     const msSincePreferredTime = preferredTimeMs ? now - preferredTimeMs : -1
 
     if (msSincePreferredTime >= REMINDER_STATE_REFRESH_GRACE_MS) {
-      const retryMs = msSincePreferredTime <= REMINDER_STATE_REFRESH_GRACE_MS + REMINDER_STATE_FAST_RETRY_WINDOW_MS
-        ? REMINDER_STATE_RETRY_MS
-        : REMINDER_STATE_SLOW_RETRY_MS
+      if (msSincePreferredTime <= REMINDER_STATE_REFRESH_GRACE_MS + REMINDER_STATE_FAST_RETRY_WINDOW_MS) {
+        return msSinceRefresh >= REMINDER_STATE_RETRY_MS ? 'refresh' : 'none'
+      }
 
-      return msSinceRefresh >= retryMs
+      return hasReminderExpired(accountId) ? 'none' : 'expire'
     }
   }
 
-  return !hasFreshCache && msSinceRefresh >= REMINDER_STATE_STALE_RETRY_MS
+  return !hasFreshCache && msSinceRefresh >= REMINDER_STATE_STALE_RETRY_MS ? 'refresh' : 'none'
 }
 
 function normalizeDateKey(date: string) {
@@ -495,6 +509,16 @@ function getExamTimeParts(exam: HomeExamItem) {
     start: '时间',
     end: '待定',
   }
+}
+
+function getExamTimeText(exam: HomeExamItem) {
+  const timeParts = getExamTimeParts(exam)
+
+  if (!exam.time && !exam.startAt && !exam.endAt) {
+    return '时间待定'
+  }
+
+  return `${timeParts.start}-${timeParts.end}`
 }
 
 function normalizeHomeExamItem(item: Record<string, unknown>, index: number, now: number): HomeExamItem {
@@ -706,8 +730,9 @@ export default function HomePage() {
     const freshPreference = await getReminderPreferences(id, { cacheOnly: true })
     const preference = freshPreference || cachedPreference
     setReminderSubscribed(Boolean(preference?.enabled))
+    const refreshAction = getReminderStateRefreshAction(id, preference, nowMs, Boolean(freshPreference))
 
-    if (!shouldRefreshReminderState(id, preference, nowMs, Boolean(freshPreference))) {
+    if (refreshAction === 'none') {
       return
     }
 
@@ -715,8 +740,42 @@ export default function HomePage() {
 
     try {
       const nextPreference = await getReminderPreferences(id, { forceRefresh: true })
+      if (refreshAction === 'expire' && nextPreference.enabled) {
+        const expiredPreference = {
+          ...nextPreference,
+          enabled: false,
+          dailyCourseEnabled: false,
+          examEnabled: false,
+        }
+        markReminderExpired(id)
+        setLocalReminderPreferenceState(id, expiredPreference)
+        setReminderSubscribed(false)
+        await updateReminderPreference(id, {
+          enabled: false,
+          preferredTime: nextPreference.preferredTime,
+          openid: nextPreference.openid,
+        })
+        return
+      }
+
+      if (refreshAction === 'expire') {
+        markReminderExpired(id)
+      }
+
       setReminderSubscribed(Boolean(nextPreference.enabled))
     } catch {
+      if (refreshAction === 'expire' && preference?.enabled) {
+        markReminderExpired(id)
+        setLocalReminderPreferenceState(id, {
+          ...preference,
+          enabled: false,
+          dailyCourseEnabled: false,
+          examEnabled: false,
+        })
+        setReminderSubscribed(false)
+        return
+      }
+
       markReminderRefresh(id)
     }
   }
@@ -765,7 +824,7 @@ export default function HomePage() {
     return new Promise<boolean>((resolve) => {
       Taro.showModal({
         title: '订阅本次提醒',
-        content: '微信一次性订阅通常只能发送一次。授权后，我们会在默认提醒时间发送下一次最近的课程或考试提醒；发送后可再次订阅下一次提醒。',
+        content: '授权后会发送下一次课程或考试提醒。',
         confirmText: '去订阅',
         cancelText: '取消',
         success: (result) => resolve(Boolean(result.confirm)),
@@ -793,7 +852,7 @@ export default function HomePage() {
         : getLocalReminderTemplateIds()
 
       if (templateIds.length === 0) {
-        Taro.showToast({ title: '暂时无法订阅，请稍后再试', icon: 'none' })
+        Taro.showToast({ title: '暂时无法订阅', icon: 'none' })
         return
       }
 
@@ -861,17 +920,17 @@ export default function HomePage() {
 
       {errorText && <View className='status status-error'>{errorText}</View>}
 
-      {loading && <View className='soft-card state-card'>正在读取已缓存课程和考试...</View>}
+      {loading && <View className='soft-card state-card'>正在读取数据</View>}
 
       {showGuestEmpty && (
         <View className='soft-card home-empty-card'>
-          <View className='home-empty-title'>今天没有安排，可以好好放松一下。</View>
-          <View className='home-empty-desc'>选择学校并绑定账号后，会在这里显示今日课程。</View>
+          <View className='home-empty-title'>今天没有安排</View>
+          <View className='home-empty-desc'>绑定账号后显示今日课程。</View>
           <View className='home-empty-button' onClick={openProfileTab}>去选择学校</View>
         </View>
       )}
 
-      {showTodayRestText && <View className='today-empty-text'>今天没有安排，可以好好放松一下。</View>}
+      {showTodayRestText && <View className='today-empty-text'>今天没有安排</View>}
 
       <View className='section-head'>
         <View className='section-title'>今日安排</View>
@@ -889,23 +948,26 @@ export default function HomePage() {
               timetable?.providerId,
             )
             const timeFallback = formatSections(course)
+            const timeText = time || '时间待定'
+            const timeWithSections = timeFallback ? `${timeText} · ${timeFallback}` : timeText
+            const teacher = course.teacher?.trim()
             const tone = getHomeTone(index)
+            const location = course.classroom || course.location || '地点待定'
 
             return (
               <View className='soft-card course-card home-arrangement-card' key={course.id || `${course.name}-${index}`}>
-                <View className='course-main'>
-                  <View className='course-meta'>{timeFallback}　　{time || '时间待定'}</View>
-                  <View className='course-title'>{course.name || '未命名课程'}</View>
-                  <View className='course-place'>
-                    <View className='pin' />
-                    <Text>{course.classroom || course.location || '地点待定'}</Text>
+                <View className='course-main home-card-main'>
+                  <View className='home-card-head'>
+                    <Text className='home-primary-value'>{course.name || '未命名课程'}</Text>
+                    {teacher && <Text className='home-side-meta home-side-meta-teacher'>{teacher}</Text>}
                   </View>
+                  <Text className='home-info-value home-info-secondary'>{timeWithSections}</Text>
+                  <Text className='home-info-value home-info-secondary'>{location}</Text>
                 </View>
-                <View className='course-side'>
+                <View className='home-card-icon-side'>
                   <View className={`class-icon class-icon-${tone}`}>
                     <View className='card-symbol symbol-book' />
                   </View>
-                  <Text className='teacher'>{course.teacher || '教师待定'}</Text>
                 </View>
               </View>
             )
@@ -917,30 +979,27 @@ export default function HomePage() {
         <View className='home-arrangement-group'>
           <View className='home-arrangement-title'>
             <Text>考试</Text>
-            <Text>{todayExamItems.length} 项</Text>
           </View>
           {[...activeTodayExamItems, ...finishedTodayExamItems].map((exam, index) => {
-            const timeParts = getExamTimeParts(exam)
             const status = exam.status === 'finished' ? 'finished' : 'today'
 
             return (
               <View
-                className={`soft-card course-card exam-card home-exam-card home-arrangement-card exam-card-${status === 'today' ? 'today' : 'finished'}`}
+                className={`soft-card course-card exam-card home-exam-card home-arrangement-card home-arrangement-card-full exam-card-${status === 'today' ? 'today' : 'finished'}`}
                 key={`exam-${exam.id}-${index}`}
               >
-                <View className='course-main'>
-                  <View className='course-meta'>考试　　{timeParts.start}-{timeParts.end}</View>
-                  <View className='course-title'>{exam.courseName}</View>
-                  <View className='course-place'>
-                    <View className='pin' />
-                    <Text>{exam.location || '地点待安排'}</Text>
+                <View className='course-main home-card-main'>
+                  <View className='home-card-head'>
+                    <Text className='home-primary-value'>{exam.courseName}</Text>
                   </View>
+                  <Text className='home-info-value home-info-secondary'>{getExamTimeText(exam)}</Text>
+                  <Text className='home-info-value home-info-secondary'>{exam.location || '地点待安排'}</Text>
+                  <Text className='home-info-value home-info-secondary'>{exam.seatNo || '座位待安排'}</Text>
                 </View>
-                <View className='course-side'>
+                <View className='home-card-icon-side'>
                   <View className='class-icon class-icon-red'>
                     <View className='card-symbol symbol-exam' />
                   </View>
-                  <Text className='teacher'>{status === 'today' ? (exam.seatNo || '今日') : '已结束'}</Text>
                 </View>
               </View>
             )

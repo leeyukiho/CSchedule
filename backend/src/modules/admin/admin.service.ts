@@ -1,6 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../../common/prisma/prisma.service'
-import { AccountStatus, DataAccessMode, LoginMode, Prisma, SchoolStatus } from '@prisma/client'
+import { AccountStatus, DataAccessMode, LoginMode, NotificationTargetType, Prisma, SchoolStatus } from '@prisma/client'
+import {
+  CreateNotificationInput,
+  NotificationsService,
+  UpdateNotificationInput,
+} from '../notifications/notifications.service'
 
 export interface AdminSchoolUpdateInput {
   name?: string
@@ -39,17 +44,24 @@ export interface AdminProviderConfigUpsertInput {
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async listAllSchools(params: {
     keyword?: string
     status?: SchoolStatus
     enabled?: boolean
+    sortBy?: 'default' | 'userCount'
+    sortOrder?: 'asc' | 'desc'
     limit?: number
     offset?: number
   }) {
-    const { keyword, status, enabled, limit = 50, offset = 0 } = params
+    const { keyword, status, enabled, sortBy = 'default', sortOrder = 'desc', limit = 50, offset = 0 } = params
     const where: Record<string, unknown> = {}
+    const take = Math.min(limit, 200)
+    const orderFactor = sortOrder === 'asc' ? 1 : -1
 
     if (keyword) {
       where.OR = [
@@ -63,11 +75,61 @@ export class AdminService {
     if (status) where.status = status
     if (enabled !== undefined) where.enabled = enabled
 
+    if (sortBy === 'userCount') {
+      const [allSchools, total] = await this.prisma.$transaction([
+        this.prisma.school.findMany({
+          where: where as any,
+          orderBy: [{ enabled: 'desc' }, { status: 'asc' }, { name: 'asc' }],
+        }),
+        this.prisma.school.count({ where: where as any }),
+      ])
+      const allSchoolIds = allSchools.map((school) => school.id)
+      const allUserCounts = allSchoolIds.length
+        ? await this.prisma.studentAccount.groupBy({
+            by: ['schoolId'],
+            where: { schoolId: { in: allSchoolIds } },
+            _count: { _all: true },
+          })
+        : []
+      const allUserCountMap = new Map(allUserCounts.map((item) => [item.schoolId, item._count._all]))
+      const sortedSchools = allSchools.sort((left, right) => {
+        const enabledDiff = Number(right.enabled) - Number(left.enabled)
+        if (enabledDiff) return enabledDiff
+        if (!left.enabled && !right.enabled) {
+          return left.status.localeCompare(right.status) || left.name.localeCompare(right.name, 'zh-CN')
+        }
+
+        const countDiff = ((allUserCountMap.get(left.id) ?? 0) - (allUserCountMap.get(right.id) ?? 0)) * orderFactor
+        return countDiff || left.name.localeCompare(right.name, 'zh-CN')
+      })
+      const schools = sortedSchools.slice(offset, offset + take)
+      const schoolIds = schools.map((school) => school.id)
+      const courseCaches = await this.getCourseCachesForSchools(schoolIds)
+      const termMap = this.getSchoolTermMap(courseCaches)
+
+      return {
+        items: schools.map((school) => ({
+          ...school,
+          termStarts: this.getTermStarts(school.config),
+          terms: this.getSchoolTerms(
+            termMap.get(school.id),
+            this.getTermStarts(school.config),
+          ),
+          sectionTimes: this.getSectionTimes(school.config),
+          userCount: allUserCountMap.get(school.id) ?? 0,
+        })),
+        total,
+        limit,
+        offset,
+        hasMore: offset + schools.length < total,
+      }
+    }
+
     const [schools, total] = await this.prisma.$transaction([
       this.prisma.school.findMany({
         where: where as any,
         orderBy: [{ enabled: 'desc' }, { status: 'asc' }, { name: 'asc' }],
-        take: Math.min(limit, 200),
+        take,
         skip: offset,
       }),
       this.prisma.school.count({ where: where as any }),
@@ -80,22 +142,7 @@ export class AdminService {
           _count: { _all: true },
         })
       : []
-    const courseCaches = schools.length
-      ? (
-          await Promise.all(schoolIds.map((schoolId) => (
-            this.prisma.courseCache.findMany({
-              where: { schoolId },
-              select: {
-                schoolId: true,
-                termId: true,
-                termsJson: true,
-              },
-              orderBy: { syncedAt: 'desc' },
-              take: 20,
-            })
-          )))
-        ).flat()
-      : []
+    const courseCaches = await this.getCourseCachesForSchools(schoolIds)
     const userCountMap = new Map(userCounts.map((item) => [item.schoolId, item._count._all]))
     const termMap = this.getSchoolTermMap(courseCaches)
 
@@ -345,12 +392,16 @@ export class AdminService {
     status?: string
     extraVerification?: string
     adaptationHelp?: string
+    sortBy?: 'createdAt' | 'requestCount'
+    sortOrder?: 'asc' | 'desc'
     limit?: number
     offset?: number
   }) {
-    const { keyword, status, extraVerification, adaptationHelp, limit = 50, offset = 0 } = params
+    const { keyword, status, extraVerification, adaptationHelp, sortBy = 'createdAt', sortOrder = 'desc', limit = 50, offset = 0 } = params
     const where: Record<string, unknown> = {}
     const and: Record<string, unknown>[] = []
+    const take = Math.min(limit, 200)
+    const orderFactor = sortOrder === 'asc' ? 1 : -1
     if (status) where.status = status
     if (keyword) {
       where.OR = [
@@ -379,11 +430,44 @@ export class AdminService {
     }
     if (and.length) where.AND = and
 
+    if (sortBy === 'requestCount') {
+      const [allSubmissions, total] = await this.prisma.$transaction([
+        this.prisma.schoolAccessSubmission.findMany({
+          where: where as any,
+          orderBy: [{ schoolName: 'asc' }, { createdAt: 'desc' }],
+        }),
+        this.prisma.schoolAccessSubmission.count({ where: where as any }),
+      ])
+      const schoolCounts = new Map<string, number>()
+
+      for (const item of allSubmissions) {
+        const key = item.schoolName.trim().toLocaleLowerCase() || item.id
+        schoolCounts.set(key, (schoolCounts.get(key) ?? 0) + 1)
+      }
+
+      const submissions = allSubmissions
+        .sort((left, right) => {
+          const leftKey = left.schoolName.trim().toLocaleLowerCase() || left.id
+          const rightKey = right.schoolName.trim().toLocaleLowerCase() || right.id
+          const countDiff = ((schoolCounts.get(leftKey) ?? 0) - (schoolCounts.get(rightKey) ?? 0)) * orderFactor
+          return countDiff || right.createdAt.getTime() - left.createdAt.getTime()
+        })
+        .slice(offset, offset + take)
+
+      return {
+        items: submissions,
+        total,
+        limit,
+        offset,
+        hasMore: offset + submissions.length < total,
+      }
+    }
+
     const [submissions, total] = await this.prisma.$transaction([
       this.prisma.schoolAccessSubmission.findMany({
         where: where as any,
-        orderBy: { createdAt: 'desc' },
-        take: Math.min(limit, 200),
+        orderBy: { createdAt: sortOrder },
+        take,
         skip: offset,
       }),
       this.prisma.schoolAccessSubmission.count({ where: where as any }),
@@ -528,7 +612,7 @@ export class AdminService {
   }
 
   async getStats() {
-    const [schoolCount, enabledCount, accountCount, submissionCount, feedbackCount] =
+    const [schoolCount, enabledCount, accountCount, submissionCount, feedbackCount, activeNotificationCount] =
       await Promise.all([
         this.prisma.school.count(),
         this.prisma.school.count({
@@ -537,6 +621,7 @@ export class AdminService {
         this.prisma.studentAccount.count(),
         this.prisma.schoolAccessSubmission.count({ where: { status: 'submitted' } }),
         this.prisma.feedbackItem.count({ where: { status: 'pending' } }),
+        this.notificationsService.countActive(),
       ])
 
     return {
@@ -544,7 +629,26 @@ export class AdminService {
       accounts: accountCount,
       pendingSubmissions: submissionCount,
       pendingFeedback: feedbackCount,
+      activeNotifications: activeNotificationCount,
     }
+  }
+
+  listNotifications(params: {
+    keyword?: string
+    targetType?: NotificationTargetType
+    active?: boolean
+    limit?: number
+    offset?: number
+  }) {
+    return this.notificationsService.listAdmin(params)
+  }
+
+  createNotification(input: CreateNotificationInput, createdBy?: string) {
+    return this.notificationsService.createAdmin(input, createdBy)
+  }
+
+  updateNotification(notificationId: string, input: UpdateNotificationInput) {
+    return this.notificationsService.updateAdmin(notificationId, input)
   }
 
   private async mergeSchoolConfig(
@@ -641,6 +745,25 @@ export class AdminService {
     }
 
     return map
+  }
+
+  private async getCourseCachesForSchools(schoolIds: string[]) {
+    return schoolIds.length
+      ? (
+          await Promise.all(schoolIds.map((schoolId) => (
+            this.prisma.courseCache.findMany({
+              where: { schoolId },
+              select: {
+                schoolId: true,
+                termId: true,
+                termsJson: true,
+              },
+              orderBy: { syncedAt: 'desc' },
+              take: 20,
+            })
+          )))
+        ).flat()
+      : []
   }
 
   private getSchoolTerms(

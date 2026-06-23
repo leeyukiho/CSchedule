@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { Button, Picker, View } from '@tarojs/components'
+import { Button, Picker, Text, View } from '@tarojs/components'
 
 import { getTimetable } from '../../shared/api/timetable'
 import { PageShell } from '../../shared/layout'
@@ -11,7 +11,6 @@ import {
   clearStoredTermStarts,
   getStoredAccountId,
   getStoredTermStarts,
-  getStoredUserTermStarts,
   setStoredTermStart,
 } from '../../shared/storage'
 import { TermOption, buildTermOptions } from '../../shared/term'
@@ -19,7 +18,6 @@ import { TermOption, buildTermOptions } from '../../shared/term'
 export default function SettingsPage() {
   const [terms, setTerms] = useState<TermOption[]>([])
   const [termStarts, setTermStarts] = useState<Record<string, string>>({})
-  const [userTermStarts, setUserTermStarts] = useState<Record<string, string>>({})
   const [selectedTermId, setSelectedTermId] = useState('')
 
   useDidShow(() => {
@@ -64,7 +62,6 @@ export default function SettingsPage() {
 
   function refreshTermStartState(accountId = getStoredAccountId()) {
     setTermStarts(getStoredTermStarts(accountId))
-    setUserTermStarts(getStoredUserTermStarts(accountId))
   }
 
   const selectedTermIndex = Math.max(
@@ -72,7 +69,6 @@ export default function SettingsPage() {
     0,
   )
   const selectedTerm = terms[selectedTermIndex] || null
-  const selectedTermHasUserStart = Boolean(selectedTerm && userTermStarts[selectedTerm.id])
 
   function clearCache() {
     const currentAccountId = getStoredAccountId()
@@ -116,7 +112,7 @@ export default function SettingsPage() {
                   <View className='settings-desc'>
                     {selectedTerm
                       ? (termStarts[selectedTerm.id]
-                        ? `首周开始：${termStarts[selectedTerm.id]}${selectedTermHasUserStart ? '（个人）' : '（默认）'}`
+                        ? `首周开始：${termStarts[selectedTerm.id]}`
                         : '未设置，将使用默认估算日期')
                       : '请先选择学期'}
                   </View>
@@ -124,28 +120,32 @@ export default function SettingsPage() {
                 <View className='settings-term-arrow' />
               </View>
             </Picker>
-            <Picker
-              className='settings-date-picker'
-              mode='date'
-              value={selectedTerm ? (termStarts[selectedTerm.id] || '') : ''}
-              onChange={(event) => {
-                if (selectedTerm) {
-                  updateTermStart(selectedTerm.id, event.detail.value)
-                }
-              }}
-            >
-              <View className='small-button settings-date-button'>
-                {selectedTerm && termStarts[selectedTerm.id] ? '修改日期' : '设置日期'}
-              </View>
-            </Picker>
-            {selectedTermHasUserStart && selectedTerm && (
+            <View className='settings-term-actions'>
+              <Picker
+                className='settings-date-picker'
+                mode='date'
+                value={selectedTerm ? (termStarts[selectedTerm.id] || '') : ''}
+                onChange={(event) => {
+                  if (selectedTerm) {
+                    updateTermStart(selectedTerm.id, event.detail.value)
+                  }
+                }}
+              >
+                <View className='small-button settings-date-button'>
+                  {selectedTerm && termStarts[selectedTerm.id] ? '修改日期' : '设置日期'}
+                </View>
+              </Picker>
               <View
                 className='small-button settings-reset-button'
-                onClick={() => restoreDefaultTermStart(selectedTerm.id)}
+                onClick={() => {
+                  if (selectedTerm) {
+                    restoreDefaultTermStart(selectedTerm.id)
+                  }
+                }}
               >
                 恢复默认
               </View>
-            )}
+            </View>
           </View>
         )}
         {terms.length === 0 && (
@@ -153,6 +153,19 @@ export default function SettingsPage() {
             <View className='settings-desc'>同步课表后可设置各学期首周开始日期。</View>
           </View>
         )}
+      </View>
+
+      <View className='soft-card action-panel settings-card'>
+        <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/feedback/index' })}>
+          <View className='action-icon action-feedback' />
+          <Text>意见反馈</Text>
+          <View className='row-arrow' />
+        </View>
+        <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/submission/index' })}>
+          <View className='action-icon action-school' />
+          <Text>申请添加新学校</Text>
+          <View className='row-arrow' />
+        </View>
       </View>
 
       <View className='soft-card settings-card'>

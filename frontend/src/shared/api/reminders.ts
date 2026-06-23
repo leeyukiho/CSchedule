@@ -107,6 +107,13 @@ export function getCachedReminderPreferenceState(accountId: string) {
   return readCachedReminderPreferences(accountId)?.value || null
 }
 
+export function setLocalReminderPreferenceState(
+  accountId: string,
+  value: ReminderPreferencesResponse,
+) {
+  setCachedReminderPreferences(accountId, value)
+}
+
 export function getLocalReminderTemplateIds() {
   return LOCAL_REMINDER_TEMPLATE_IDS
 }

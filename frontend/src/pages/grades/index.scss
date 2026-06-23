@@ -255,24 +255,32 @@
   white-space: nowrap;
 }
 
-.exam-status {
+.grades-page .exam-status {
   flex: 0 0 auto;
-  min-width: 64rpx;
+  min-width: 72rpx;
+  height: 38rpx;
+  padding: 0 14rpx;
+  border-radius: 999rpx;
   font-size: 24rpx;
   font-weight: 800;
-  text-align: right;
+  line-height: 38rpx;
+  text-align: center;
+  white-space: nowrap;
 }
 
-.exam-status-upcoming,
-.exam-status-today {
+.grades-page .exam-status-upcoming,
+.grades-page .exam-status-today {
+  background: #eef4ff;
   color: #2f7bff;
 }
 
-.exam-status-finished {
+.grades-page .exam-status-finished {
+  background: #f2f4f7;
   color: #667085;
 }
 
-.exam-status-unscheduled {
+.grades-page .exam-status-unscheduled {
+  background: #f8fafc;
   color: #98a2b3;
 }
 

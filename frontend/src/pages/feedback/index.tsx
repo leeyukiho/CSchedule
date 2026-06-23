@@ -40,7 +40,7 @@ export default function FeedbackPage() {
       })
       setContent('')
       setContact('')
-      setMessage(`已提交：${result.id}`)
+      setMessage('反馈已提交')
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : '反馈提交失败')
     } finally {

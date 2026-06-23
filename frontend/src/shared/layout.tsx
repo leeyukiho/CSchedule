@@ -22,7 +22,9 @@ interface TabPageInstance {
 }
 
 interface NavigationMetrics {
+  actionStyle: string
   navStyle: string
+  spacerStyle: string
   titleStyle: string
 }
 
@@ -37,7 +39,9 @@ interface PageShellProps {
 }
 
 const DEFAULT_NAVIGATION_METRICS: NavigationMetrics = {
+  actionStyle: 'top:64rpx;height:88rpx;',
   navStyle: 'height:176rpx;padding-top:64rpx;',
+  spacerStyle: 'height:176rpx;',
   titleStyle: 'height:88rpx;line-height:88rpx;',
 }
 
@@ -54,7 +58,9 @@ function getNavigationMetrics(): NavigationMetrics {
     const titleTop = menuTop || statusBarHeight + verticalGap
 
     return {
+      actionStyle: `top:${titleTop}px;height:${titleHeight}px;`,
       navStyle: `height:${navHeight}px;padding-top:${titleTop}px;`,
+      spacerStyle: `height:${navHeight}px;`,
       titleStyle: `height:${titleHeight}px;line-height:${titleHeight}px;`,
     }
   } catch (error) {
@@ -64,9 +70,10 @@ function getNavigationMetrics(): NavigationMetrics {
 
 export function PageShell({
   activeTab,
+  back = false,
   children,
   contentClassName = '',
-  customNav = false,
+  customNav = true,
   subPage = false,
   title,
 }: PageShellProps) {
@@ -75,10 +82,8 @@ export function PageShell({
   const [navigationMetrics, setNavigationMetrics] = useState<NavigationMetrics>(DEFAULT_NAVIGATION_METRICS)
 
   useEffect(() => {
-    if (customNav) {
-      setNavigationMetrics(getNavigationMetrics())
-    }
-  }, [customNav])
+    setNavigationMetrics(getNavigationMetrics())
+  }, [])
 
   useDidShow(() => {
     if (!activeTab) {
@@ -93,9 +98,19 @@ export function PageShell({
   return (
     <View className={pageClass}>
       {customNav && (
-        <View className='custom-nav' style={navigationMetrics.navStyle}>
-          <View className='custom-nav-title' style={navigationMetrics.titleStyle}>{title}</View>
-        </View>
+        <>
+          <View className='custom-nav' style={navigationMetrics.navStyle}>
+            {back && (
+              <View
+                className='custom-nav-back'
+                style={navigationMetrics.actionStyle}
+                onClick={() => Taro.navigateBack()}
+              />
+            )}
+            <View className='custom-nav-title' style={navigationMetrics.titleStyle}>{title}</View>
+          </View>
+          <View className='custom-nav-spacer' style={navigationMetrics.spacerStyle} />
+        </>
       )}
       <View className={contentClass}>{children}</View>
     </View>
