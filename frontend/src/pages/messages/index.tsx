@@ -12,7 +12,13 @@ function formatMessageTime(value?: string | null) {
 }
 
 function getMessageTypeLabel(targetType?: string) {
+  if (targetType === 'school') return '学校通知'
   return targetType === 'user' ? '个人消息' : '平台通知'
+}
+
+function getMessageTypeClass(targetType?: string) {
+  if (targetType === 'school') return 'message-type school'
+  return targetType === 'user' ? 'message-type user' : 'message-type global'
 }
 
 export default function MessagesPage() {
@@ -51,7 +57,7 @@ export default function MessagesPage() {
     <PageShell title='消息' back subPage>
       <View className='messages-page-head'>
         <Text className='messages-page-title'>消息</Text>
-        <Text className='messages-page-subtitle'>查看管理员发送的个人消息和全平台通知。</Text>
+        <Text className='messages-page-subtitle'>查看管理员发送的个人消息、学校通知和全平台通知。</Text>
       </View>
       {loading && <View className='messages-empty'>正在加载消息...</View>}
       {!loading && !hasAccount && <View className='messages-empty'>登录学校账号后可以查看消息。</View>}
@@ -65,7 +71,7 @@ export default function MessagesPage() {
             <View className='soft-card message-card' key={item.id}>
               <View className='message-card-head'>
                 <View className='message-title-group'>
-                  <Text className='message-type'>{getMessageTypeLabel(item.targetType)}</Text>
+                  <Text className={getMessageTypeClass(item.targetType)}>{getMessageTypeLabel(item.targetType)}</Text>
                   <Text className='message-title'>{item.title}</Text>
                 </View>
                 <Text className={item.readAt ? 'message-badge read' : 'message-badge'}>{item.readAt ? '已读' : '未读'}</Text>

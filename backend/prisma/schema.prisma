@@ -85,6 +85,7 @@ enum ReminderDeliveryStatus {
 
 enum NotificationTargetType {
   global
+  school
   user
 }
 
@@ -157,6 +158,7 @@ model AdminNotification {
   title           String
   content         String
   targetType      NotificationTargetType @default(global)
+  targetSchoolId  String?
   targetAccountId String?
   active          Boolean                @default(true)
   expiresAt       DateTime?
@@ -167,6 +169,7 @@ model AdminNotification {
   receipts NotificationReceipt[]
 
   @@index([active, targetType, createdAt])
+  @@index([targetSchoolId])
   @@index([targetAccountId])
 }
 

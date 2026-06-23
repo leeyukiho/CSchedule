@@ -70,11 +70,16 @@ button::after {
 }
 
 .notification-modal-mark.global {
-  background: #eff6ff;
+  background: #eaf2ff;
   color: #2563eb;
 }
 
 .notification-modal-mark.user {
+  background: #fff7ed;
+  color: #ea580c;
+}
+
+.notification-modal-mark.school {
   background: #ecfdf3;
   color: #16a34a;
 }
@@ -119,11 +124,16 @@ button::after {
 }
 
 .notification-modal-badge.global {
-  background: #eff6ff;
+  background: #dbeafe;
   color: #1d4ed8;
 }
 
 .notification-modal-badge.user {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.notification-modal-badge.school {
   background: #dcfce7;
   color: #166534;
 }

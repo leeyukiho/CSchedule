@@ -7,6 +7,7 @@ export interface CreateNotificationInput {
   title?: string
   content?: string
   targetType?: NotificationTargetType
+  targetSchoolId?: string | null
   targetAccountId?: string | null
   active?: boolean
 }
@@ -22,13 +23,14 @@ export class NotificationsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async listPendingForAccount(accountId: string) {
-    await this.ensureAccount(accountId)
+    const account = await this.ensureAccount(accountId)
 
     const items = await this.prisma.adminNotification.findMany({
       where: {
         active: true,
         OR: [
           { targetType: 'global' },
+          { targetType: 'school', targetSchoolId: account.schoolId },
           { targetType: 'user', targetAccountId: accountId },
         ],
         receipts: {
@@ -46,7 +48,7 @@ export class NotificationsService {
   }
 
   async listForAccount(accountId: string) {
-    await this.ensureAccount(accountId)
+    const account = await this.ensureAccount(accountId)
 
     const items = await this.prisma.adminNotification.findMany({
       where: {
@@ -60,6 +62,7 @@ export class NotificationsService {
             active: true,
             OR: [
               { targetType: 'global' },
+              { targetType: 'school', targetSchoolId: account.schoolId },
               { targetType: 'user', targetAccountId: accountId },
             ],
           },
@@ -91,7 +94,7 @@ export class NotificationsService {
       where: { id: notificationId },
     })
 
-    if (!notification || !this.canAccountRead(notification, accountId)) {
+    if (!notification || !(await this.canAccountRead(notification, accountId))) {
       throw new NotFoundException('Notification not found')
     }
 
@@ -130,6 +133,7 @@ export class NotificationsService {
       where.OR = [
         { title: { contains: value, mode: 'insensitive' } },
         { content: { contains: value, mode: 'insensitive' } },
+        { targetSchoolId: { contains: value, mode: 'insensitive' } },
         { targetAccountId: { contains: value, mode: 'insensitive' } },
       ]
     }
@@ -167,17 +171,33 @@ export class NotificationsService {
         })
       : []
     const accountMap = new Map(accounts.map((account) => [account.id, account]))
+    const targetSchoolIds = [
+      ...new Set(items.map((item) => item.targetSchoolId).filter(Boolean)),
+    ] as string[]
+    const schools = targetSchoolIds.length
+      ? await this.prisma.school.findMany({
+          where: { id: { in: targetSchoolIds } },
+          select: {
+            id: true,
+            name: true,
+            shortName: true,
+          },
+        })
+      : []
+    const schoolMap = new Map(schools.map((school) => [school.id, school]))
 
     return {
       items: items.map((item) => ({
         ...this.toPublicNotification(item),
         active: item.active,
         targetType: item.targetType,
+        targetSchoolId: item.targetSchoolId,
         targetAccountId: item.targetAccountId,
         expiresAt: item.expiresAt,
         createdBy: item.createdBy,
         updatedAt: item.updatedAt,
         readCount: item._count.receipts,
+        targetSchool: item.targetSchoolId ? schoolMap.get(item.targetSchoolId) ?? null : null,
         targetAccount: item.targetAccountId ? accountMap.get(item.targetAccountId) ?? null : null,
       })),
       total,
@@ -191,18 +211,35 @@ export class NotificationsService {
     const title = this.normalizeText(input.title)
     const content = this.normalizeText(input.content)
     const targetType = input.targetType || 'global'
+    const targetSchoolId = this.normalizeOptionalText(input.targetSchoolId)
     const targetAccountId = this.normalizeOptionalText(input.targetAccountId)
 
     if (!title || !content) {
       throw new BadRequestException('Title and content are required')
     }
 
+    if (targetType === 'school' && !targetSchoolId) {
+      throw new BadRequestException('targetSchoolId is required for school notification')
+    }
+
     if (targetType === 'user' && !targetAccountId) {
       throw new BadRequestException('targetAccountId is required for user notification')
     }
 
-    if (targetType === 'global' && targetAccountId) {
-      throw new BadRequestException('Global notification cannot include targetAccountId')
+    if (targetType === 'global' && (targetSchoolId || targetAccountId)) {
+      throw new BadRequestException('Global notification cannot include target ids')
+    }
+
+    if (targetType === 'school' && targetAccountId) {
+      throw new BadRequestException('School notification cannot include targetAccountId')
+    }
+
+    if (targetType === 'user' && targetSchoolId) {
+      throw new BadRequestException('User notification cannot include targetSchoolId')
+    }
+
+    if (targetSchoolId) {
+      await this.ensureSchool(targetSchoolId)
     }
 
     if (targetAccountId) {
@@ -214,6 +251,7 @@ export class NotificationsService {
         title,
         content,
         targetType,
+        targetSchoolId: targetType === 'school' ? targetSchoolId : null,
         targetAccountId: targetType === 'user' ? targetAccountId : null,
         active: input.active ?? true,
         expiresAt: null,
@@ -261,24 +299,51 @@ export class NotificationsService {
     })
   }
 
+  private async ensureSchool(schoolId: string) {
+    const school = await this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { id: true },
+    })
+
+    if (!school) {
+      throw new NotFoundException('School not found')
+    }
+  }
+
   private async ensureAccount(accountId: string) {
     const account = await this.prisma.studentAccount.findUnique({
       where: { id: accountId },
-      select: { id: true },
+      select: { id: true, schoolId: true },
     })
 
     if (!account) {
       throw new NotFoundException('Account not found')
     }
+
+    return account
   }
 
-  private canAccountRead(
-    notification: { active: boolean; targetType: NotificationTargetType; targetAccountId: string | null },
+  private async canAccountRead(
+    notification: {
+      active: boolean
+      targetType: NotificationTargetType
+      targetSchoolId: string | null
+      targetAccountId: string | null
+    },
     accountId: string,
   ) {
     if (!notification.active) return false
     if (notification.targetType === 'global') return true
-    return notification.targetAccountId === accountId
+    if (notification.targetType === 'user') return notification.targetAccountId === accountId
+
+    const count = await this.prisma.studentAccount.count({
+      where: {
+        id: accountId,
+        schoolId: notification.targetSchoolId || '',
+      },
+    })
+
+    return count > 0
   }
 
   private toPublicNotification(item: {

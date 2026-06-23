@@ -139,25 +139,26 @@ export class AdminController {
   }
 
   @Post('notifications')
-    createNotification(@Body() input: {
-      title?: string
-      content?: string
-      targetType?: NotificationTargetType
-      targetAccountId?: string | null
-      active?: boolean
-    }) {
-      return this.adminService.createNotification(input, 'admin')
-    }
+  createNotification(@Body() input: {
+    title?: string
+    content?: string
+    targetType?: NotificationTargetType
+    targetSchoolId?: string | null
+    targetAccountId?: string | null
+    active?: boolean
+  }) {
+    return this.adminService.createNotification(input, 'admin')
+  }
 
   @Patch('notifications/:notificationId')
   updateNotification(
     @Param('notificationId') notificationId: string,
-      @Body() input: {
-        title?: string
-        content?: string
-        active?: boolean
-      },
-    ) {
-      return this.adminService.updateNotification(notificationId, input)
+    @Body() input: {
+      title?: string
+      content?: string
+      active?: boolean
+    },
+  ) {
+    return this.adminService.updateNotification(notificationId, input)
   }
 }

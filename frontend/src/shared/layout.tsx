@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { View } from '@tarojs/components'
 
+import { createNotificationPopup, subscribeNotificationPopup } from './notification-popup'
 import './pages.scss'
 
 type TabKey = 'home' | 'schedule' | 'grades' | 'profile'
@@ -80,10 +81,15 @@ export function PageShell({
   const pageClass = `mini-page ${subPage ? 'sub-page' : ''}`.trim()
   const contentClass = `content ${contentClassName}`.trim()
   const [navigationMetrics, setNavigationMetrics] = useState<NavigationMetrics>(DEFAULT_NAVIGATION_METRICS)
+  const [, setPopupVersion] = useState(0)
 
   useEffect(() => {
     setNavigationMetrics(getNavigationMetrics())
   }, [])
+
+  useEffect(() => (
+    subscribeNotificationPopup(() => setPopupVersion((version) => version + 1))
+  ), [])
 
   useDidShow(() => {
     if (!activeTab) {
@@ -113,6 +119,7 @@ export function PageShell({
         </>
       )}
       <View className={contentClass}>{children}</View>
+      {createNotificationPopup()}
     </View>
   )
 }

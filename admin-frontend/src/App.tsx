@@ -177,20 +177,27 @@ interface NotificationItem {
   id: string
   title: string
   content: string
-  targetType: 'global' | 'user'
+  targetType: 'global' | 'school' | 'user'
+  targetSchoolId: string | null
   targetAccountId: string | null
   active: boolean
   expiresAt?: string | null
   createdAt: string
   updatedAt?: string
   readCount?: number
+  targetSchool?: {
+    id: string
+    name: string
+    shortName: string | null
+  } | null
   targetAccount?: UserItem | null
 }
 
 interface NotificationDraft {
   title: string
   content: string
-  targetType: 'global' | 'user'
+  targetType: 'global' | 'school' | 'user'
+  targetSchoolId: string
   targetAccountId: string
 }
 
@@ -413,6 +420,38 @@ function formatDate(value: string | null | undefined) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN')
 }
 
+function getAdminNotificationTargetLabel(targetType: NotificationItem['targetType']) {
+  if (targetType === 'school') return '指定学校'
+  if (targetType === 'user') return '指定用户'
+  return '全平台'
+}
+
+function getAdminNotificationTargetTone(targetType: NotificationItem['targetType']) {
+  if (targetType === 'school') return 'amber'
+  if (targetType === 'user') return 'green'
+  return ''
+}
+
+function getAdminNotificationTargetDetail(item: NotificationItem) {
+  if (item.targetType === 'school') {
+    return item.targetSchool
+      ? joinFilled([item.targetSchool.name, item.targetSchool.shortName, item.targetSchool.id])
+      : item.targetSchoolId || '--'
+  }
+
+  if (item.targetType === 'user') {
+    return item.targetAccount
+      ? joinFilled([
+          item.targetAccount.student?.name || item.targetAccount.displayName,
+          item.targetAccount.school?.shortName || item.targetAccount.schoolId,
+          item.targetAccount.id,
+        ])
+      : item.targetAccountId || '--'
+  }
+
+  return '--'
+}
+
 function describeFetchError(error: unknown, apiBaseUrl: string) {
   if (error instanceof TypeError && /fetch/i.test(error.message)) {
     const target = normalizeBaseUrl(apiBaseUrl)
@@ -532,6 +571,7 @@ export function App() {
     title: '',
     content: '',
     targetType: 'global',
+    targetSchoolId: '',
     targetAccountId: '',
   })
   const [modal, setModal] = useState<ModalState | null>(null)
@@ -989,7 +1029,19 @@ export function App() {
       title: '',
       content: '',
       targetType: 'user',
+      targetSchoolId: '',
       targetAccountId: user.id,
+    })
+    setActiveView('notifications')
+  }
+
+  function openSchoolNotification(school: SchoolItem) {
+    setNotificationDraft({
+      title: '',
+      content: '',
+      targetType: 'school',
+      targetSchoolId: school.id,
+      targetAccountId: '',
     })
     setActiveView('notifications')
   }
@@ -1003,6 +1055,7 @@ export function App() {
           title: draft.title,
           content: draft.content,
           targetType: draft.targetType,
+          targetSchoolId: draft.targetType === 'school' ? draft.targetSchoolId : null,
           targetAccountId: draft.targetType === 'user' ? draft.targetAccountId : null,
         },
       })
@@ -1010,6 +1063,7 @@ export function App() {
         title: '',
         content: '',
         targetType: 'global',
+        targetSchoolId: '',
         targetAccountId: '',
       })
       await refreshNotificationsWithFilters({ ...notificationFilters, offset: 0 }, '通知已发送。')
@@ -1214,6 +1268,7 @@ export function App() {
               })}
               onOpenFeedback={openSchoolFeedback}
               onOpenUsers={openSchoolUsers}
+              onNotify={openSchoolNotification}
             />
           )}
           {!loading && activeView === 'users' && (
@@ -1776,6 +1831,7 @@ function SchoolsView(props: {
   onOpenProvider: (school: SchoolItem) => void
   onOpenFeedback: (school: SchoolItem) => void
   onOpenUsers: (school: SchoolItem) => void
+  onNotify: (school: SchoolItem) => void
 }) {
   const updateFilters = (patch: Partial<SchoolFilters>) => {
     props.onFiltersChange((current) => ({ ...current, ...patch, offset: 0 }))
@@ -1891,6 +1947,7 @@ function SchoolsView(props: {
                       <button className="button secondary" type="button" onClick={() => props.onOpenTerm(school)}><CalendarDays size={16} />首周</button>
                       <button className="button secondary" type="button" onClick={() => props.onOpenProvider(school)}><Settings2 size={16} />Provider</button>
                       <button className="button secondary" type="button" onClick={() => props.onOpenFeedback(school)}><MessageSquareWarning size={16} />反馈</button>
+                      <button className="button secondary" type="button" onClick={() => props.onNotify(school)}><Bell size={16} />通知</button>
                     </div>
                   </td>
                   </tr>
@@ -2335,14 +2392,37 @@ function NotificationsView(props: {
   const setDraftValue = <K extends keyof NotificationDraft>(key: K, value: NotificationDraft[K]) => {
     props.onDraftChange((current) => ({ ...current, [key]: value }))
   }
+  const updateTargetType = (targetType: NotificationDraft['targetType']) => {
+    props.onDraftChange((current) => ({
+      ...current,
+      targetType,
+      targetSchoolId: targetType === 'school' ? current.targetSchoolId : '',
+      targetAccountId: targetType === 'user' ? current.targetAccountId : '',
+    }))
+  }
   const canSubmit = Boolean(
     props.draft.title.trim() &&
     props.draft.content.trim() &&
-    (props.draft.targetType === 'global' || props.draft.targetAccountId.trim()),
+    (
+      props.draft.targetType === 'global' ||
+      (props.draft.targetType === 'school' && props.draft.targetSchoolId.trim()) ||
+      (props.draft.targetType === 'user' && props.draft.targetAccountId.trim())
+    ),
   )
   const activeCount = props.data.items.filter((item) => item.active).length
   const globalCount = props.data.items.filter((item) => item.targetType === 'global').length
+  const schoolCount = props.data.items.filter((item) => item.targetType === 'school').length
   const userCount = props.data.items.filter((item) => item.targetType === 'user').length
+  const targetBadgeTone = props.draft.targetType === 'global'
+    ? ''
+    : props.draft.targetType === 'school'
+      ? 'amber'
+      : 'green'
+  const targetBadgeLabel = props.draft.targetType === 'global'
+    ? '全平台通知'
+    : props.draft.targetType === 'school'
+      ? '学校通知'
+      : '个人消息'
 
   return (
     <div className="workspace notification-workspace">
@@ -2356,30 +2436,40 @@ function NotificationsView(props: {
             <div className="notification-target-card">
               <div className="notification-target-head">
                 <span className="notification-kicker">投放方式</span>
-                <Badge tone={props.draft.targetType === 'global' ? 'amber' : 'green'}>
-                  {props.draft.targetType === 'global' ? '下次打开弹窗' : '个人消息'}
-                </Badge>
+                <Badge tone={targetBadgeTone}>{targetBadgeLabel}</Badge>
               </div>
               <SelectField
                 label="通知范围"
                 value={props.draft.targetType}
                 options={[
                   ['global', '全平台通知'],
+                  ['school', '指定学校'],
                   ['user', '指定用户'],
                 ]}
-                onChange={(targetType) => setDraftValue('targetType', targetType as NotificationDraft['targetType'])}
+                onChange={(targetType) => updateTargetType(targetType as NotificationDraft['targetType'])}
               />
-              <label className="field">
-                <span>目标用户 ID</span>
-                <input
-                  value={props.draft.targetAccountId}
-                  disabled={props.draft.targetType === 'global'}
-                  placeholder={props.draft.targetType === 'global' ? '全平台通知无需填写' : 'accountId'}
-                  onChange={(event) => setDraftValue('targetAccountId', event.target.value.trim())}
-                />
-              </label>
+              {props.draft.targetType === 'school' && (
+                <label className="field">
+                  <span>目标学校 ID</span>
+                  <input
+                    value={props.draft.targetSchoolId}
+                    placeholder="schoolId"
+                    onChange={(event) => setDraftValue('targetSchoolId', event.target.value.trim())}
+                  />
+                </label>
+              )}
+              {props.draft.targetType === 'user' && (
+                <label className="field">
+                  <span>目标用户 ID</span>
+                  <input
+                    value={props.draft.targetAccountId}
+                    placeholder="accountId"
+                    onChange={(event) => setDraftValue('targetAccountId', event.target.value.trim())}
+                  />
+                </label>
+              )}
               <div className="notification-note">
-                全平台通知和指定用户消息都会在用户下次打开项目时弹窗，并同步进入个人中心的消息页。
+                全平台、指定学校和指定用户消息都会在用户下次打开项目时弹窗，并同步进入个人中心的通知页。
               </div>
             </div>
             <div className="notification-message-card">
@@ -2403,7 +2493,7 @@ function NotificationsView(props: {
               </div>
               <div className="notification-actions">
                 <div className="notification-submit-hint">
-                  {canSubmit ? '内容完整，可以发送。' : '请填写标题、内容和必要的目标用户 ID。'}
+                  {canSubmit ? '内容完整，可以发送。' : '请填写标题、内容和当前范围需要的目标 ID。'}
                 </div>
                 <button className="button primary" type="submit" disabled={!canSubmit}>
                   <Bell size={16} />
@@ -2424,6 +2514,7 @@ function NotificationsView(props: {
               <span>本页 {props.data.items.length}</span>
               <span>生效 {activeCount}</span>
               <span>全平台 {globalCount}</span>
+              <span>学校 {schoolCount}</span>
               <span>指定用户 {userCount}</span>
             </div>
           }
@@ -2433,7 +2524,7 @@ function NotificationsView(props: {
             <span>搜索</span>
             <input
               value={props.filters.keyword}
-              placeholder="标题、内容或用户 ID"
+              placeholder="标题、内容、学校 ID 或用户 ID"
               onChange={(event) => updateFilters({ keyword: event.target.value })}
             />
           </label>
@@ -2443,6 +2534,7 @@ function NotificationsView(props: {
             options={[
               ['', '全部'],
               ['global', '全平台'],
+              ['school', '指定学校'],
               ['user', '指定用户'],
             ]}
             onChange={(targetType) => updateFilters({ targetType })}
@@ -2482,10 +2574,10 @@ function NotificationsView(props: {
                       <div className="cell-meta notification-content-preview">{item.content}</div>
                     </td>
                     <td>
-                      <Badge tone={item.targetType === 'global' ? 'amber' : 'green'}>
-                        {item.targetType === 'global' ? '全平台' : '指定用户'}
+                      <Badge tone={getAdminNotificationTargetTone(item.targetType)}>
+                        {getAdminNotificationTargetLabel(item.targetType)}
                       </Badge>
-                      <div className="cell-meta notification-id">{item.targetAccountId || '--'}</div>
+                      <div className="cell-meta notification-id">{getAdminNotificationTargetDetail(item)}</div>
                     </td>
                     <td>
                       <Badge tone={item.active ? 'green' : 'red'}>{item.active ? '生效中' : '已停用'}</Badge>

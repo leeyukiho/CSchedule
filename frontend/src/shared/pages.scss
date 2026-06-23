@@ -2286,11 +2286,24 @@
   height: 36rpx;
   padding: 0 14rpx;
   border-radius: 999rpx;
-  background: #eff6ff;
-  color: #155eef;
   font-size: 20rpx;
   font-weight: 800;
   line-height: 36rpx;
+}
+
+.message-type.global {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.message-type.user {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.message-type.school {
+  background: #dcfce7;
+  color: #166534;
 }
 
 .message-title {

@@ -555,14 +555,9 @@ export default function ProfilePage() {
         </View>
         <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/messages/index' })}>
           <View className='action-icon action-message' />
-          <Text>消息</Text>
+          <Text>通知</Text>
           <View className='row-arrow' />
         </View>
-        <Button className='action-row action-share-button' openType='share'>
-          <View className='action-icon action-share' />
-          <Text>分享给好友</Text>
-          <View className='row-arrow' />
-        </Button>
         <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/settings/index' })}>
           <View className='action-icon action-settings' />
           <Text>设置</Text>
@@ -573,6 +568,11 @@ export default function ProfilePage() {
           <Text>关于</Text>
           <View className='row-arrow' />
         </View>
+        <Button className='action-row action-share-button' openType='share'>
+          <View className='action-icon action-share' />
+          <Text>分享给好友</Text>
+          <View className='row-arrow' />
+        </Button>
       </View>
 
       {editVisible && (

@@ -4,7 +4,7 @@ export interface PendingNotification {
   id: string
   title: string
   content: string
-  targetType?: 'global' | 'user'
+  targetType?: 'global' | 'school' | 'user'
   createdAt: string
   readAt?: string | null
 }
