@@ -1,4 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { AccountStatus, DataAccessMode, LoginMode, NotificationTargetType, Prisma, SchoolStatus } from '@prisma/client'
 import {
@@ -52,8 +54,31 @@ export interface AdminProviderConfigUpsertInput {
   verifiedAt?: string | null
 }
 
+interface ConnectedSchoolConfig {
+  id: string
+  catalogCode: string
+  name: string
+  shortName?: string
+  providerId: string
+  loginMode: LoginMode
+  eduSystemType?: string | null
+  homepageUrl?: string | null
+  authUrl?: string | null
+  verifiedAt?: string | null
+  capabilities: Record<string, boolean>
+  dataAccess: Partial<Record<'course' | 'score' | 'exam' | 'profile', DataAccessMode[]>>
+  providerConfig: Record<string, unknown>
+}
+
+const CONNECTED_SCHOOLS_FILES = [
+  path.resolve(process.cwd(), 'prisma/data/connected-schools.json'),
+  path.resolve(process.cwd(), 'backend/prisma/data/connected-schools.json'),
+]
+
 @Injectable()
 export class AdminService {
+  private connectedSchoolConfigs: ConnectedSchoolConfig[] | null = null
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
@@ -308,8 +333,19 @@ export class AdminService {
 
   async updateSchool(schoolId: string, input: AdminSchoolUpdateInput) {
     const data: Record<string, unknown> = {}
+    const shouldEnable =
+      input.status === 'enabled' ||
+      (input.status === undefined && input.enabled === true)
+    const builtInConfig = shouldEnable
+      ? await this.getBuiltInConnectedSchoolConfig(schoolId)
+      : undefined
+
     if (input.name !== undefined) data.name = input.name
+    else if (builtInConfig?.name) data.name = builtInConfig.name
+
     if (input.shortName !== undefined) data.shortName = input.shortName
+    else if (builtInConfig?.shortName !== undefined) data.shortName = builtInConfig.shortName
+
     if (input.status !== undefined) {
       data.status = input.status
       data.enabled = input.status === 'enabled'
@@ -318,23 +354,44 @@ export class AdminService {
       data.status = input.enabled ? 'enabled' : 'disabled'
     }
     if (input.loginMode !== undefined) data.loginMode = input.loginMode
+    else if (builtInConfig?.loginMode !== undefined) data.loginMode = builtInConfig.loginMode
+
     if (input.authUrl !== undefined) data.authUrl = input.authUrl
+    else if (builtInConfig?.authUrl !== undefined) data.authUrl = builtInConfig.authUrl
+
     if (input.homepageUrl !== undefined) data.homepageUrl = input.homepageUrl
+    else if (builtInConfig?.homepageUrl !== undefined) data.homepageUrl = builtInConfig.homepageUrl
+
     if (input.providerId !== undefined) data.providerId = input.providerId
+    else if (builtInConfig?.providerId !== undefined) data.providerId = builtInConfig.providerId
+
     if (input.eduSystemType !== undefined) data.eduSystemType = input.eduSystemType
+    else if (builtInConfig?.eduSystemType !== undefined) data.eduSystemType = builtInConfig.eduSystemType
+
     if (input.capabilities !== undefined) data.capabilities = this.toJson(input.capabilities)
+    else if (builtInConfig?.capabilities !== undefined) data.capabilities = this.toJson(builtInConfig.capabilities)
+
     if (input.dataAccess !== undefined) data.dataAccess = this.toJson(input.dataAccess)
+    else if (builtInConfig?.dataAccess !== undefined) data.dataAccess = this.toJson(builtInConfig.dataAccess)
+
+    if (builtInConfig?.verifiedAt) {
+      data.verifiedAt = new Date(builtInConfig.verifiedAt)
+    }
 
     if (
       input.note ||
       input.authConfig !== undefined ||
       input.providerConfig !== undefined ||
-      input.termStarts !== undefined
+      input.termStarts !== undefined ||
+      builtInConfig?.providerConfig !== undefined
     ) {
       data.config = await this.mergeSchoolConfig(schoolId, {
         note: input.note,
         authConfig: input.authConfig,
-        providerConfig: input.providerConfig,
+        providerConfig:
+          input.providerConfig !== undefined
+            ? input.providerConfig
+            : builtInConfig?.providerConfig,
         termStarts: input.termStarts,
       })
     }
@@ -668,6 +725,58 @@ export class AdminService {
     return this.notificationsService.updateAdmin(notificationId, input)
   }
 
+  private async getBuiltInConnectedSchoolConfig(schoolId: string) {
+    const school = await this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { id: true, config: true },
+    })
+
+    if (!school) {
+      throw new NotFoundException('School not found')
+    }
+
+    const catalogCode = this.getCatalogCode(school.config)
+    const connectedSchools = this.getConnectedSchoolConfigs()
+
+    return connectedSchools.find((item) => {
+      return item.id === school.id || Boolean(catalogCode && item.catalogCode === catalogCode)
+    })
+  }
+
+  private getConnectedSchoolConfigs() {
+    if (this.connectedSchoolConfigs) {
+      return this.connectedSchoolConfigs
+    }
+
+    const connectedSchoolsFile = CONNECTED_SCHOOLS_FILES.find((file) =>
+      fs.existsSync(file),
+    )
+
+    if (!connectedSchoolsFile) {
+      this.connectedSchoolConfigs = []
+      return this.connectedSchoolConfigs
+    }
+
+    const payload = JSON.parse(fs.readFileSync(connectedSchoolsFile, 'utf8')) as
+      | ConnectedSchoolConfig[]
+      | { schools?: ConnectedSchoolConfig[] }
+
+    this.connectedSchoolConfigs = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload.schools)
+        ? payload.schools
+        : []
+
+    return this.connectedSchoolConfigs
+  }
+
+  private getCatalogCode(config: unknown) {
+    const catalog = this.asRecord(this.asRecord(config).catalog)
+    const code = catalog.code
+
+    return typeof code === 'string' && code.trim() ? code.trim() : ''
+  }
+
   private async mergeSchoolConfig(
     schoolId: string,
     input: {
@@ -839,14 +948,31 @@ export class AdminService {
       ? String(idValue).trim()
       : ''
 
-    if (!id || terms.has(id)) {
+    if (!id) {
       return
     }
 
     const label = typeof labelValue === 'string' || typeof labelValue === 'number'
       ? String(labelValue).trim()
       : ''
-    terms.set(id, { id, label: label || id })
+    const nextLabel = label || id
+    const existing = terms.get(id)
+
+    if (existing) {
+      const nextLooksAcademic = /20\d{2}.*20\d{2}.*学期/.test(nextLabel)
+      const existingLooksAcademic = /20\d{2}.*20\d{2}.*学期/.test(existing.label)
+
+      if (
+        nextLabel !== id &&
+        (existing.label === existing.id || (nextLooksAcademic && !existingLooksAcademic))
+      ) {
+        terms.set(id, { id, label: nextLabel })
+      }
+
+      return
+    }
+
+    terms.set(id, { id, label: nextLabel })
   }
 
   private getSectionTimes(config: unknown) {

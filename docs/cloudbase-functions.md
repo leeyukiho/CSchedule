@@ -6,6 +6,8 @@
 
 - `syncWtbu`：武汉工商学院专用同步函数，按 `target` 分别同步 `course`、`profile`、`score`、`exam`。
 - `syncBwu`：北京物资学院专用同步函数，先完成 WebVPN/CAS 登录并通过 SSO 进入 EAMS，再按 `target` 分别同步 `course`、`profile`、`score`、`exam`。
+- `syncWhhxit`：武汉华夏理工学院专用同步函数，按 `target` 分别同步 `course`、`profile`、`score`、`exam`。
+- `syncWdu`：武汉东湖学院专用同步函数，按 `target` 分别同步 `course`、`profile`、`score`、`exam`。
 
 ## 配置环境
 
@@ -45,6 +47,8 @@ TENCENTCLOUD_SECRETKEY=本地/非云环境调用 CloudBase 函数时需要
 ```bash
 cloudbase fn deploy syncWtbu --dir cloudfunctions/syncWtbu
 cloudbase fn deploy syncBwu --dir cloudfunctions/syncBwu
+cloudbase fn deploy syncWhhxit --dir cloudfunctions/syncWhhxit
+cloudbase fn deploy syncWdu --dir cloudfunctions/syncWdu
 ```
 
 本地调试：
@@ -53,6 +57,7 @@ cloudbase fn deploy syncBwu --dir cloudfunctions/syncBwu
 cloudbase login
 cloudbase fn run --path cloudfunctions/syncWtbu --params "{\"source\":\"frontend_first_import\",\"schoolId\":\"wtbu\",\"providerId\":\"wtbu\",\"target\":\"course\",\"username\":\"学号\",\"password\":\"密码\"}"
 cloudbase fn run --path cloudfunctions/syncBwu --params "{\"source\":\"frontend_first_import\",\"schoolId\":\"bwu\",\"providerId\":\"bwu\",\"targets\":[\"course\",\"profile\",\"score\",\"exam\"],\"username\":\"学号\",\"password\":\"密码\"}"
+cloudbase fn run --path cloudfunctions/syncWdu --params "{\"source\":\"frontend_first_import\",\"schoolId\":\"wdu\",\"providerId\":\"wdu\",\"targets\":[\"course\",\"profile\",\"score\",\"exam\"],\"username\":\"学号\",\"password\":\"密码\"}"
 ```
 
 ## 数据边界

@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common'
 import { ProviderDisplayService } from './provider-display.service'
 import { ProviderRegistryService } from './provider-registry.service'
 import { bwuProvider } from './adapters/bwu.provider'
+import { wduProvider } from './adapters/wdu.provider'
 import { whhxitProvider } from './adapters/whhxit.provider'
 import { whggvcProvider } from './adapters/whggvc.provider'
 import { wtbuProvider } from './adapters/wtbu.provider'
@@ -15,6 +16,7 @@ import { wtbuProvider } from './adapters/wtbu.provider'
         const registry = new ProviderRegistryService()
         registry.register(bwuProvider)
         registry.register(wtbuProvider)
+        registry.register(wduProvider)
         registry.register(whhxitProvider)
         registry.register(whggvcProvider)
         return registry

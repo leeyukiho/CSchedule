@@ -1616,14 +1616,27 @@ function isGenericTermDisplayLabel(label: string, termId: string, providerCode =
 
 function formatProviderTermId(providerCode: string, termId: string) {
   const normalizedProvider = providerCode.trim().toLowerCase()
-  const match = termId.trim().match(/^(\d{2})([123])$/)
+  const cleanTermId = termId.trim()
+  const wtbuMatch = cleanTermId.match(/^(\d{2})([123])$/)
 
-  if (normalizedProvider !== 'wtbu' || !match) {
-    return ''
+  if (normalizedProvider === 'wtbu' && wtbuMatch) {
+    const yearStart = 2000 + Number(wtbuMatch[1])
+    return `${yearStart}-${yearStart + 1}学年第${wtbuMatch[2]}学期`
   }
 
-  const yearStart = 2000 + Number(match[1])
-  return `${yearStart}-${yearStart + 1}学年第${match[2]}学期`
+  const bwuMatch = cleanTermId.match(/^\d{3}$/)
+
+  if (normalizedProvider === 'bwu' && bwuMatch) {
+    const numericTermId = Number(cleanTermId)
+    const yearStart = 2000 + Math.floor((numericTermId - 571) / 2)
+    const semester = numericTermId % 2 === 0 ? 2 : 1
+
+    if (yearStart >= 2000 && yearStart <= 2099) {
+      return `${yearStart}-${yearStart + 1}学年第${semester}学期`
+    }
+  }
+
+  return ''
 }
 
 function getTermDisplaySortKey(label: string, termId: string, providerCode = '') {
