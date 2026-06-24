@@ -930,14 +930,14 @@ export default function HomePage() {
         </View>
       )}
 
-      {showTodayRestText && <View className='today-empty-text'>今天没有安排</View>}
-
       <View className='section-head'>
         <View className='section-title'>今日安排</View>
         <View className='section-head-actions'>
           <Text>共 {todayItemCount} 项</Text>
         </View>
       </View>
+
+      {showTodayRestText && <View className='today-empty-text'>今天没有安排</View>}
 
       {todayCourses.length > 0 && (
         <View className='home-arrangement-group'>

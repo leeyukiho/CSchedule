@@ -1,5 +1,6 @@
-import { Controller, Delete, Get, Param } from '@nestjs/common'
+import { Controller, Delete, Get, Param, UseGuards } from '@nestjs/common'
 
+import { AdminGuard } from '../admin/admin.guard'
 import { StudentAccountsService } from './accounts.service'
 
 @Controller('account')
@@ -7,6 +8,7 @@ export class StudentAccountController {
   constructor(private readonly accountsService: StudentAccountsService) {}
 
   @Get()
+  @UseGuards(AdminGuard)
   listAccounts() {
     return this.accountsService.listAccounts()
   }

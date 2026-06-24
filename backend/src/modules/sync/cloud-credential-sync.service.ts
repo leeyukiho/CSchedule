@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
-import * as cloudbase from '@cloudbase/node-sdk'
 
 import {
   CloudSyncFunctionConfig,
@@ -48,9 +47,6 @@ interface CloudCredentialSyncPayload {
 
 @Injectable()
 export class CloudCredentialSyncService {
-  private app: ReturnType<typeof cloudbase.init> | null = null
-  private appCredentialSignature = ''
-
   isTargetConfigured(config: unknown, target: DataTarget) {
     return Boolean(this.getCloudFunction(config, target))
   }
@@ -58,10 +54,7 @@ export class CloudCredentialSyncService {
   canRunTarget(config: unknown, target: DataTarget) {
     const cloudFunction = this.getCloudFunction(config, target)
 
-    return Boolean(
-      cloudFunction?.url ||
-        (cloudFunction?.functionName && this.getCloudBaseEnv()),
-    )
+    return Boolean(cloudFunction?.url)
   }
 
   async syncByCredentials(input: {
@@ -101,14 +94,15 @@ export class CloudCredentialSyncService {
         ? { workerSecret: process.env.CSCHEDULE_WORKER_SECRET }
         : {}),
     }
-    const response = cloudFunction.url
-      ? await this.callHttpFunction(cloudFunction.url, payload)
-      : await this.callCloudBaseFunction(
-          this.getFunctionName(cloudFunction),
-          payload,
-        )
+    if (!cloudFunction.url) {
+      throw new BadRequestException(
+        'CLOUD_SYNC_NOT_CONFIGURED: backend sync requires an HTTP cloud function URL',
+      )
+    }
 
-    return this.unwrapSyncResult(response)
+    return this.unwrapSyncResult(
+      await this.callHttpFunction(cloudFunction.url, payload),
+    )
   }
 
   getCloudFunction(config: unknown, target: DataTarget) {
@@ -191,104 +185,6 @@ export class CloudCredentialSyncService {
     }
 
     return data
-  }
-
-  private async callCloudBaseFunction(
-    functionName: string,
-    payload: CloudCredentialSyncPayload,
-  ) {
-    const env = this.getCloudBaseEnv()
-
-    if (!env) {
-      throw new Error('CLOUD_SYNC_ENV_NOT_CONFIGURED')
-    }
-
-    const response = await this.getCloudBaseApp(env).callFunction<
-      CloudCredentialSyncPayload,
-      CloudCredentialSyncResponse | CloudCredentialSyncResult
-    >({
-      name: functionName,
-      data: payload,
-    })
-
-    return response.result
-  }
-
-  private getFunctionName(cloudFunction: CloudSyncFunctionConfig) {
-    if (!cloudFunction.functionName) {
-      throw new Error('CLOUD_SYNC_FUNCTION_NOT_CONFIGURED')
-    }
-
-    return cloudFunction.functionName
-  }
-
-  private getCloudBaseApp(env: string) {
-    const credentials = this.getCloudBaseCredentials()
-    const credentialSignature = JSON.stringify(credentials)
-
-    if (!this.app || this.appCredentialSignature !== credentialSignature) {
-      this.clearSessionTokenEnvWhenUsingLongLivedCredentials()
-      this.app = cloudbase.init({
-        env,
-        ...credentials,
-      })
-      this.appCredentialSignature = credentialSignature
-    }
-
-    return this.app
-  }
-
-  private getCloudBaseCredentials() {
-    const secretId = process.env.TENCENTCLOUD_SECRETID
-    const secretKey = process.env.TENCENTCLOUD_SECRETKEY
-
-    return {
-      ...(secretId ? { secretId } : {}),
-      ...(secretKey ? { secretKey } : {}),
-      ...(!secretId && !secretKey && this.hasUsableSessionToken()
-        ? { sessionToken: process.env.TENCENTCLOUD_SESSIONTOKEN }
-        : {}),
-    }
-  }
-
-  private clearSessionTokenEnvWhenUsingLongLivedCredentials() {
-    if (!process.env.TENCENTCLOUD_SECRETID || !process.env.TENCENTCLOUD_SECRETKEY) {
-      return
-    }
-
-    delete process.env.TENCENTCLOUD_SESSIONTOKEN
-    delete process.env.TENCENTCLOUD_CREDENTIAL_EXPIRES_AT
-  }
-
-  private hasUsableSessionToken() {
-    if (!process.env.TENCENTCLOUD_SESSIONTOKEN) {
-      return false
-    }
-
-    const expiresAt = this.getCredentialExpiresAt()
-
-    return !expiresAt || expiresAt.getTime() > Date.now() + 60_000
-  }
-
-  private getCredentialExpiresAt() {
-    const rawValue = process.env.TENCENTCLOUD_CREDENTIAL_EXPIRES_AT
-
-    if (!rawValue) {
-      return null
-    }
-
-    const expiresAt = new Date(rawValue)
-
-    return Number.isNaN(expiresAt.getTime()) ? null : expiresAt
-  }
-
-  private getCloudBaseEnv() {
-    return (
-      process.env.CLOUDBASE_ENV_ID ||
-      process.env.TCB_ENV_ID ||
-      process.env.TARO_APP_CLOUDBASE_ENV_ID ||
-      ''
-    )
   }
 
   private unwrapSyncResult(response: unknown): CloudCredentialSyncResult {

@@ -333,12 +333,32 @@ function formatWeeksText(weeks: number[] | undefined) {
   return `第${ranges.join('、')}周`
 }
 
+function getLessonTextUnit(char: string) {
+  return /^[\x00-\x7F]$/.test(char) ? 1 : 2
+}
+
 function splitLessonText(value: string, fallback: string, lineLength: number) {
   const chars = Array.from((String(value || '').trim() || fallback))
+  const maxUnits = lineLength * 2
   const lines: string[] = []
+  let currentLine = ''
+  let currentUnits = 0
 
-  for (let index = 0; index < chars.length; index += lineLength) {
-    lines.push(chars.slice(index, index + lineLength).join(''))
+  chars.forEach((char) => {
+    const charUnits = getLessonTextUnit(char)
+
+    if (currentLine && currentUnits + charUnits > maxUnits) {
+      lines.push(currentLine)
+      currentLine = ''
+      currentUnits = 0
+    }
+
+    currentLine += char
+    currentUnits += charUnits
+  })
+
+  if (currentLine) {
+    lines.push(currentLine)
   }
 
   return lines.length > 0 ? lines : [fallback]

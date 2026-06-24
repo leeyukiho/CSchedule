@@ -668,6 +668,7 @@ export class SyncService implements OnModuleInit {
 
     if (
       message.includes('WTBU_INVALID_CREDENTIALS') ||
+      message.includes('WDU_INVALID_CREDENTIALS') ||
       message.includes('WHHXIT_INVALID_CREDENTIALS') ||
       lowerMessage.includes('invalid credential') ||
       message.includes('密码错误') ||
@@ -702,20 +703,6 @@ export class SyncService implements OnModuleInit {
         status: 'failed',
         errorCode: 'SYNC_TASK_TIMEOUT',
         errorMessage: 'Sync task timed out before completion',
-      }
-    }
-
-    if (
-      message.includes('SIGN_PARAM_INVALID') ||
-      lowerMessage.includes('tmp secret key expire') ||
-      lowerMessage.includes('temporary key') ||
-      lowerMessage.includes('session token')
-    ) {
-      return {
-        status: 'need_webview_fetch',
-        errorCode: 'CLOUD_SYNC_CREDENTIAL_EXPIRED',
-        errorMessage:
-          'CloudBase credential expired. Remove the expired TENCENTCLOUD_SESSIONTOKEN or refresh Tencent Cloud temporary credentials.',
       }
     }
 
@@ -806,13 +793,7 @@ export class SyncService implements OnModuleInit {
   }
 
   private canRunCloudFunction(cloudFunction: { functionName?: string; url?: string }) {
-    return Boolean(
-      cloudFunction.url ||
-        (cloudFunction.functionName &&
-          (process.env.CLOUDBASE_ENV_ID ||
-            process.env.TCB_ENV_ID ||
-            process.env.TARO_APP_CLOUDBASE_ENV_ID)),
-    )
+    return Boolean(cloudFunction.url)
   }
 
 }

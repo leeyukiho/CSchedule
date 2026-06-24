@@ -196,15 +196,15 @@
 
 .lesson-name-text {
   display: block;
-  width: 3em;
+  width: 100%;
   max-width: 100%;
   color: currentColor;
-  font-size: 18rpx;
+  font-size: 17rpx;
   line-height: 1.12;
   text-align: center;
-  white-space: normal;
-  word-break: break-all;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 .lesson-room {

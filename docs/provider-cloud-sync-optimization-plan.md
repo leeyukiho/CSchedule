@@ -61,7 +61,7 @@
 }
 ```
 
-如果配置 `url`，后端优先走 HTTP 触发器；否则使用 `functionName` 通过 CloudBase Node SDK 调用。
+后端同步只通过 `cloudFunctions.<target>.url` 调用 HTTP 触发器；`functionName` 仍可用于小程序首次导入直接调用云函数。
 
 ## 请求次数优化
 

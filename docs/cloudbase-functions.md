@@ -22,13 +22,10 @@ TARO_APP_CLOUDBASE_ENV_ID=你的环境ID
 后端自动同步也调用同一组学校专用云函数，不再直接请求学校教务外网。后端需要配置：
 
 ```bash
-CLOUDBASE_ENV_ID=你的环境ID
 CSCHEDULE_WORKER_SECRET=可选的后端到云函数共享密钥
-TENCENTCLOUD_SECRETID=本地/非云环境调用 CloudBase 函数时需要
-TENCENTCLOUD_SECRETKEY=本地/非云环境调用 CloudBase 函数时需要
 ```
 
-如果学校配置提供 `cloudFunctions.<target>.url`，后端会优先走 HTTP 触发器；否则使用 `functionName` 通过 CloudBase Node SDK 调用。
+后端同步只通过 `cloudFunctions.<target>.url` 调用 HTTP 触发器；`functionName` 仍可用于小程序首次导入直接调用云函数。
 
 具体函数名由后端学校配置下发，例如 `connected-schools.json` 中的：
 
