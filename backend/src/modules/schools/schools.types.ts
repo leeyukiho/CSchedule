@@ -1,4 +1,5 @@
 import {
+  CloudSyncFunctionConfig,
   DataAccessMode,
   DataTarget,
   LoginMode,
@@ -76,6 +77,12 @@ export interface LoginContextResponse {
   }
   credentialSave?: CredentialSaveCapability
   syncStrategy: SchoolSyncStrategy
+  frontendCloudImport?: {
+    targets: DataTarget[]
+    cloudFunction: CloudSyncFunctionConfig
+    clientImportToken?: string
+    clientImportTokenExpiresAt?: string
+  }
   expireAt: string
 }
 

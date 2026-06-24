@@ -3,10 +3,10 @@
 当前项目采用最新同步架构：
 
 ```text
-小程序首次导入
-  -> 小程序按学校配置调用学校专用云函数
+客户端首次导入
+  -> 客户端提交教务账号密码到后端
+  -> 后端调用学校专用云函数
   -> 云函数登录学校系统、抓取并解析数据
-  -> 小程序把 cacheResults 提交后端
   -> 后端写 CourseCache / FeatureCache
 
 后端手动同步 / 自动同步
@@ -23,7 +23,7 @@
 
 - 后端只负责账号、凭据、任务、限流、云函数调用和缓存写入。
 - 云函数是唯一访问学校教务外网的执行层。
-- 小程序不为新增学校频繁发版，只接收后端下发的云函数配置。
+- 客户端不为新增学校频繁发版，只接收后端下发的同步策略和展示配置。
 - 普通页面默认读本地缓存，云函数不承担日常浏览流量。
 - 自动同步时按账号、学校、target 去重和限流，避免并发重复请求。
 - 云函数返回给后端的结果尽量精简，减少云函数出站流量。
@@ -41,7 +41,7 @@
 
 - provider metadata 允许 `password_login` 自动同步。
 - 学校 seed 的 `dataAccess[target]` 包含 `cloud_worker`。
-- 学校配置存在 `providerConfig.cloudFunctions[target]`。
+- 学校配置存在 `providerConfig.cloudFunctions[target].url`。
 - 用户账号已选择 `password_vault`。
 
 ## 云函数配置
@@ -55,13 +55,13 @@
   },
   "providerConfig": {
     "cloudFunctions": {
-      "course": { "functionName": "syncWtbu" }
+      "course": { "url": "https://your-cloud-function-url.example.com/syncWtbu" }
     }
   }
 }
 ```
 
-后端同步只通过 `cloudFunctions.<target>.url` 调用 HTTP 触发器；`functionName` 仍可用于小程序首次导入直接调用云函数。
+后端同步通过 `cloudFunctions.<target>.url` 调用 HTTP 触发器；首次绑定导入允许前端使用后端下发的短期 `clientImportToken` 直接调用同一个 HTTP 触发器，以降低应用服务器带宽压力。前端不能携带 `CSCHEDULE_WORKER_SECRET`，云函数必须返回 `cloudProof`，后端只接受签名匹配的导入结果。
 
 ## 请求次数优化
 
@@ -75,15 +75,15 @@
 ## 出站流量优化
 
 - `source=backend_auto_sync` 时，云函数返回精简 `cacheData`，只包含后端写缓存必需字段。
-- `source=frontend_first_import` 时，云函数保留小程序本地缓存需要的完整字段。
+- `source=backend_auto_sync` 时，云函数返回标准 `cacheResults`，由后端写入缓存。
 - 后端不再代理 WebView/raw payload 到云函数。
-- 日常页面读取小程序本地缓存，不触发云函数。
+- 日常页面读取客户端本地缓存，不触发云函数。
 
 ## 新增学校流程
 
 1. 新增 provider metadata 文件，只写能力、展示配置和凭据保存策略。
 2. 注册 provider。
-3. 在 `connected-schools.json` 增加学校 seed 和 `cloudFunctions`。
+3. 在 `connected-schools.json` 增加学校 seed 和 `cloudFunctions.<target>.url`。
 4. 新增 `cloudfunctions/sync<School>/index.js`。
 5. 验证首次导入、手动同步、自动同步都走同一个云函数。
 

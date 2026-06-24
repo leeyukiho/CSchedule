@@ -87,6 +87,7 @@ export class StudentIdentityService {
     studentNo?: string
     displayName?: string
     authState?: Prisma.InputJsonValue
+    mergeExisting?: boolean
   }): Promise<StudentAccount> {
     const rawStudentNo = this.normalizeRawStudentNo(input.studentNo)
     const studentNo = this.normalizeStudentNo(rawStudentNo)
@@ -133,6 +134,16 @@ export class StudentIdentityService {
       })
     }
 
+    if (!input.mergeExisting) {
+      return this.prisma.studentAccount.update({
+        where: { id: input.accountId },
+        data: {
+          ...(input.displayName ? { displayName: input.displayName } : {}),
+          ...(input.authState ? { authState: input.authState } : {}),
+        },
+      })
+    }
+
     const temporaryAccount = await this.prisma.studentAccount.findUnique({
       where: { id: input.accountId },
     })
@@ -151,6 +162,10 @@ export class StudentIdentityService {
         data: { accountId: existingAccount.id },
       }),
       this.prisma.syncRecord.updateMany({
+        where: { accountId: temporaryAccount.id },
+        data: { accountId: existingAccount.id },
+      }),
+      this.prisma.accountAccessToken.updateMany({
         where: { accountId: temporaryAccount.id },
         data: { accountId: existingAccount.id },
       }),

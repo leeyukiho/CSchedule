@@ -1,5 +1,6 @@
-import { Body, Controller, Param, Post, UsePipes, ValidationPipe } from '@nestjs/common'
+import { Body, Controller, Param, Post, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
 
+import { AccountAccessGuard } from '../accounts/account-access-token.service'
 import { RawDataService } from './raw-data.service'
 import {
   CompleteWebviewSyncDto,
@@ -16,6 +17,7 @@ import {
     forbidUnknownValues: false,
   }),
 )
+@UseGuards(AccountAccessGuard)
 export class RawDataController {
   constructor(private readonly rawDataService: RawDataService) {}
 

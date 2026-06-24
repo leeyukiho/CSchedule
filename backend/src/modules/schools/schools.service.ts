@@ -13,10 +13,15 @@ import {
 import {
   CredentialSaveCapability,
   DataTarget,
+  FrontendCloudImportConfig,
   ProviderAuthConfig,
   SchoolSyncStrategy,
 } from '../providers/provider.types'
 import { CloudCredentialSyncService } from '../sync/cloud-credential-sync.service'
+import {
+  canIssueFrontendCloudImportToken,
+  createFrontendCloudImportToken,
+} from '../sync/frontend-cloud-import-proof'
 
 @Injectable()
 export class SchoolsService {
@@ -169,16 +174,24 @@ export class SchoolsService {
       config: school.config,
     })
     const webview = this.createFrontendWebviewDescriptor(school, authConfig)
+    const contextId = this.createContextId(school.id)
+    const frontendCloudImport = this.createFrontendCloudImport({
+      schoolId: school.id,
+      providerId: school.providerId ?? school.id,
+      contextId,
+      syncStrategy,
+    })
     const expireAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
 
     if (loginMode === 'cas_webview' || loginMode === 'oauth_webview') {
       return {
-        contextId: this.createContextId(school.id),
+        contextId,
         mode: loginMode,
         fields: [],
         webview,
         credentialSave,
         syncStrategy,
+        ...(frontendCloudImport ? { frontendCloudImport } : {}),
         expireAt,
       }
     }
@@ -224,7 +237,7 @@ export class SchoolsService {
     }
 
     return {
-      contextId: this.createContextId(school.id),
+      contextId,
       mode: loginMode,
       fields,
       webview,
@@ -238,6 +251,7 @@ export class SchoolsService {
           : undefined,
       credentialSave,
       syncStrategy,
+      ...(frontendCloudImport ? { frontendCloudImport } : {}),
       expireAt,
     }
   }
@@ -434,20 +448,18 @@ export class SchoolsService {
       Boolean(cloudFunctions.course)
     const canRunCloudCourse = this.cloudSync.canRunTarget(input.config, 'course')
 
-    if (supportsCourse && canSavePassword && hasCloudCourse) {
+    if (supportsCourse && canSavePassword && hasCloudCourse && canRunCloudCourse) {
       return {
         importMode: 'password_server',
         syncMode: 'cloud_worker',
         ...(Object.keys(cloudFunctions).length ? { cloudFunctions } : {}),
+        ...this.getFrontendCloudImportStrategy(input, cloudFunctions),
         cloudParserRequired: false,
         localCachePreferred: false,
-        scheduledSyncSupported: canRunCloudCourse,
+        scheduledSyncSupported: true,
         passwordVaultRequired: false,
         passwordVaultOptional: true,
-        manualSyncRequired: !canRunCloudCourse,
-        reason: canRunCloudCourse
-          ? 'This school uses cloud functions for username/password import and scheduled sync.'
-          : 'Cloud sync is configured, but the backend CloudBase environment is not available.',
+        manualSyncRequired: false,
       }
     }
 
@@ -456,13 +468,13 @@ export class SchoolsService {
         importMode: 'webview_cloud',
         syncMode: 'manual_webview',
         ...(Object.keys(cloudFunctions).length ? { cloudFunctions } : {}),
+        ...this.getFrontendCloudImportStrategy(input, cloudFunctions),
         cloudParserRequired: true,
         localCachePreferred: true,
         scheduledSyncSupported: false,
         passwordVaultRequired: false,
         passwordVaultOptional: false,
         manualSyncRequired: true,
-        reason: 'WebView login requires user interaction and cannot be scheduled safely.',
       }
     }
 
@@ -470,12 +482,92 @@ export class SchoolsService {
       importMode: hasManualImport ? 'manual_import' : 'webview_cloud',
       syncMode: 'manual_webview',
       ...(Object.keys(cloudFunctions).length ? { cloudFunctions } : {}),
+      ...this.getFrontendCloudImportStrategy(input, cloudFunctions),
       cloudParserRequired: true,
       localCachePreferred: true,
       scheduledSyncSupported: false,
       passwordVaultRequired: false,
       manualSyncRequired: true,
-      reason: 'This school is configured for manual import only.',
+    }
+  }
+
+  private getFrontendCloudImportStrategy(
+    input: {
+      dataAccess: ReturnType<SchoolsService['asDataAccess']>
+      capabilities: ReturnType<SchoolsService['asCapabilities']>
+    },
+    cloudFunctions: ReturnType<CloudCredentialSyncService['getCloudSyncFunctions']>,
+  ): Pick<SchoolSyncStrategy, 'frontendCloudImport'> {
+    const candidates = ['course', 'profile', 'score', 'exam'] as DataTarget[]
+    const targets = candidates.filter((target) => {
+      return (
+        Boolean(input.capabilities[target]) &&
+        input.dataAccess[target].includes('cloud_worker')
+      )
+    })
+
+    if (!targets.includes('course')) {
+      return {}
+    }
+
+    const supportedTargets: DataTarget[] = []
+
+    for (const target of targets) {
+      const sharedTargets = [...supportedTargets, target]
+      const cloudFunction = this.cloudSync.getSharedCloudFunction(
+        { cloudFunctions },
+        sharedTargets,
+      )
+
+      if (cloudFunction?.url) {
+        supportedTargets.push(target)
+      }
+    }
+
+    const cloudFunction = this.cloudSync.getSharedCloudFunction(
+      { cloudFunctions },
+      supportedTargets,
+    )
+
+    if (!cloudFunction?.url || supportedTargets.length === 0) {
+      return {}
+    }
+
+    return {
+      frontendCloudImport: {
+        targets: supportedTargets,
+        cloudFunction,
+      },
+    }
+  }
+
+  private createFrontendCloudImport(input: {
+    schoolId: string
+    providerId: string
+    contextId: string
+    syncStrategy: SchoolSyncStrategy
+  }): FrontendCloudImportConfig | undefined {
+    const config = input.syncStrategy.frontendCloudImport
+
+    if (!config?.cloudFunction.url || config.targets.length === 0) {
+      return undefined
+    }
+
+    if (!canIssueFrontendCloudImportToken()) {
+      return config
+    }
+
+    const token = createFrontendCloudImportToken({
+      schoolId: input.schoolId,
+      providerId: input.providerId,
+      contextId: input.contextId,
+      targets: config.targets,
+    })
+
+    return {
+      ...config,
+      clientImportToken: token.token,
+      clientImportTokenExpiresAt: token.expiresAt,
     }
   }
 

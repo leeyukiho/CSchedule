@@ -15,7 +15,7 @@
 4. `cloudfunctions/sync<School>/`
    学校专用云函数，负责登录学校系统、按 target 拉取并返回标准 `cacheResults`。
 
-小程序侧通过后端返回的 `syncStrategy.cloudFunctions` 调用云函数，后端自动同步也调用同一组云函数。
+客户端普通业务只调用后端 API。首次绑定导入可使用后端 `login-context` 下发的短期 `clientImportToken` 直接调用云函数 HTTP URL，云函数返回 `cloudProof` 后再由后端验签入库。`CSCHEDULE_WORKER_SECRET` 只保存在后端和云函数环境变量中，不能放进前端包。
 
 ## SchoolProvider 最小结构
 
@@ -62,7 +62,7 @@ export const xxxProvider: SchoolProvider = {
 
 ## dataAccess 语义
 
-- `cloud_worker`: 账号密码保存在后端，后端或小程序调用学校专用云函数完成外网访问和解析。
+- `cloud_worker`: 账号密码保存在后端，后端调用学校专用云函数完成外网访问和解析。
 - `webview_client_fetch`: 用户在 WebView 内完成登录，前端上传结构化 JSON 到后端 `raw-data`。
 - `manual_import`: 用户手动导入结构化数据。
 - `session_import`: 预留能力，不作为默认路径。
@@ -98,7 +98,7 @@ export const xxxProvider: SchoolProvider = {
     "baseUrl": "https://example.edu.cn",
     "system": "EAMS",
     "cloudFunctions": {
-      "course": { "functionName": "syncXxx" }
+      "course": { "url": "https://your-cloud-function-url.example.com/syncXxx" }
     },
     "authConfig": {
       "captchaRequired": false,
@@ -110,7 +110,7 @@ export const xxxProvider: SchoolProvider = {
 }
 ```
 
-只有已配置 `cloudFunctions.<target>` 的 target 才能声明 `cloud_worker`，否则自动同步会被后端拒绝。
+只有已配置 `cloudFunctions.<target>.url` 的 target 才能声明 `cloud_worker`，否则自动同步会被后端拒绝。
 
 ## 云函数返回协议
 
@@ -118,7 +118,7 @@ export const xxxProvider: SchoolProvider = {
 
 ```ts
 {
-  source: 'frontend_first_import' | 'backend_auto_sync'
+  source: 'backend_auto_sync'
   schoolId: string
   providerId: string
   target: 'course' | 'score' | 'exam' | 'profile'
@@ -161,7 +161,7 @@ export const xxxProvider: SchoolProvider = {
 }
 ```
 
-`backend_auto_sync` 可以返回精简 `cacheData`，后端会补 account、school、provider 等上下文；`frontend_first_import` 需要保留小程序本地缓存所需字段。
+`backend_auto_sync` 可以返回精简 `cacheData`，后端会补 account、school、provider 等上下文。首次前端直连导入必须使用 `frontend_cloud_import + clientImportToken`，并返回 `cloudProof`；没有签名证明的客户端导入结果不会被后端接受。
 
 ## 验收清单
 

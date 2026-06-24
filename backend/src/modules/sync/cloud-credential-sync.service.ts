@@ -42,7 +42,6 @@ interface CloudCredentialSyncPayload {
   username: string
   password: string
   semesterId?: string
-  workerSecret?: string
 }
 
 @Injectable()
@@ -54,7 +53,7 @@ export class CloudCredentialSyncService {
   canRunTarget(config: unknown, target: DataTarget) {
     const cloudFunction = this.getCloudFunction(config, target)
 
-    return Boolean(cloudFunction?.url)
+    return Boolean(cloudFunction?.url && process.env.CSCHEDULE_WORKER_SECRET)
   }
 
   async syncByCredentials(input: {
@@ -75,10 +74,17 @@ export class CloudCredentialSyncService {
     }
 
     const cloudFunction = this.getSharedCloudFunction(input.config, targets)
+    const workerSecret = String(process.env.CSCHEDULE_WORKER_SECRET || '').trim()
 
     if (!cloudFunction) {
       throw new BadRequestException(
         'CLOUD_SYNC_NOT_CONFIGURED: requested targets have no shared cloud sync function',
+      )
+    }
+
+    if (!workerSecret) {
+      throw new BadRequestException(
+        'CLOUD_SYNC_NOT_CONFIGURED: backend sync requires CSCHEDULE_WORKER_SECRET',
       )
     }
 
@@ -90,9 +96,6 @@ export class CloudCredentialSyncService {
       username: input.username,
       password: input.password,
       ...(input.semesterId ? { semesterId: input.semesterId } : {}),
-      ...(process.env.CSCHEDULE_WORKER_SECRET
-        ? { workerSecret: process.env.CSCHEDULE_WORKER_SECRET }
-        : {}),
     }
     if (!cloudFunction.url) {
       throw new BadRequestException(
@@ -101,7 +104,7 @@ export class CloudCredentialSyncService {
     }
 
     return this.unwrapSyncResult(
-      await this.callHttpFunction(cloudFunction.url, payload),
+      await this.callHttpFunction(cloudFunction.url, payload, workerSecret),
     )
   }
 
@@ -165,14 +168,13 @@ export class CloudCredentialSyncService {
   private async callHttpFunction(
     url: string,
     payload: CloudCredentialSyncPayload,
+    workerSecret: string,
   ) {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(process.env.CSCHEDULE_WORKER_SECRET
-          ? { 'x-cschedule-worker-secret': process.env.CSCHEDULE_WORKER_SECRET }
-          : {}),
+        'x-cschedule-worker-secret': workerSecret,
       },
       body: JSON.stringify(payload),
     })

@@ -42,6 +42,30 @@ export interface CloudSyncFunctionConfig {
   url?: string
 }
 
+export type CloudSyncFunctionMap = Partial<
+  Record<DataTarget, CloudSyncFunctionConfig>
+>
+
+export interface FrontendCloudImportConfig {
+  targets: DataTarget[]
+  cloudFunction: CloudSyncFunctionConfig
+  clientImportToken?: string
+  clientImportTokenExpiresAt?: string
+}
+
+export interface CloudImportProof {
+  version: 1
+  source: 'frontend_cloud_import'
+  schoolId: string
+  providerId: string
+  contextId: string
+  targets: DataTarget[]
+  resultHash: string
+  issuedAt: string
+  expiresAt: string
+  signature: string
+}
+
 export interface SectionTimeItem {
   section: number
   start: string
@@ -55,14 +79,11 @@ export interface SectionTimeProfile {
   sectionTimes: SectionTimeItem[]
 }
 
-export type CloudSyncFunctionMap = Partial<
-  Record<DataTarget, CloudSyncFunctionConfig>
->
-
 export interface SchoolSyncStrategy {
   importMode: ImportMode
   syncMode: SyncMode
   cloudFunctions?: CloudSyncFunctionMap
+  frontendCloudImport?: FrontendCloudImportConfig
   cloudParserRequired: boolean
   localCachePreferred: boolean
   scheduledSyncSupported: boolean
@@ -179,6 +200,7 @@ export interface LoginContextResponse {
   }
   credentialSave?: CredentialSaveCapability
   syncStrategy?: SchoolSyncStrategy
+  frontendCloudImport?: FrontendCloudImportConfig
   expireAt: string
 }
 

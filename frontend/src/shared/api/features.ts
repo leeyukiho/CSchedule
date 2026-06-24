@@ -80,9 +80,7 @@ async function getFeatureWithCache<TData = unknown>(
 
   const queryParts = [
     termId ? `termId=${encodeURIComponent(termId)}` : '',
-    !options.forceRefresh && cached?.sourceHash
-      ? `knownHash=${encodeURIComponent(cached.sourceHash)}`
-      : '',
+    cached?.sourceHash ? `knownHash=${encodeURIComponent(cached.sourceHash)}` : '',
   ].filter(Boolean)
   const query = queryParts.length ? `?${queryParts.join('&')}` : ''
 

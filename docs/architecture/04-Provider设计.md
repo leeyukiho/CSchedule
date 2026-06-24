@@ -63,10 +63,10 @@ interface SchoolProvider {
   "providerConfig": {
     "baseUrl": "https://jxgl.wtbu.edu.cn",
     "cloudFunctions": {
-      "course": { "functionName": "syncWtbu" },
-      "score": { "functionName": "syncWtbu" },
-      "exam": { "functionName": "syncWtbu" },
-      "profile": { "functionName": "syncWtbu" }
+      "course": { "url": "https://your-cloud-function-url.example.com/syncWtbu" },
+      "score": { "url": "https://your-cloud-function-url.example.com/syncWtbu" },
+      "exam": { "url": "https://your-cloud-function-url.example.com/syncWtbu" },
+      "profile": { "url": "https://your-cloud-function-url.example.com/syncWtbu" }
     }
   }
 }
@@ -79,7 +79,7 @@ interface SchoolProvider {
 - `providerId` 指向已注册 provider。
 - `loginMode` 明确。
 - `capabilities` 和 `dataAccess` 与实际能力一致。
-- 若声明 `cloud_worker`，必须配置对应 `cloudFunctions[target]`。
+- 若声明 `cloud_worker`，必须配置对应 `cloudFunctions[target].url`。
 - 已有云函数或 WebView 导入验收记录。
 - 错误输出不泄露账号、密码、Cookie 或 Token。
 

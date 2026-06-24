@@ -2,6 +2,7 @@ import 'reflect-metadata'
 
 import { ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
+import compression from 'compression'
 import { json, urlencoded } from 'express'
 
 import { AppModule } from './app.module'
@@ -18,12 +19,16 @@ async function bootstrap() {
     .flatMap((value) => (value ?? '').split(','))
     .map((item) => item.trim())
     .filter(Boolean)
-  const allowAnyOrigin = configuredOrigins.length === 0 || configuredOrigins.includes('*')
+  const isProduction = process.env.NODE_ENV === 'production'
+  const allowAnyOrigin =
+    configuredOrigins.includes('*') ||
+    (!isProduction && configuredOrigins.length === 0)
   const allowedOrigins = new Set(configuredOrigins.filter((item) => item !== '*'))
   const defaultBodyLimit = process.env.REQUEST_BODY_LIMIT ?? '256kb'
   const rawDataBodyLimit = process.env.RAW_DATA_BODY_LIMIT ?? '2mb'
 
   app.setGlobalPrefix('api/v1')
+  app.use(compression({ threshold: 1024 }))
   app.use('/api/v1/account/:accountId/raw-data', json({ limit: rawDataBodyLimit }))
   app.use('/api/v1/account/:accountId/raw-course', json({ limit: rawDataBodyLimit }))
   app.use(json({ limit: defaultBodyLimit }))
@@ -31,8 +36,15 @@ async function bootstrap() {
   app.enableCors({
     origin: allowAnyOrigin
       ? true
-      : (requestOrigin, callback) => {
-          if (!requestOrigin || allowedOrigins.has(requestOrigin) || isLoopbackOrigin(requestOrigin)) {
+      : (
+          requestOrigin: string | undefined,
+          callback: (error: Error | null, allow?: boolean) => void,
+        ) => {
+          if (
+            !requestOrigin ||
+            allowedOrigins.has(requestOrigin) ||
+            (!isProduction && isLoopbackOrigin(requestOrigin))
+          ) {
             callback(null, true)
             return
           }
@@ -40,8 +52,14 @@ async function bootstrap() {
           callback(null, false)
         },
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['content-type', 'authorization', 'x-admin-api-key'],
-    credentials: true,
+    allowedHeaders: [
+      'content-type',
+      'authorization',
+      'x-admin-api-key',
+      'x-cschedule-account-id',
+      'x-cschedule-account-token',
+    ],
+    credentials: false,
   })
   app.useGlobalPipes(
     new ValidationPipe({

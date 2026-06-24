@@ -3,7 +3,10 @@ import { Button, Input, Text, Textarea, View } from '@tarojs/components'
 
 import { submitFeedback } from '../../shared/api/feedback'
 import { PageShell } from '../../shared/layout'
-import { getStoredAccountId } from '../../shared/storage'
+import {
+  getStoredAccountAccessToken,
+  getStoredAccountId,
+} from '../../shared/storage'
 
 const STATUS_CLEAR_DELAY_MS = 3000
 
@@ -33,8 +36,12 @@ export default function FeedbackPage() {
     setErrorText('')
 
     try {
-      const result = await submitFeedback({
-        accountId: getStoredAccountId() || undefined,
+      const accountId = getStoredAccountId()
+
+      await submitFeedback({
+        accountId: accountId && getStoredAccountAccessToken(accountId)
+          ? accountId
+          : undefined,
         content,
         contact,
       })

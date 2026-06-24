@@ -63,7 +63,7 @@ Batch forms are also accepted:
 For cloud-worker direct-login schools such as WTBU, keep the current route:
 
 ```text
-frontend/backend -> school-specific cloud function -> normalized cacheResults -> backend cache
+frontend -> backend -> school-specific cloud function -> normalized cacheResults -> backend cache
 ```
 
 For WebView schools, future expansion should usually change only:

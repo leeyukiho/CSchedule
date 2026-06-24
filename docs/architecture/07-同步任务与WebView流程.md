@@ -27,7 +27,7 @@ cancelled
   -> SyncService 校验账号和 dataAccess
   -> 创建 SyncRecord
   -> 后端解密 password_vault 凭据
-  -> CloudCredentialSyncService 调用 cloudFunctions[target]
+  -> CloudCredentialSyncService 调用 cloudFunctions[target].url
   -> CourseSyncService.writeCloudCacheResult 写缓存
   -> SyncRecord success
 ```
@@ -40,7 +40,7 @@ cancelled
 AutoSyncScheduler 扫描到期账号
   -> 仅选择 password_vault 账号
   -> 仅选择 dataAccess[target] 包含 cloud_worker 的学校
-  -> 仅选择配置了 cloudFunctions[target] 的学校
+  -> 仅选择配置了 cloudFunctions[target].url 的学校
   -> 调用 SyncService.createManualSync
 ```
 

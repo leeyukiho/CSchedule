@@ -143,6 +143,7 @@ model StudentAccount {
   courseCaches          CourseCache[]
   featureCaches         FeatureCache[]
   syncRecords           SyncRecord[]
+  accessTokens          AccountAccessToken[]
   reminderSubscriptions ReminderSubscription[]
   reminderDeliveries    ReminderDelivery[]
   notificationReceipts  NotificationReceipt[]
@@ -151,6 +152,21 @@ model StudentAccount {
   @@index([schoolId])
   @@index([providerId])
   @@index([wechatOpenid])
+}
+
+model AccountAccessToken {
+  id         String         @id @default(cuid())
+  accountId  String
+  tokenHash  String         @unique
+  label      String?
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime       @default(now())
+  account    StudentAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([revokedAt, expiresAt])
 }
 
 model AdminNotification {

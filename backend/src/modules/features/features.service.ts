@@ -58,24 +58,44 @@ export class FeaturesService {
       throw new NotFoundException('Student account not found')
     }
 
-    const cache = await this.prisma.featureCache.findFirst({
-      where: {
-        accountId,
-        target,
-        ...(termId ? { termId } : {}),
-      },
-      orderBy: { syncedAt: 'desc' },
-    })
+    const cacheWhere = {
+      accountId,
+      target,
+      ...(termId ? { termId } : {}),
+    }
+    const cacheSummary = knownHash
+      ? await this.prisma.featureCache.findFirst({
+          where: cacheWhere,
+          select: {
+            termId: true,
+            sourceHash: true,
+            syncedAt: true,
+          },
+          orderBy: { syncedAt: 'desc' },
+        })
+      : null
 
-    if (cache?.sourceHash && knownHash && knownHash === cache.sourceHash) {
+    if (
+      cacheSummary?.sourceHash &&
+      knownHash &&
+      knownHash === cacheSummary.sourceHash
+    ) {
       return {
         target,
-        termId: cache.termId ?? termId,
-        sourceHash: cache.sourceHash,
+        termId: cacheSummary.termId ?? termId,
+        sourceHash: cacheSummary.sourceHash,
         notModified: true,
-        syncedAt: cache.syncedAt.toISOString(),
+        syncedAt: cacheSummary.syncedAt.toISOString(),
       }
     }
+
+    const cache =
+      knownHash && cacheSummary === null
+        ? null
+        : await this.prisma.featureCache.findFirst({
+            where: cacheWhere,
+            orderBy: { syncedAt: 'desc' },
+          })
 
     const display = this.providerDisplay.getDisplay(account.school.config, account.providerId, target)
     const session = {

@@ -4,7 +4,6 @@ import { Button, Checkbox, Input, ScrollView, Text, View } from '@tarojs/compone
 
 import { submitLogin } from '../../shared/api/auth'
 import {
-  CloudCredentialSyncResult,
   hasCloudCredentialSync,
   runCredentialSyncWithCloud,
 } from '../../shared/api/cloud-sync'
@@ -13,7 +12,6 @@ import {
   FeatureCacheResponse,
   LoginContextResponse,
   LoginField,
-  CloudSyncFunctionConfig,
   DataTarget,
   ProfileData,
   SchoolListItem,
@@ -24,6 +22,7 @@ import { formatSchoolMeta } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
 import {
   clearStoredDataCacheTerms,
+  getStoredAccountAccessToken,
   setStoredAccountId,
   setStoredAccountSummary,
   setStoredDataCache,
@@ -51,35 +50,12 @@ const DEFAULT_LOGIN_FIELDS: LoginField[] = [
 
 const HIDDEN_FIELD_NAMES = new Set(['contextId'])
 const STATUS_CLEAR_DELAY_MS = 3000
-const CLOUD_IMPORT_TARGETS: DataTarget[] = ['course', 'profile', 'score', 'exam']
 const SCHOOL_DROPDOWN_MAX_ROWS = 5
 
 function getVisibleFields(loginContext: LoginContextResponse | null) {
   const contextFields = loginContext ? loginContext.fields : undefined
   const fields = contextFields && contextFields.length ? contextFields : DEFAULT_LOGIN_FIELDS
   return fields.filter((field) => field.type !== 'hidden' && !HIDDEN_FIELD_NAMES.has(field.name))
-}
-
-function getWechatOpenid() {
-  return new Promise<string>((resolve) => {
-    Taro.login({
-      success: async (result) => {
-        if (!result.code) {
-          resolve('')
-          return
-        }
-
-        try {
-          const { resolveReminderOpenid } = await import('../../shared/api/reminders')
-          const response = await resolveReminderOpenid('__bind__', result.code)
-          resolve(response.openid)
-        } catch {
-          resolve('')
-        }
-      },
-      fail: () => resolve(''),
-    })
-  })
 }
 
 function decodeRouteParam(value?: string) {
@@ -179,33 +155,8 @@ function getText(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
-function isSameCloudFunction(left?: CloudSyncFunctionConfig, right?: CloudSyncFunctionConfig) {
-  return Boolean(
-    left &&
-      right &&
-      (left.functionName || '') === (right.functionName || '') &&
-      (left.url || '') === (right.url || ''),
-  )
-}
-
-function getSharedCloudImport(
-  cloudFunctions: Partial<Record<DataTarget, CloudSyncFunctionConfig>> | undefined,
-  targets: DataTarget[],
-) {
-  const configuredTargets = targets.filter((target) => cloudFunctions?.[target])
-  const configs = configuredTargets.map((target) => cloudFunctions?.[target])
-  const [first] = configs
-
-  return first && configuredTargets.length > 0 && configs.every((config) => isSameCloudFunction(first, config))
-    ? { cloudFunction: first, targets: configuredTargets }
-    : undefined
-}
-
-function getCacheResult(
-  cacheResults: CloudCredentialSyncResult['cacheResults'],
-  target: 'course' | 'profile',
-) {
-  return cacheResults.find((item) => item.target === target)
+function getFrontendCloudImport(context?: LoginContextResponse | null) {
+  return context?.frontendCloudImport || context?.syncStrategy?.frontendCloudImport
 }
 
 function persistLoginCache(
@@ -351,6 +302,14 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
   const isExternalWebviewLogin = loginMode === 'cas_webview' || loginMode === 'oauth_webview'
   const syncStrategy = loginContext?.syncStrategy || selectedSchool?.syncStrategy
   const isPasswordServerImport = syncStrategy?.importMode === 'password_server'
+  const frontendCloudImport = getFrontendCloudImport(loginContext)
+  const isFrontendCloudImport = Boolean(
+    frontendCloudImport &&
+      hasCloudCredentialSync(
+        frontendCloudImport.cloudFunction,
+        frontendCloudImport.clientImportToken,
+      ),
+  )
   const credentialSave = loginContext?.credentialSave || selectedSchool?.credentialSave
   const requiresCredentialInput = Boolean(selectedSchool) && !isExternalWebviewLogin
   const canSaveForAutoSync =
@@ -363,6 +322,7 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
   const wantsPasswordVault = canSavePassword && savePassword
   const shouldCollectCredentials =
     requiresCredentialInput ||
+    isFrontendCloudImport ||
     isPasswordServerImport ||
     wantsPasswordVault
   const credentialFields = useMemo(
@@ -371,10 +331,10 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
   )
   const canBind = Boolean(selectedSchool) && !loading && !contextLoading
   const bindButtonText = loading
-    ? isPasswordServerImport
+    ? isFrontendCloudImport || isPasswordServerImport
       ? '正在导入'
       : '正在进入学校页面'
-    : isPasswordServerImport
+    : isFrontendCloudImport || isPasswordServerImport
       ? '登录并导入'
       : '进入学校页面导入'
   const schoolDropdownRows = Math.min(schools.length, SCHOOL_DROPDOWN_MAX_ROWS)
@@ -522,35 +482,37 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
     }
 
     setLoading(true)
-    setMessage(isPasswordServerImport ? '正在导入课表' : '正在进入学校页面')
+    setMessage(isFrontendCloudImport || isPasswordServerImport ? '正在导入课表' : '正在进入学校页面')
     setErrorText('')
 
     try {
-      const [context, wechatOpenid] = await Promise.all([
-        loginContext ? Promise.resolve(loginContext) : createLoginContext(selectedSchool.id),
-        getWechatOpenid(),
-      ])
+      const context = loginContext || await createLoginContext(selectedSchool.id)
+      const reusableAccountId =
+        initialAccountId.current &&
+        getStoredAccountAccessToken(initialAccountId.current)
+          ? initialAccountId.current
+          : undefined
 
-      if (context.syncStrategy?.importMode === 'password_server') {
-        const sharedCloudImport = getSharedCloudImport(
-          context.syncStrategy.cloudFunctions,
-          CLOUD_IMPORT_TARGETS,
+      const activeFrontendCloudImport = getFrontendCloudImport(context)
+
+      if (
+        activeFrontendCloudImport &&
+        hasCloudCredentialSync(
+          activeFrontendCloudImport.cloudFunction,
+          activeFrontendCloudImport.clientImportToken,
         )
-
-        if (!sharedCloudImport || !hasCloudCredentialSync(sharedCloudImport.cloudFunction)) {
-          throw new Error('暂时无法导入')
-        }
-
+      ) {
         const cloudResult = await runCredentialSyncWithCloud({
           schoolId: selectedSchool.id,
           providerId: selectedSchool.providerId || selectedSchool.id,
-          targets: sharedCloudImport.targets,
+          contextId: context.contextId,
+          targets: activeFrontendCloudImport.targets,
           username: form.username,
           password: form.password,
-          cloudFunction: sharedCloudImport.cloudFunction,
+          cloudFunction: activeFrontendCloudImport.cloudFunction,
+          clientImportToken: activeFrontendCloudImport.clientImportToken,
         })
-
-        const primaryCourseResult = getCacheResult(cloudResult.cacheResults, 'course')
+        const primaryCourseResult = cloudResult.cacheResults.find((item) => item.target === 'course')
 
         if (
           !primaryCourseResult ||
@@ -560,11 +522,15 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
           throw new Error('课表导入失败')
         }
 
+        if (!cloudResult.cloudProof) {
+          throw new Error('CLOUD_IMPORT_PROOF_REQUIRED')
+        }
+
         setMessage('正在保存账号')
 
         const cloudWarnings = cloudResult.cacheResults.flatMap((item) => item.warnings || [])
         const result = await submitLogin(selectedSchool.id, {
-          accountId: initialAccountId.current || undefined,
+          accountId: reusableAccountId,
           contextId: context.contextId,
           username: form.username,
           password: wantsPasswordVault ? form.password : undefined,
@@ -572,11 +538,61 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
             wantsPasswordVault ? 'password_vault' : 'none',
           verifiedByCloud: true,
           cacheResults: cloudResult.cacheResults,
-          ...(wechatOpenid ? { wechatOpenid } : {}),
+          cloudProof: cloudResult.cloudProof,
           ...(cloudWarnings.length ? { cloudWarnings } : {}),
         })
 
-        setStoredAccountId(result.accountId, selectedSchool.id)
+        setStoredAccountId(
+          result.accountId,
+          selectedSchool.id,
+          result.accountAccessToken,
+          result.accountAccessTokenExpiresAt,
+        )
+        const savedCaches = persistCloudCache(
+          result.accountId,
+          result.cacheResults || [],
+        )
+        const savedCourseCache = getSavedCacheData(savedCaches, 'course')
+        const savedProfileCache = getSavedCacheData(savedCaches, 'profile')
+        const courseCache = savedCourseCache
+
+        if (!courseCache) {
+          throw new Error('课表导入失败')
+        }
+
+        setStoredAccountSummary(
+          buildAccountSummary({
+            accountId: result.accountId,
+            school: selectedSchool,
+            credentialSaveMode: wantsPasswordVault ? 'password_vault' : 'none',
+            syncStrategy: context.syncStrategy,
+            cacheData: courseCache,
+            profileCacheData: savedProfileCache,
+          }),
+        )
+        setMessage('登录成功')
+        Taro.switchTab({ url: '/pages/index/index' })
+        return
+      }
+
+      if (context.syncStrategy?.importMode === 'password_server') {
+        setMessage('正在保存账号')
+
+        const result = await submitLogin(selectedSchool.id, {
+          accountId: reusableAccountId,
+          contextId: context.contextId,
+          username: form.username,
+          password: form.password,
+          credentialSaveMode:
+            wantsPasswordVault ? 'password_vault' : 'none',
+        })
+
+        setStoredAccountId(
+          result.accountId,
+          selectedSchool.id,
+          result.accountAccessToken,
+          result.accountAccessTokenExpiresAt,
+        )
         const savedCaches = persistCloudCache(
           result.accountId,
           result.cacheResults || [],
@@ -605,15 +621,19 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
       }
 
       const result = await submitLogin(selectedSchool.id, {
-        accountId: initialAccountId.current || undefined,
+        accountId: reusableAccountId,
         contextId: context.contextId,
         username: shouldCollectCredentials ? form.username : undefined,
         password: wantsPasswordVault ? form.password : undefined,
         credentialSaveMode: 'none',
-        ...(wechatOpenid ? { wechatOpenid } : {}),
       })
 
-      setStoredAccountId(result.accountId, selectedSchool.id)
+      setStoredAccountId(
+        result.accountId,
+        selectedSchool.id,
+        result.accountAccessToken,
+        result.accountAccessTokenExpiresAt,
+      )
 
       if (result.status === 'need_webview_fetch') {
         const webview = context.webview

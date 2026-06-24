@@ -1,5 +1,10 @@
 import Taro from "@tarojs/taro";
 
+import {
+  getStoredAccountAccessToken,
+  getStoredAccountId,
+} from '../storage'
+
 interface ApiResponse {
   statusCode: number;
   data: unknown;
@@ -30,6 +35,49 @@ function getRequestErrorMessage(error: unknown) {
   return String(error || "API request failed");
 }
 
+function getAccountIdFromPath(path: string) {
+  const match = path.match(/(?:^|\/)account\/([^/?#]+)/)
+
+  if (!match) {
+    return ''
+  }
+
+  try {
+    return decodeURIComponent(match[1])
+  } catch {
+    return match[1]
+  }
+}
+
+function getAccountIdFromBody(data: unknown) {
+  const record = data && typeof data === 'object' && !Array.isArray(data)
+    ? (data as { accountId?: unknown })
+    : {}
+
+  return typeof record.accountId === 'string' ? record.accountId : ''
+}
+
+function isSyncJobPath(path: string) {
+  return /(?:^|\/)sync\/[^/?#]+/.test(path)
+}
+
+function getAccountAuthHeaders(options: ApiRequestOptions) {
+  const accountId =
+    getAccountIdFromPath(options.path) ||
+    getAccountIdFromBody(options.data) ||
+    (isSyncJobPath(options.path) ? getStoredAccountId() : '')
+  const token = accountId ? getStoredAccountAccessToken(accountId) : ''
+
+  if (!accountId || !token) {
+    return {}
+  }
+
+  return {
+    authorization: `Bearer ${token}`,
+    'x-cschedule-account-id': accountId,
+  }
+}
+
 export async function requestApi<TResponse, TBody = unknown>(
   options: ApiRequestOptions<TBody>,
 ): Promise<TResponse> {
@@ -51,6 +99,7 @@ export async function requestApi<TResponse, TBody = unknown>(
       timeout: 10000,
       header: {
         "content-type": "application/json",
+        ...getAccountAuthHeaders(options),
         ...options.header,
       },
     }) as ApiResponse;

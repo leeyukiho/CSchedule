@@ -11,6 +11,7 @@ export interface ListSchoolsOptions {
 }
 
 const SCHOOL_LIST_CACHE_TTL_MS = 5 * 60 * 1000
+const DEFAULT_SCHOOL_LIST_FIELDS: NonNullable<ListSchoolsOptions['fields']> = 'summary'
 const schoolListCache = new Map<string, {
   expiresAt: number
   value: SchoolListResponse
@@ -24,7 +25,7 @@ function createSchoolListCacheKey(options: ListSchoolsOptions) {
     enabledOnly: options.enabledOnly ?? true,
     limit: options.limit ?? 50,
     offset: options.offset ?? 0,
-    fields: options.fields || 'full',
+    fields: options.fields || DEFAULT_SCHOOL_LIST_FIELDS,
   })
 }
 
@@ -60,9 +61,7 @@ export async function listSchools(options: ListSchoolsOptions = {}) {
     params.set('offset', String(options.offset))
   }
 
-  if (options.fields) {
-    params.set('fields', options.fields)
-  }
+  params.set('fields', options.fields || DEFAULT_SCHOOL_LIST_FIELDS)
 
   const query = params.toString() ? `?${params.toString()}` : ''
   const request = requestApi<SchoolListResponse>({

@@ -49,7 +49,7 @@ const EDIT_FIELDS: EditField[] = [
   },
   { key: 'phone', label: '手机号' },
 ]
-const SYNC_POLL_INTERVAL_MS = 2500
+const SYNC_POLL_INTERVAL_MS = 3000
 const SYNC_POLL_TIMEOUT_MS = 120000
 const STATUS_CLEAR_DELAY_MS = 3000
 const SHARE_TITLE = 'CSchedule 课表助手'

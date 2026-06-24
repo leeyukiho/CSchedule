@@ -13,6 +13,8 @@ const WTBU_CONFIG = {
 const WTBU_LOGIN_MAX_ATTEMPTS = 2
 const WTBU_SCHEDULE_FETCH_MAX_ATTEMPTS = 3
 const WTBU_EXAM_BATCH_REQUEST_DELAY_MS = 1200
+const FRONTEND_IMPORT_SOURCE = 'frontend_cloud_import'
+const CLIENT_IMPORT_CLOCK_SKEW_MS = 60 * 1000
 
 function ok(result) {
   return { ok: true, result }
@@ -54,31 +56,187 @@ function httpResponse(statusCode, body) {
     statusCode,
     headers: {
       'content-type': 'application/json; charset=utf-8',
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'POST, OPTIONS',
+      'access-control-allow-headers': 'content-type, x-cschedule-client-import-token',
     },
     body: JSON.stringify(body),
   }
 }
 
 function assertAuthorized(event) {
-  if (event.source === 'frontend_first_import') {
-    return
+  if (event?.source === FRONTEND_IMPORT_SOURCE) {
+    return assertFrontendImportAuthorized(event)
   }
 
-  const secret = process.env.CSCHEDULE_WORKER_SECRET
+  const secret = String(process.env.CSCHEDULE_WORKER_SECRET || '').trim()
 
   if (!secret) {
-    return
+    throw new Error('WORKER_SECRET_NOT_CONFIGURED')
   }
 
   const received =
-    event.workerSecret ||
-    event.secret ||
     event.headers?.['x-cschedule-worker-secret'] ||
     event.headers?.['X-CSchedule-Worker-Secret']
 
   if (received !== secret) {
     throw new Error('WORKER_UNAUTHORIZED')
   }
+}
+
+function assertFrontendImportAuthorized(event) {
+  const secret = String(process.env.CSCHEDULE_WORKER_SECRET || '').trim()
+
+  if (!secret) {
+    throw new Error('WORKER_SECRET_NOT_CONFIGURED')
+  }
+
+  const token =
+    event.clientImportToken ||
+    event.headers?.['x-cschedule-client-import-token'] ||
+    event.headers?.['X-CSchedule-Client-Import-Token']
+  const payload = verifyClientImportToken(token, secret)
+
+  if (
+    payload.source !== FRONTEND_IMPORT_SOURCE ||
+    payload.schoolId !== event.schoolId ||
+    payload.providerId !== event.providerId ||
+    payload.contextId !== event.contextId
+  ) {
+    throw new Error('CLIENT_IMPORT_TOKEN_INVALID')
+  }
+
+  const requestedTargets = normalizeTargets(event.targets)
+  const allowedTargets = normalizeTargets(payload.targets)
+
+  if (
+    requestedTargets.length === 0 ||
+    requestedTargets.some((target) => !allowedTargets.includes(target))
+  ) {
+    throw new Error('CLIENT_IMPORT_TARGET_UNAUTHORIZED')
+  }
+
+  return payload
+}
+
+function verifyClientImportToken(token, secret) {
+  const [encodedPayload, signature] = String(token || '').split('.')
+
+  if (!encodedPayload || !signature) {
+    throw new Error('CLIENT_IMPORT_TOKEN_REQUIRED')
+  }
+
+  const expected = hmacHex(secret, encodedPayload)
+
+  if (!safeEqualHex(signature, expected)) {
+    throw new Error('CLIENT_IMPORT_TOKEN_INVALID')
+  }
+
+  const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8'))
+  const expiresAtMs = Date.parse(payload.expiresAt || '')
+
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs + CLIENT_IMPORT_CLOCK_SKEW_MS <= Date.now()) {
+    throw new Error('CLIENT_IMPORT_TOKEN_EXPIRED')
+  }
+
+  return payload
+}
+
+function createCloudProof(event, cacheResults) {
+  const secret = String(process.env.CSCHEDULE_WORKER_SECRET || '').trim()
+  const issuedAt = new Date().toISOString()
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  const proof = {
+    version: 1,
+    source: FRONTEND_IMPORT_SOURCE,
+    schoolId: event.schoolId,
+    providerId: event.providerId,
+    contextId: event.contextId,
+    targets: normalizeTargets(event.targets),
+    resultHash: hashCacheResultsForProof(cacheResults),
+    issuedAt,
+    expiresAt,
+  }
+
+  return {
+    ...proof,
+    signature: hmacHex(secret, stableStringify(proof)),
+  }
+}
+
+function normalizeCacheResultsForProof(cacheResults) {
+  return (Array.isArray(cacheResults) ? cacheResults : []).map((item) => {
+    const result = {
+      target: item.target,
+      cacheData: item.cacheData,
+    }
+
+    if (typeof item.termId === 'string' && item.termId) {
+      result.termId = item.termId
+    }
+
+    if (typeof item.parsedCount === 'number') {
+      result.parsedCount = item.parsedCount
+    }
+
+    if (typeof item.sourceHash === 'string' && item.sourceHash) {
+      result.sourceHash = item.sourceHash
+    }
+
+    if (typeof item.syncedAt === 'string' && item.syncedAt) {
+      result.syncedAt = item.syncedAt
+    }
+
+    if (Array.isArray(item.warnings)) {
+      result.warnings = item.warnings
+    }
+
+    return result
+  })
+}
+
+function hashCacheResultsForProof(cacheResults) {
+  return crypto
+    .createHash('sha256')
+    .update(stableStringify(normalizeCacheResultsForProof(cacheResults)))
+    .digest('hex')
+}
+
+function hmacHex(secret, value) {
+  return crypto.createHmac('sha256', secret).update(value).digest('hex')
+}
+
+function safeEqualHex(left, right) {
+  if (!/^[0-9a-f]+$/i.test(String(left || ''))) {
+    return false
+  }
+
+  const leftBuffer = Buffer.from(String(left), 'hex')
+  const rightBuffer = Buffer.from(String(right), 'hex')
+
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer)
+}
+
+function stableStringify(value) {
+  return JSON.stringify(normalizeForJson(value))
+}
+
+function normalizeForJson(value) {
+  if (Array.isArray(value)) {
+    return value.map(normalizeForJson)
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value
+  }
+
+  return Object.keys(value).sort().reduce((result, key) => {
+    if (value[key] !== undefined) {
+      result[key] = normalizeForJson(value[key])
+    }
+
+    return result
+  }, {})
 }
 
 function createCookieJar() {
@@ -139,7 +297,9 @@ function decodeBody(buffer, encoding, contentType) {
 
 function createHttpClient(baseUrl) {
   const jar = createCookieJar()
-  const httpsAgent = new https.Agent({ rejectUnauthorized: false })
+  const httpsAgent = process.env.ALLOW_INSECURE_EDU_TLS === 'true'
+    ? new https.Agent({ rejectUnauthorized: false })
+    : undefined
 
   async function request(method, path, body, options = {}) {
     const url = new URL(path || '/', baseUrl)
@@ -2210,7 +2370,12 @@ async function runWtbuProviderSync(event) {
     )
   }
 
-  return ok({ cacheResults })
+  return ok({
+    cacheResults,
+    ...(event.source === FRONTEND_IMPORT_SOURCE
+      ? { cloudProof: createCloudProof(event, cacheResults) }
+      : {}),
+  })
 }
 
 async function handleEvent(event) {
@@ -2251,10 +2416,20 @@ exports.main = async function main(event) {
       .toUpperCase()
 
     if (method !== 'POST') {
+      if (method === 'OPTIONS') {
+        return httpResponse(204, {})
+      }
+
       return httpResponse(405, fail('METHOD_NOT_ALLOWED', 'Only POST is supported'))
     }
 
-    return httpResponse(200, await handleEvent(parseHttpBody(event)))
+    const body = parseHttpBody(event)
+    const result = await handleEvent({
+      ...body,
+      headers: event.headers || {},
+    })
+
+    return httpResponse(result.ok ? 200 : 400, result)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'CLOUD_SYNC_FAILED'
 

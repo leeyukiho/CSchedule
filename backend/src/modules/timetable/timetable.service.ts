@@ -52,30 +52,48 @@ export class TimetableService {
       account.school.config,
       account.providerId,
     )
-    const cache = await this.prisma.courseCache.findFirst({
-      where: {
-        accountId,
-        ...(termId ? { termId } : {}),
-      },
-      orderBy: { syncedAt: 'desc' },
-    })
-    const cacheSectionTimes = this.asArray(cache?.sectionTimesJson)
+    const cacheWhere = {
+      accountId,
+      ...(termId ? { termId } : {}),
+    }
+    const cacheSummary = knownHash
+      ? await this.prisma.courseCache.findFirst({
+          where: cacheWhere,
+          select: {
+            termId: true,
+            sectionTimesJson: true,
+            sourceHash: true,
+            syncedAt: true,
+          },
+          orderBy: { syncedAt: 'desc' },
+        })
+      : null
+    const summarySectionTimes = this.asArray(cacheSummary?.sectionTimesJson)
 
     if (
-      cache?.sourceHash &&
+      cacheSummary?.sourceHash &&
       knownHash &&
-      knownHash === cache.sourceHash &&
-      (cacheSectionTimes.length || !configuredSectionTimes.length) &&
+      knownHash === cacheSummary.sourceHash &&
+      (summarySectionTimes.length || !configuredSectionTimes.length) &&
       !sectionTimeProfiles.length
     ) {
       return {
-        termId: this.cleanTermLabel(cache.termId ?? termId),
+        termId: this.cleanTermLabel(cacheSummary.termId ?? termId),
         termStarts: this.getTermStarts(account.school.config),
-        sourceHash: cache.sourceHash,
+        sourceHash: cacheSummary.sourceHash,
         notModified: true,
-        syncedAt: cache.syncedAt.toISOString(),
+        syncedAt: cacheSummary.syncedAt.toISOString(),
       }
     }
+
+    const cache =
+      knownHash && cacheSummary === null
+        ? null
+        : await this.prisma.courseCache.findFirst({
+            where: cacheWhere,
+            orderBy: { syncedAt: 'desc' },
+          })
+    const cacheSectionTimes = this.asArray(cache?.sectionTimesJson)
 
     const display = this.providerDisplay.getDisplay(account.school.config, account.providerId, 'course')
     const session = {

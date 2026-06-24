@@ -308,12 +308,16 @@ export class SyncService implements OnModuleInit {
     }
   }
 
-  async getSyncJob(jobId: string, includeCache = false): Promise<SyncJobResponse> {
+  async getSyncJob(
+    jobId: string,
+    includeCache = false,
+    accountId?: string,
+  ): Promise<SyncJobResponse> {
     const record = await this.prisma.syncRecord.findUnique({
       where: { id: jobId },
     })
 
-    if (!record) {
+    if (!record || (accountId && record.accountId !== accountId)) {
       throw new NotFoundException('Sync job not found')
     }
 
@@ -793,7 +797,7 @@ export class SyncService implements OnModuleInit {
   }
 
   private canRunCloudFunction(cloudFunction: { functionName?: string; url?: string }) {
-    return Boolean(cloudFunction.url)
+    return Boolean(cloudFunction.url && process.env.CSCHEDULE_WORKER_SECRET)
   }
 
 }

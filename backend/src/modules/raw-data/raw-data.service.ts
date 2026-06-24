@@ -114,7 +114,7 @@ export class RawDataService {
 
     const sourceHash = this.createSourceHash(input);
     const syncedAt = new Date();
-    const responseMode = input.responseMode ?? "full";
+    const responseMode = input.responseMode ?? "status_only";
     const requiredTargets = this.normalizeRequiredTargets(input.requiredTargets);
     const completedTargets = this.normalizeCompletedTargets([
       ...(input.completedTargets ?? []),

@@ -14,7 +14,6 @@
 | --- | --- |
 | `TARO_APP_API_BASE_URL` | 后端 API 地址，需包含 `/api/v1` |
 | `TARO_APP_ID` | 小程序 AppID，没有可先不填 |
-| `TARO_APP_CLOUDBASE_ENV_ID` | CloudBase 环境 ID，学校配置中的专用同步函数会通过该环境调用 |
 
 后端：复制 `backend/.env.example` 为 `backend/.env` 后修改。
 
@@ -25,6 +24,10 @@
 | `DATABASE_URL` | PostgreSQL 数据库连接地址 |
 | `CORS_ORIGIN` | 允许访问后端的前端地址 |
 | `ADMIN_API_KEY` | 管理接口密钥，生产环境必须改成强随机值 |
+| `ADMIN_CORS_ORIGIN` | 允许访问管理接口的后台地址 |
+| `CREDENTIAL_VAULT_KEY` | 教务账号密码入库前的加密密钥 |
+| `CSCHEDULE_WORKER_SECRET` | 后端调用云函数的内部密钥，只通过 `x-cschedule-worker-secret` 请求头发送 |
+| `ACCOUNT_ACCESS_TOKEN_TTL_DAYS` | 普通账号访问 token 有效期 |
 | `SYNC_ACCOUNT_COOLDOWN_MS` | 同一账号同一 target 手动同步冷却时间 |
 
 CloudBase 云函数部署见 [`docs/cloudbase-functions.md`](docs/cloudbase-functions.md)。

@@ -13,19 +13,15 @@
 
 `cloudbaserc.json` 中的 `envId` 和 `region` 需要指向当前 CloudBase 环境。
 
-前端只需要配置：
+客户端不需要配置 CloudBase 环境 ID，也不直接调用云函数。后端自动同步调用学校专用云函数，后端和云函数都需要配置同一个内部密钥：
 
 ```bash
-TARO_APP_CLOUDBASE_ENV_ID=你的环境ID
+CSCHEDULE_WORKER_SECRET=change-me-to-a-secure-random-worker-secret
 ```
 
-后端自动同步也调用同一组学校专用云函数，不再直接请求学校教务外网。后端需要配置：
+后端同步通过 `cloudFunctions.<target>.url` 调用 HTTP 触发器，并使用 `x-cschedule-worker-secret` 做服务端鉴权。
 
-```bash
-CSCHEDULE_WORKER_SECRET=可选的后端到云函数共享密钥
-```
-
-后端同步只通过 `cloudFunctions.<target>.url` 调用 HTTP 触发器；`functionName` 仍可用于小程序首次导入直接调用云函数。
+首次绑定导入可以由前端直接调用云函数 HTTP URL，用来降低应用服务器带宽压力。这个链路不能携带 worker secret：前端先从后端 `login-context` 获取短期 `clientImportToken`，云函数校验该令牌后登录学校系统并返回 `cloudProof` 签名，前端再把 `cacheResults + cloudProof` 提交给后端完成账号绑定和缓存入库。后端只接受签名匹配的云函数结果。
 
 具体函数名由后端学校配置下发，例如 `connected-schools.json` 中的：
 
@@ -33,7 +29,7 @@ CSCHEDULE_WORKER_SECRET=可选的后端到云函数共享密钥
 {
   "providerConfig": {
     "cloudFunctions": {
-      "course": { "functionName": "syncWtbu" }
+      "course": { "url": "https://your-cloud-function-url.example.com" }
     }
   }
 }
@@ -52,13 +48,11 @@ cloudbase fn deploy syncWdu --dir cloudfunctions/syncWdu
 
 ```bash
 cloudbase login
-cloudbase fn run --path cloudfunctions/syncWtbu --params "{\"source\":\"frontend_first_import\",\"schoolId\":\"wtbu\",\"providerId\":\"wtbu\",\"target\":\"course\",\"username\":\"学号\",\"password\":\"密码\"}"
-cloudbase fn run --path cloudfunctions/syncBwu --params "{\"source\":\"frontend_first_import\",\"schoolId\":\"bwu\",\"providerId\":\"bwu\",\"targets\":[\"course\",\"profile\",\"score\",\"exam\"],\"username\":\"学号\",\"password\":\"密码\"}"
-cloudbase fn run --path cloudfunctions/syncWdu --params "{\"source\":\"frontend_first_import\",\"schoolId\":\"wdu\",\"providerId\":\"wdu\",\"targets\":[\"course\",\"profile\",\"score\",\"exam\"],\"username\":\"学号\",\"password\":\"密码\"}"
+curl -X POST "https://your-cloud-function-url.example.com" -H "content-type: application/json" -H "x-cschedule-worker-secret: $CSCHEDULE_WORKER_SECRET" -d "{\"source\":\"backend_auto_sync\",\"schoolId\":\"wtbu\",\"providerId\":\"wtbu\",\"targets\":[\"course\",\"profile\",\"score\",\"exam\"],\"username\":\"学号\",\"password\":\"密码\"}"
 ```
 
 ## 数据边界
 
-云函数只返回标准 `cacheResults` 数组。前端把 `cacheResults` 提交给后端保存，不再同时传 `cacheData` 和 `cacheResults`。
+云函数只返回标准 `cacheResults` 数组，并只返回给后端。客户端不接收、不转发云函数的凭据同步结果。
 
 WebView 导入只接受学校页面返回的结构化 JSON，并直接上传后端 `raw-data` 接口，不再通过通用云 parser 中转。

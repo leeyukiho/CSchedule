@@ -18,12 +18,18 @@ export interface UpdateNotificationInput {
   active?: boolean
 }
 
+interface NotificationPageOptions {
+  limit?: number
+  offset?: number
+}
+
 @Injectable()
 export class NotificationsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listPendingForAccount(accountId: string) {
+  async listPendingForAccount(accountId: string, limitInput?: number) {
     const account = await this.ensureAccount(accountId)
+    const limit = this.normalizeLimit(limitInput, 5, 10)
 
     const items = await this.prisma.adminNotification.findMany({
       where: {
@@ -37,8 +43,15 @@ export class NotificationsService {
           none: { accountId },
         },
       },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        targetType: true,
+        createdAt: true,
+      },
       orderBy: { createdAt: 'asc' },
-      take: 10,
+      take: limit,
     })
 
     return {
@@ -47,8 +60,10 @@ export class NotificationsService {
     }
   }
 
-  async listForAccount(accountId: string) {
+  async listForAccount(accountId: string, options: NotificationPageOptions = {}) {
     const account = await this.ensureAccount(accountId)
+    const limit = this.normalizeLimit(options.limit, 20, 50)
+    const offset = Math.max(Number(options.offset) || 0, 0)
 
     const items = await this.prisma.adminNotification.findMany({
       where: {
@@ -68,7 +83,12 @@ export class NotificationsService {
           },
         ],
       },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        targetType: true,
+        createdAt: true,
         receipts: {
           where: { accountId },
           select: { readAt: true },
@@ -76,15 +96,20 @@ export class NotificationsService {
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      take: limit + 1,
+      skip: offset,
     })
+    const pageItems = items.slice(0, limit)
 
     return {
-      items: items.map((item) => ({
+      items: pageItems.map((item) => ({
         ...this.toPublicNotification(item),
         readAt: item.receipts[0]?.readAt ?? null,
       })),
-      total: items.length,
+      total: pageItems.length,
+      limit,
+      offset,
+      hasMore: items.length > limit,
     }
   }
 
@@ -92,6 +117,12 @@ export class NotificationsService {
     await this.ensureAccount(accountId)
     const notification = await this.prisma.adminNotification.findUnique({
       where: { id: notificationId },
+      select: {
+        active: true,
+        targetType: true,
+        targetSchoolId: true,
+        targetAccountId: true,
+      },
     })
 
     if (!notification || !(await this.canAccountRead(notification, accountId))) {
@@ -111,8 +142,6 @@ export class NotificationsService {
         accountId,
       },
     })
-
-    return { ok: true }
   }
 
   async listAdmin(params: {
@@ -369,6 +398,16 @@ export class NotificationsService {
   private normalizeOptionalText(value: unknown) {
     const text = this.normalizeText(value)
     return text || null
+  }
+
+  private normalizeLimit(value: unknown, fallback: number, max: number) {
+    const limit = Number(value)
+
+    if (!Number.isInteger(limit) || limit <= 0) {
+      return fallback
+    }
+
+    return Math.min(limit, max)
   }
 
 }

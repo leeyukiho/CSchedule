@@ -97,6 +97,10 @@ export class StudentAccountsService {
         sessionExpireAt: null,
       },
     })
+    await this.prisma.accountAccessToken.updateMany({
+      where: { accountId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    })
 
     return { success: true }
   }
@@ -168,20 +172,18 @@ export class StudentAccountsService {
       supportsCourse &&
       canUseSavedPassword &&
       account.credentialSaveMode === 'password_vault' &&
-      hasCloudCourse
+      hasCloudCourse &&
+      canRunCourse
     ) {
       return {
         importMode: 'password_server',
         syncMode: 'cloud_worker',
         cloudParserRequired: false,
         localCachePreferred: false,
-        scheduledSyncSupported: canRunCourse,
+        scheduledSyncSupported: true,
         passwordVaultRequired: false,
         passwordVaultOptional: true,
-        manualSyncRequired: !canRunCourse,
-        reason: canRunCourse
-          ? 'This account can use saved credentials for automatic sync.'
-          : 'Cloud sync is configured, but the backend CloudBase environment is not available.',
+        manualSyncRequired: false,
       }
     }
 
@@ -195,9 +197,6 @@ export class StudentAccountsService {
       scheduledSyncSupported: false,
       passwordVaultRequired: false,
       manualSyncRequired: true,
-      reason: canRunCourse
-        ? 'This account cannot use saved credentials for automatic sync.'
-        : 'Cloud sync environment is not configured for this school.',
     }
   }
 

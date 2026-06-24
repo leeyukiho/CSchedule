@@ -1,5 +1,6 @@
 import { requestApi } from './client'
 import {
+  CloudImportProof,
   DataTarget,
   FeatureCacheResponse,
   TimetableCacheResponse,
@@ -12,7 +13,6 @@ export interface LoginSubmitRequest {
   password?: string
   captcha?: string
   credentialSaveMode?: 'none' | 'password_vault'
-  wechatOpenid?: string
   verifiedByCloud?: boolean
   cacheResults?: Array<{
     target: DataTarget
@@ -23,6 +23,7 @@ export interface LoginSubmitRequest {
     syncedAt?: string
     warnings?: string[]
   }>
+  cloudProof?: CloudImportProof
   cloudWarnings?: string[]
   extra?: Record<string, unknown>
 }
@@ -37,6 +38,8 @@ export interface LoginSubmitResponse {
   cacheId?: string
   parsedCount?: number
   savedTargets?: DataTarget[]
+  accountAccessToken?: string
+  accountAccessTokenExpiresAt?: string
   cacheResults?: Array<{
     target: DataTarget
     cacheData: TimetableCacheResponse | FeatureCacheResponse

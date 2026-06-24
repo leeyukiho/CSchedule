@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common'
 import { ReminderType } from '@prisma/client'
 
+import { AccountAccessGuard } from '../accounts/account-access-token.service'
 import { AdminGuard } from '../admin/admin.guard'
 import { RemindersService } from './reminders.service'
 
@@ -55,6 +56,7 @@ export class RemindersAdminController {
 }
 
 @Controller('account/:accountId/reminders')
+@UseGuards(AccountAccessGuard)
 export class AccountRemindersController {
   constructor(private readonly reminders: RemindersService) {}
 

@@ -170,10 +170,18 @@ export type CloudSyncFunctionMap = Partial<
   Record<DataTarget, CloudSyncFunctionConfig>
 >
 
+export interface FrontendCloudImportConfig {
+  targets: DataTarget[]
+  cloudFunction: CloudSyncFunctionConfig
+  clientImportToken?: string
+  clientImportTokenExpiresAt?: string
+}
+
 export interface SchoolSyncStrategy {
   importMode: ImportMode
   syncMode: SyncMode
   cloudFunctions?: CloudSyncFunctionMap
+  frontendCloudImport?: FrontendCloudImportConfig
   cloudParserRequired: boolean
   localCachePreferred: boolean
   scheduledSyncSupported: boolean

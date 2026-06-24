@@ -19,7 +19,7 @@ export class SchoolsController {
       enabledOnly !== 'false',
       limit ? Number(limit) : undefined,
       offset ? Number(offset) : undefined,
-      fields === 'summary' ? 'summary' : 'full',
+      fields === 'full' ? 'full' : 'summary',
     )
   }
 

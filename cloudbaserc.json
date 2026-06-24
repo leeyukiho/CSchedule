@@ -1,6 +1,7 @@
 {
   "envId": "unilinkcore-d5g3fcm1ja9274245",
   "region": "ap-shanghai",
+  "functionRoot": "cloudfunctions",
   "functions": [
     {
       "name": "syncWtbu",

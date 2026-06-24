@@ -12,6 +12,19 @@ export interface LoginCacheResult {
   warnings?: string[]
 }
 
+export interface LoginCloudProof {
+  version: 1
+  source: 'frontend_cloud_import'
+  schoolId: string
+  providerId: string
+  contextId: string
+  targets: DataTarget[]
+  resultHash: string
+  issuedAt: string
+  expiresAt: string
+  signature: string
+}
+
 export interface LoginSubmitRequest {
   accountId?: string
   contextId: string
@@ -19,9 +32,9 @@ export interface LoginSubmitRequest {
   password?: string
   captcha?: string
   credentialSaveMode?: 'none' | 'password_vault'
-  wechatOpenid?: string
   verifiedByCloud?: boolean
   cacheResults?: LoginCacheResult[]
+  cloudProof?: LoginCloudProof
   cloudWarnings?: string[]
   extra?: Record<string, unknown>
 }
@@ -40,4 +53,6 @@ export interface LoginSubmitResponse {
     target: DataTarget
     cacheData: Record<string, unknown>
   }>
+  accountAccessToken?: string
+  accountAccessTokenExpiresAt?: string
 }

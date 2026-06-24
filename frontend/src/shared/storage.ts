@@ -21,6 +21,8 @@ export interface StoredDataCache<TData = unknown> {
 export interface StoredAuthState {
   accountId: string
   schoolId: string
+  accountAccessToken?: string
+  accountAccessTokenExpiresAt?: string
   updatedAt: string
 }
 
@@ -35,6 +37,14 @@ function normalizeAuthState(value: unknown): StoredAuthState {
     return {
       accountId,
       schoolId: state.schoolId,
+      accountAccessToken:
+        typeof state.accountAccessToken === 'string'
+          ? state.accountAccessToken
+          : undefined,
+      accountAccessTokenExpiresAt:
+        typeof state.accountAccessTokenExpiresAt === 'string'
+          ? state.accountAccessTokenExpiresAt
+          : undefined,
       updatedAt: typeof state.updatedAt === 'string' ? state.updatedAt : '',
     }
   }
@@ -50,10 +60,44 @@ export function getStoredAccountId() {
   return getStoredAuthState().accountId
 }
 
-export function setStoredAccountId(accountId: string, schoolId = '') {
+export function getStoredAccountAccessToken(accountId = getStoredAccountId()) {
+  const state = getStoredAuthState()
+
+  if (!state.accountAccessToken || (accountId && state.accountId !== accountId)) {
+    return ''
+  }
+
+  if (
+    state.accountAccessTokenExpiresAt &&
+    Date.parse(state.accountAccessTokenExpiresAt) <= Date.now()
+  ) {
+    return ''
+  }
+
+  return state.accountAccessToken
+}
+
+export function setStoredAccountId(
+  accountId: string,
+  schoolId = '',
+  accountAccessToken?: string,
+  accountAccessTokenExpiresAt?: string,
+) {
+  const current = getStoredAuthState()
+  const canReuseCurrentToken = current.accountId === accountId
+  const token = accountAccessToken || (canReuseCurrentToken ? current.accountAccessToken : undefined)
+  const expiresAt =
+    accountAccessToken
+      ? accountAccessTokenExpiresAt
+      : canReuseCurrentToken
+        ? current.accountAccessTokenExpiresAt
+        : undefined
+
   Taro.setStorageSync(AUTH_STATE_KEY, {
     accountId,
     schoolId,
+    ...(token ? { accountAccessToken: token } : {}),
+    ...(expiresAt ? { accountAccessTokenExpiresAt: expiresAt } : {}),
     updatedAt: new Date().toISOString(),
   })
 }

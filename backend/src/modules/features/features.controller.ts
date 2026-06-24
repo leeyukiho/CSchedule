@@ -1,8 +1,10 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common'
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common'
 
+import { AccountAccessGuard } from '../accounts/account-access-token.service'
 import { FeaturesService } from './features.service'
 
 @Controller('account/:accountId')
+@UseGuards(AccountAccessGuard)
 export class FeaturesController {
   constructor(private readonly featuresService: FeaturesService) {}
 

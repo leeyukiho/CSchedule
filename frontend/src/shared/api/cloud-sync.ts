@@ -5,14 +5,28 @@ import {
   DataTarget,
 } from './types'
 
+export interface CloudImportProof {
+  version: 1
+  source: 'frontend_cloud_import'
+  schoolId: string
+  providerId: string
+  contextId: string
+  targets: DataTarget[]
+  resultHash: string
+  issuedAt: string
+  expiresAt: string
+  signature: string
+}
+
 export interface CloudCredentialSyncRequest {
   schoolId: string
   providerId: string
+  contextId: string
   targets: DataTarget[]
   username: string
   password: string
   semesterId?: string
-  source?: 'frontend_first_import' | 'backend_auto_sync'
+  clientImportToken?: string
   cloudFunction?: CloudSyncFunctionConfig
 }
 
@@ -28,6 +42,7 @@ export interface CloudCredentialCacheResult {
 
 export interface CloudCredentialSyncResult {
   cacheResults: CloudCredentialCacheResult[]
+  cloudProof?: CloudImportProof
 }
 
 interface CloudCredentialSyncResponse {
@@ -37,8 +52,6 @@ interface CloudCredentialSyncResponse {
   errorCode?: string
   errorMessage?: string
 }
-
-let cloudInitialized = false
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) {
@@ -58,22 +71,6 @@ function getErrorMessage(error: unknown) {
   }
 
   return String(error || '')
-}
-
-function getCloudApi() {
-  const cloud = (Taro as unknown as { cloud?: unknown }).cloud
-
-  return cloud && typeof cloud === 'object'
-    ? (cloud as {
-        init?: (options: { env: string }) => void
-        callFunction?: (options: {
-          name: string
-          data: Omit<CloudCredentialSyncRequest, 'cloudFunction'>
-        }) => Promise<{
-          result?: CloudCredentialSyncResponse | CloudCredentialSyncResult
-        }>
-      })
-    : null
 }
 
 function unwrapCloudCredentialSyncResult(
@@ -107,93 +104,61 @@ function unwrapCloudCredentialSyncResult(
     throw new Error('CLOUD_SYNC_EMPTY_RESULT')
   }
 
-  return { cacheResults }
+  return {
+    cacheResults,
+    cloudProof: result.cloudProof,
+  }
 }
 
-export function hasCloudCredentialSync(cloudFunction?: CloudSyncFunctionConfig) {
-  return Boolean(
-    cloudFunction?.url ||
-      (cloudFunction?.functionName &&
-        process.env.TARO_APP_CLOUDBASE_ENV_ID &&
-        getCloudApi()?.callFunction),
-  )
+export function hasCloudCredentialSync(
+  cloudFunction?: CloudSyncFunctionConfig,
+  clientImportToken?: string,
+) {
+  return Boolean(cloudFunction?.url && clientImportToken)
 }
 
 export async function runCredentialSyncWithCloud(
   request: CloudCredentialSyncRequest,
 ): Promise<CloudCredentialSyncResult> {
-  const { cloudFunction, ...syncRequest } = request
-  const payload = {
-    source: 'frontend_first_import' as const,
-    ...syncRequest,
-  }
+  const { cloudFunction, clientImportToken, ...syncRequest } = request
   const syncUrl = cloudFunction?.url
-  const envId = process.env.TARO_APP_CLOUDBASE_ENV_ID
-  const cloud = getCloudApi()
 
-  if (cloudFunction?.functionName && envId && cloud?.callFunction) {
-    if (!cloudInitialized) {
-      cloud.init?.({ env: envId })
-      cloudInitialized = true
-    }
-
-    try {
-      const response = await cloud.callFunction({
-        name: cloudFunction.functionName,
-        data: payload,
-      })
-
-      return unwrapCloudCredentialSyncResult(response.result)
-    } catch (error) {
-      if (!syncUrl) {
-        throw new Error(getErrorMessage(error) || 'CLOUD_SYNC_CALL_FAILED')
-      }
-    }
-  }
-
-  if (syncUrl) {
-    let response: Taro.request.SuccessCallbackResult<
-      CloudCredentialSyncResponse | CloudCredentialSyncResult
-    >
-
-    try {
-      response = await Taro.request<
-        CloudCredentialSyncResponse | CloudCredentialSyncResult
-      >({
-        url: syncUrl,
-        method: 'POST',
-        data: payload,
-        timeout: 20000,
-        header: { 'content-type': 'application/json' },
-      })
-    } catch (error) {
-      throw new Error(getErrorMessage(error) || 'CLOUD_SYNC_REQUEST_FAILED')
-    }
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw new Error(`CLOUD_SYNC_FAILED: ${response.statusCode}`)
-    }
-
-    return unwrapCloudCredentialSyncResult(response.data)
-  }
-
-  if (!cloudFunction?.functionName) {
+  if (!syncUrl) {
     throw new Error('CLOUD_SYNC_FUNCTION_NOT_CONFIGURED')
   }
 
-  if (!envId || !cloud?.callFunction) {
-    throw new Error('CLOUD_SYNC_NOT_CONFIGURED')
+  if (!clientImportToken) {
+    throw new Error('CLOUD_IMPORT_TOKEN_NOT_CONFIGURED')
   }
 
-  if (!cloudInitialized) {
-    cloud.init?.({ env: envId })
-    cloudInitialized = true
+  let response: Taro.request.SuccessCallbackResult<
+    CloudCredentialSyncResponse | CloudCredentialSyncResult
+  >
+
+  try {
+    response = await Taro.request<
+      CloudCredentialSyncResponse | CloudCredentialSyncResult
+    >({
+      url: syncUrl,
+      method: 'POST',
+      data: {
+        source: 'frontend_cloud_import',
+        ...syncRequest,
+        clientImportToken,
+      },
+      timeout: 30000,
+      header: {
+        'content-type': 'application/json',
+        'x-cschedule-client-import-token': clientImportToken,
+      },
+    })
+  } catch (error) {
+    throw new Error(getErrorMessage(error) || 'CLOUD_SYNC_REQUEST_FAILED')
   }
 
-  const response = await cloud.callFunction({
-    name: cloudFunction.functionName,
-    data: payload,
-  })
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new Error(`CLOUD_SYNC_FAILED: ${response.statusCode}`)
+  }
 
-  return unwrapCloudCredentialSyncResult(response.result)
+  return unwrapCloudCredentialSyncResult(response.data)
 }
