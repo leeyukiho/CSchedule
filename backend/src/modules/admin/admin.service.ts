@@ -127,7 +127,7 @@ export class AdminService {
           ),
           sectionTimes: this.getSectionTimes(school.config),
           sectionTimeProfiles: this.getSectionTimeProfiles(school.config),
-          courseBuildings: this.getCourseBuildings(termMap.get(school.id)?.courseBuildings),
+          courseBuildings: this.getCourseBuildings(termMap.get(school.id)?.courseBuildings, school.providerId),
           userCount: allUserCountMap.get(school.id) ?? 0,
         })),
         total,
@@ -168,7 +168,7 @@ export class AdminService {
         ),
         sectionTimes: this.getSectionTimes(school.config),
         sectionTimeProfiles: this.getSectionTimeProfiles(school.config),
-        courseBuildings: this.getCourseBuildings(termMap.get(school.id)?.courseBuildings),
+        courseBuildings: this.getCourseBuildings(termMap.get(school.id)?.courseBuildings, school.providerId),
         userCount: userCountMap.get(school.id) ?? 0,
       })),
       total,
@@ -888,11 +888,61 @@ export class AdminService {
     terms.courseBuildings = buildings
   }
 
-  private getCourseBuildings(buildings?: Map<string, number>) {
+  private getCourseBuildings(buildings?: Map<string, number>, providerId?: string | null) {
+    if (providerId === 'bwu') {
+      return [...this.normalizeBwuCourseBuildings(buildings).entries()]
+        .map(([name, count]) => ({ name, count }))
+    }
+
     return [...(buildings ?? new Map<string, number>()).entries()]
       .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], 'zh-CN'))
       .slice(0, 50)
       .map(([name, count]) => ({ name, count }))
+  }
+
+  private normalizeBwuCourseBuildings(buildings?: Map<string, number>) {
+    const normalized = new Map<string, number>([
+      ['教学楼1', 0],
+      ['教学楼2', 0],
+      ['经管中心', 0],
+      ['体育课', 0],
+    ])
+
+    for (const [name, count] of buildings ?? new Map<string, number>()) {
+      const canonical = this.getBwuCanonicalBuilding(name)
+
+      if (canonical) {
+        normalized.set(canonical, (normalized.get(canonical) ?? 0) + count)
+      }
+    }
+
+    return normalized
+  }
+
+  private getBwuCanonicalBuilding(value: string) {
+    const text = value.replace(/\s+/g, '').toLocaleLowerCase()
+
+    if (!text) {
+      return ''
+    }
+
+    if (/(体育课|体育场|轮滑场|操场|体育馆)/.test(text)) {
+      return '体育课'
+    }
+
+    if (/(经管中心|经济管理中心|研究生|实验教学中心|实验教学楼区|南北实验楼|科研楼)/.test(text)) {
+      return '经管中心'
+    }
+
+    if (/(教学楼2|教学楼二|第二教学楼|二教|2教)/.test(text)) {
+      return '教学楼2'
+    }
+
+    if (/(教学楼1|教学楼一|第一教学楼|一教|1教)/.test(text)) {
+      return '教学楼1'
+    }
+
+    return ''
   }
 
   private extractCourseBuilding(value: unknown) {

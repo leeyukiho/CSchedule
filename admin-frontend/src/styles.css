@@ -1289,6 +1289,29 @@ tbody tr:hover {
   min-width: 0;
 }
 
+.section-time-import {
+  display: grid;
+  gap: 5px;
+  padding: 10px 10px 0;
+}
+
+.section-time-import-input {
+  min-height: 74px;
+  max-height: 150px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.compact-section-time-import {
+  padding: 0;
+}
+
+.field-error {
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .section-time-head,
 .section-time-row {
   display: grid;

@@ -23,6 +23,7 @@ import {
   Settings2,
   Trash2,
   TriangleAlert,
+  Upload,
   Users,
   X,
 } from 'lucide-react'
@@ -1703,6 +1704,34 @@ function sectionRowsToItems(rows: SectionTimeRow[]) {
     .sort((left, right) => left.section - right.section)
 }
 
+function normalizeSectionTimeValue(value: string) {
+  const match = value.trim().match(/^(\d{1,2})\s*:\s*(\d{2})$/)
+
+  if (!match) return ''
+
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return ''
+  }
+
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function parseSectionTimeImportRows(value: string): SectionTimeRow[] {
+  const matches = [...value.matchAll(/(\d{1,2}\s*:\s*\d{2})\s*[-~—至到]\s*(\d{1,2}\s*:\s*\d{2})/g)]
+
+  return matches
+    .map((match, index) => ({
+      id: `section-import-${Date.now()}-${index}`,
+      section: String(index + 1),
+      start: normalizeSectionTimeValue(match[1]),
+      end: normalizeSectionTimeValue(match[2]),
+    }))
+    .filter((row) => row.start && row.end)
+}
+
 function createSectionTimeProfileRows(profiles: unknown): SectionTimeProfileRow[] {
   const source = Array.isArray(profiles) ? profiles as Array<Partial<SectionTimeProfile>> : []
 
@@ -1734,17 +1763,13 @@ function createSingleBuildingProfileRows(profiles: unknown, buildings: CourseBui
 
     if (!name || usedBuildingKeys.has(key)) return
 
-    const sourceBuildingNames = splitBuildingKeywords(source.buildingKeywords || source.name)
-    const profileId = sourceBuildingNames.length <= 1 && source.profileId.trim()
-      ? getUniqueProfileId(source.profileId.trim(), rows)
-      : getUniqueProfileId(createSectionTimeProfileId(name, rows.length), rows)
-
     rows.push({
       ...source,
       id: `${source.id}-building-${key || rows.length}`,
-      profileId,
+      profileId: source.profileId.trim()
+        ? getUniqueProfileId(source.profileId.trim(), rows)
+        : getUniqueProfileId(createSectionTimeProfileId(name, rows.length), rows),
       name,
-      buildingKeywords: name,
       sectionRows: source.sectionRows.map((row, rowIndex) => ({
         ...row,
         id: `${row.id}-${key || sourceIndex}-${rowIndex}`,
@@ -1757,7 +1782,7 @@ function createSingleBuildingProfileRows(profiles: unknown, buildings: CourseBui
     const name = building.name.trim()
     const key = normalizeBuildingKeyword(name)
     const sourceIndex = sourceRows.findIndex((profile) =>
-      splitBuildingKeywords(profile.buildingKeywords || profile.name)
+      [profile.name, ...splitBuildingKeywords(profile.buildingKeywords)]
         .some((keyword) => normalizeBuildingKeyword(keyword) === key),
     )
 
@@ -1767,10 +1792,8 @@ function createSingleBuildingProfileRows(profiles: unknown, buildings: CourseBui
   })
 
   sourceRows.forEach((profile, profileIndex) => {
-    const names = splitBuildingKeywords(profile.buildingKeywords || profile.name)
-
-    if (names.length) {
-      names.forEach((name) => addProfile(profile, profileIndex, name))
+    if (profile.name.trim()) {
+      addProfile(profile, profileIndex, profile.name)
       return
     }
 
@@ -3150,6 +3173,10 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
   const [profileRows, setProfileRows] = useState<SectionTimeProfileRow[]>(() => createSingleBuildingProfileRows(initial.sectionTimeProfiles, courseBuildings))
   const [activeTab, setActiveTab] = useState<ProviderConfigTab>('basic')
   const [activeProfileId, setActiveProfileId] = useState('')
+  const [sectionImportText, setSectionImportText] = useState('')
+  const [sectionImportError, setSectionImportError] = useState('')
+  const [profileImportText, setProfileImportText] = useState('')
+  const [profileImportError, setProfileImportError] = useState('')
   const buildingOptions = useMemo(() => {
     const options = new Map<string, CourseBuildingItem>()
 
@@ -3206,6 +3233,18 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
       },
     ])
   }
+  const importDefaultSectionRows = () => {
+    const rows = parseSectionTimeImportRows(sectionImportText)
+
+    if (!rows.length) {
+      setSectionImportError('未识别到时间段')
+      return
+    }
+
+    setSectionRows(rows)
+    setSectionImportText('')
+    setSectionImportError('')
+  }
   const removeProfileRow = (id: string) => {
     const nextRows = profileRows.filter((row) => row.id !== id)
     setProfileRows(nextRows)
@@ -3237,6 +3276,11 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
     const name = buildingName.trim()
 
     if (!name) return
+
+    if (normalizeBuildingKeyword(name) === normalizeBuildingKeyword('教学楼1')) {
+      setActiveTab('sectionTimes')
+      return
+    }
 
     const existing = findProfileForBuilding(profileRows, name)
 
@@ -3286,6 +3330,26 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
         ],
       }
     }))
+  }
+  const importProfileSectionRows = () => {
+    if (!activeProfile) {
+      setProfileImportError('请先选择楼栋')
+      return
+    }
+
+    const rows = parseSectionTimeImportRows(profileImportText)
+
+    if (!rows.length) {
+      setProfileImportError('未识别到时间段')
+      return
+    }
+
+    setProfileRows((current) => current.map((profile) => profile.id === activeProfile.id
+      ? { ...profile, sectionRows: rows }
+      : profile,
+    ))
+    setProfileImportText('')
+    setProfileImportError('')
   }
 
   return (
@@ -3350,11 +3414,32 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
                 <h3>上课时间</h3>
                 <p>用于前端课表按节次显示时间，未填完整的行不会保存。</p>
               </div>
-              <button className="button secondary" type="button" onClick={addSectionRow}>
-                <Plus size={16} />
-                添加节次
-              </button>
+              <div className="row-actions">
+                <button className="button secondary" type="button" onClick={importDefaultSectionRows}>
+                  <Upload size={16} />
+                  导入
+                </button>
+                <button className="button secondary" type="button" onClick={addSectionRow}>
+                  <Plus size={16} />
+                  添加节次
+                </button>
+              </div>
             </header>
+            <div className="section-time-import">
+              <label className="field">
+                <span>批量导入</span>
+                <textarea
+                  className="section-time-import-input"
+                  value={sectionImportText}
+                  placeholder={'08:00-08:45\n08:55-09:40\n10:00-10:45'}
+                  onChange={(event) => {
+                    setSectionImportText(event.target.value)
+                    setSectionImportError('')
+                  }}
+                />
+              </label>
+              {sectionImportError && <div className="field-error">{sectionImportError}</div>}
+            </div>
             <div className="section-time-table">
               <div className="section-time-head">
                 <span>节次</span>
@@ -3445,10 +3530,31 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
                     </div>
                     <div className="time-profile-section-header">
                       <span>节次时间</span>
-                      <button className="button secondary" type="button" onClick={() => addProfileSectionRow(activeProfile.id)}>
-                        <Plus size={16} />
-                        添加节次
-                      </button>
+                      <div className="row-actions">
+                        <button className="button secondary" type="button" onClick={importProfileSectionRows}>
+                          <Upload size={16} />
+                          导入
+                        </button>
+                        <button className="button secondary" type="button" onClick={() => addProfileSectionRow(activeProfile.id)}>
+                          <Plus size={16} />
+                          添加节次
+                        </button>
+                      </div>
+                    </div>
+                    <div className="section-time-import compact-section-time-import">
+                      <label className="field">
+                        <span>批量导入</span>
+                        <textarea
+                          className="section-time-import-input"
+                          value={profileImportText}
+                          placeholder={'08:00-08:45\n08:55-09:40\n10:20-11:05'}
+                          onChange={(event) => {
+                            setProfileImportText(event.target.value)
+                            setProfileImportError('')
+                          }}
+                        />
+                      </label>
+                      {profileImportError && <div className="field-error">{profileImportError}</div>}
                     </div>
                     <div className="section-time-table nested-section-time-table">
                       <div className="section-time-head">
