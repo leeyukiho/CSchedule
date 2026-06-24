@@ -4,3 +4,8 @@ allowBuilds:
   "@prisma/engines": true
   core-js-pure: true
   prisma: true
+
+overrides:
+  multer: ^2.2.0
+  qs: ^6.15.2
+  file-type: ^21.3.2
