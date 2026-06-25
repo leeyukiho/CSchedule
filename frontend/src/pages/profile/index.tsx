@@ -384,12 +384,21 @@ export default function ProfilePage() {
     }
   }
 
-  function openSchoolAccount() {
+  async function openSchoolAccount() {
     if (loading) {
       return
     }
 
-    void handleSync()
+    const result = await Taro.showModal({
+      title: '确认同步',
+      content: '将向教务系统请求最新课表、成绩、考试和个人资料，可能需要一些时间。是否继续？',
+      confirmText: '同步',
+      cancelText: '取消',
+    })
+
+    if (result.confirm) {
+      void handleSync()
+    }
   }
 
   function openProfileEditor() {
@@ -547,25 +556,19 @@ export default function ProfilePage() {
         <View className='action-panel-head'>
           <Text>常用功能</Text>
         </View>
-        <View className='action-row' onClick={openSchoolAccount}>
-          <View className='action-icon action-refresh' />
-          <Text>同步数据</Text>
-          {loading && <Text className='action-loading'>同步中</Text>}
-          <View className='row-arrow' />
-        </View>
         <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/messages/index' })}>
           <View className='action-icon action-message' />
           <Text>通知</Text>
           <View className='row-arrow' />
         </View>
-        <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/settings/index' })}>
-          <View className='action-icon action-settings' />
-          <Text>设置</Text>
+        <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/feedback/index' })}>
+          <View className='action-icon action-feedback' />
+          <Text>意见反馈</Text>
           <View className='row-arrow' />
         </View>
-        <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/about/index' })}>
-          <View className='action-icon action-about' />
-          <Text>关于</Text>
+        <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/submission/index' })}>
+          <View className='action-icon action-school' />
+          <Text>学校申请</Text>
           <View className='row-arrow' />
         </View>
         <Button className='action-row action-share-button' openType='share'>
@@ -573,6 +576,22 @@ export default function ProfilePage() {
           <Text>分享给好友</Text>
           <View className='row-arrow' />
         </Button>
+        <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/about/index' })}>
+          <View className='action-icon action-about' />
+          <Text>关于</Text>
+          <View className='row-arrow' />
+        </View>
+        <View className='action-row' onClick={openSchoolAccount}>
+          <View className='action-icon action-refresh' />
+          <Text>同步</Text>
+          {loading && <Text className='action-loading'>同步中</Text>}
+          <View className='row-arrow' />
+        </View>
+        <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/settings/index' })}>
+          <View className='action-icon action-settings' />
+          <Text>设置</Text>
+          <View className='row-arrow' />
+        </View>
       </View>
 
       {editVisible && (

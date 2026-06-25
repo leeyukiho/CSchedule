@@ -1,5 +1,6 @@
 {
-  "miniprogramRoot": "dist/",
+  "miniprogramRoot": "frontend/dist/",
+  "cloudfunctionRoot": "cloudfunctions/",
   "projectname": "CSchedule",
   "description": "A Taro multi-platform mini app",
   "appid": "wxa2465ac38e084a50",

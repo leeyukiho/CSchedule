@@ -187,6 +187,14 @@ function buildAgreementBlocks(content: string): AgreementBlock[] {
 function getBindErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : ''
 
+  if (
+    message.includes('WTBU_INVALID_CREDENTIALS') ||
+    message.includes('INVALID_CREDENTIAL') ||
+    message.toLowerCase().includes('invalid credential')
+  ) {
+    return '账号或密码错误，请检查后重新输入'
+  }
+
   if (message.includes('SYNC_INPUT_INVALID')) {
     return '同步配置异常'
   }
@@ -351,6 +359,7 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
   const [agreementModal, setAgreementModal] = useState<AgreementModalType | null>(null)
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
+  const [focusedCredentialField, setFocusedCredentialField] = useState('')
   const [step, setStep] = useState<BindStep>('select_school')
   const requestSeq = useRef(0)
   const contextSeq = useRef(0)
@@ -522,6 +531,10 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
 
   function updateField(name: string, value: string) {
     setForm((current) => ({ ...current, [name]: value }))
+  }
+
+  function focusCredentialField(name: string) {
+    setFocusedCredentialField((current) => (current === name ? current : name))
   }
 
   function closeSchoolDropdown() {
@@ -860,15 +873,33 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
               {!contextLoading &&
                 shouldCollectCredentials &&
                 credentialFields.map((field) => (
-                  <View className='field' key={field.name}>
+                  <View
+                    className='field'
+                    key={field.name}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      focusCredentialField(field.name)
+                    }}
+                  >
                     <View className='label-row'>
                       <Text className='label'>{field.label}</Text>
                     </View>
                     <Input
                       className='input'
+                      focus={focusedCredentialField === field.name}
                       password={field.type === 'password'}
                       value={form[field.name] || ''}
                       placeholder={field.placeholder || `请输入${field.label}`}
+                      cursorSpacing={88}
+                      adjustPosition
+                      holdKeyboard
+                      confirmType={field.type === 'password' ? 'done' : 'next'}
+                      onFocus={() => focusCredentialField(field.name)}
+                      onBlur={() => {
+                        setFocusedCredentialField((current) =>
+                          current === field.name ? '' : current,
+                        )
+                      }}
                       onInput={(event) => updateField(field.name, event.detail.value)}
                     />
                   </View>
