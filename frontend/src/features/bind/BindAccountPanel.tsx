@@ -274,10 +274,11 @@ function buildAccountSummary(input: {
 }
 
 interface BindAccountPanelProps {
+  activeTab?: 'home' | 'schedule' | 'grades' | 'profile'
   subPage?: boolean
 }
 
-export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
+export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanelProps) {
   const [schools, setSchools] = useState<SchoolListItem[]>([])
   const [keyword, setKeyword] = useState('')
   const [selectedSchool, setSelectedSchool] = useState<SchoolListItem | null>(null)
@@ -678,7 +679,13 @@ export function BindAccountPanel({ subPage = true }: BindAccountPanelProps) {
   }
 
   return (
-    <PageShell title='绑定账号' back={subPage} subPage={subPage} contentClassName='login-content'>
+    <PageShell
+      title='绑定账号'
+      activeTab={activeTab}
+      back={subPage}
+      subPage={subPage}
+      contentClassName='login-content'
+    >
       <View className='bind-page' onClick={closeSchoolDropdown}>
         <View className='login-hero'>
           <View className='title'>绑定教务账号</View>

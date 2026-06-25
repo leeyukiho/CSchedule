@@ -23,6 +23,24 @@ const TERM_CODES = [
 const GRADE_HISTORY_YEAR_COUNT = 10
 const FRONTEND_IMPORT_SOURCE = 'frontend_cloud_import'
 const CLIENT_IMPORT_CLOCK_SKEW_MS = 60 * 1000
+const OPTIONAL_TARGET_REQUEST_TIMEOUT_MS = 8000
+const RECOVERABLE_EDU_TLS_ERROR_CODES = new Set([
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'UNABLE_TO_GET_ISSUER_CERT',
+])
+
+function isRecoverableEduTlsError(error) {
+  const code = String(error?.code || '')
+  const message = String(error?.message || '').toLowerCase()
+
+  return (
+    RECOVERABLE_EDU_TLS_ERROR_CODES.has(code) ||
+    message.includes('unable to verify the first certificate') ||
+    message.includes('unable to get local issuer certificate') ||
+    message.includes('unable to get issuer certificate')
+  )
+}
 
 function ok(result) {
   return { ok: true, result }
@@ -311,13 +329,25 @@ function decodeBody(buffer, encoding, contentType) {
 
 function createHttpClient(baseUrl) {
   const jar = createCookieJar()
-  const httpsAgent = process.env.ALLOW_INSECURE_EDU_TLS === 'true'
-    ? new https.Agent({ rejectUnauthorized: false })
-    : undefined
+  const tlsFallbackHosts = new Set([new URL(baseUrl).host])
+  const tlsFallbackActiveHosts = new Set()
+  const tlsFallbackAgents = new Map()
+
+  function getTlsFallbackAgent(host) {
+    let agent = tlsFallbackAgents.get(host)
+
+    if (!agent) {
+      agent = new https.Agent({ rejectUnauthorized: false })
+      tlsFallbackAgents.set(host, agent)
+    }
+
+    return agent
+  }
 
   async function request(method, path, body, options = {}) {
     const url = new URL(path || '/', baseUrl)
     const isHttps = url.protocol === 'https:'
+    const startedAt = Date.now()
     const headers = {
       'User-Agent': 'Mozilla/5.0 MiniProgram Schedule Fetcher',
       Accept: 'application/json,text/html,application/xhtml+xml,*/*',
@@ -337,7 +367,7 @@ function createHttpClient(baseUrl) {
       headers['Content-Length'] = payload.length
     }
 
-    const response = await new Promise((resolve, reject) => {
+    const sendRequest = (useTlsFallback) => new Promise((resolve, reject) => {
       const transport = isHttps ? https : http
       const req = transport.request(
         url,
@@ -345,7 +375,7 @@ function createHttpClient(baseUrl) {
           method,
           headers,
           timeout: options.timeout || 15000,
-          agent: isHttps ? httpsAgent : undefined,
+          agent: isHttps && useTlsFallback ? getTlsFallbackAgent(url.host) : undefined,
         },
         (res) => {
           const chunks = []
@@ -375,6 +405,24 @@ function createHttpClient(baseUrl) {
 
       req.end()
     })
+    const useTlsFallback = isHttps && tlsFallbackActiveHosts.has(url.host)
+    let response
+
+    try {
+      response = await sendRequest(useTlsFallback)
+    } catch (error) {
+      if (
+        isHttps &&
+        !useTlsFallback &&
+        tlsFallbackHosts.has(url.host) &&
+        isRecoverableEduTlsError(error)
+      ) {
+        tlsFallbackActiveHosts.add(url.host)
+        response = await sendRequest(true)
+      } else {
+        throw error
+      }
+    }
 
     const location = response.headers.location
 
@@ -930,6 +978,10 @@ function buildGradesResult(records) {
   }
 }
 
+function emptyGrades() {
+  return buildGradesResult([])
+}
+
 function inferTermFromText(value) {
   const text = cleanText(value)
   const compact = text.replace(/\s+/g, '')
@@ -1112,6 +1164,7 @@ async function fetchGrades(client, config, semesterId, profileParams = {}) {
       'queryModel.sortOrder': 'asc',
     })
     const response = await client.post(config.gradePath, payload.toString(), {
+      timeout: OPTIONAL_TARGET_REQUEST_TIMEOUT_MS,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'X-Requested-With': 'XMLHttpRequest',
@@ -1150,6 +1203,7 @@ async function fetchGrades(client, config, semesterId, profileParams = {}) {
       'queryModel.sortOrder': 'asc',
     })
     const response = await client.post(config.gradePath, payload.toString(), {
+      timeout: OPTIONAL_TARGET_REQUEST_TIMEOUT_MS,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'X-Requested-With': 'XMLHttpRequest',
@@ -1222,6 +1276,7 @@ async function fetchExams(client, config, semesterId) {
       'queryModel.sortOrder': 'asc',
     })
     const response = await client.post(config.examPath, payload.toString(), {
+      timeout: OPTIONAL_TARGET_REQUEST_TIMEOUT_MS,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'X-Requested-With': 'XMLHttpRequest',
@@ -1268,6 +1323,14 @@ async function fetchExams(client, config, semesterId) {
     finished: records
       .filter((record) => record.status === 'finished')
       .sort((left, right) => (parseChinaTimestamp(right.startAt) || 0) - (parseChinaTimestamp(left.startAt) || 0)),
+  }
+}
+
+function getEmptyExamResult() {
+  return {
+    term: createCurrentTerm(),
+    upcoming: [],
+    finished: [],
   }
 }
 
@@ -1472,6 +1535,7 @@ async function fetchProfile(client, config, homeHtml, username) {
 
 async function fetchProfileHtml(client, config) {
   const response = await client.get(config.profilePath, {
+    timeout: OPTIONAL_TARGET_REQUEST_TIMEOUT_MS,
     headers: {
       Referer: `${config.baseUrl}${config.homePath}`,
     },
@@ -1506,29 +1570,39 @@ function getProfileRequestParams(profileHtml, fallbackStudentId) {
 }
 
 async function getProfileData(context) {
+  if (context.profileDataError) {
+    throw context.profileDataError
+  }
+
   if (context.profileData) {
     return context.profileData
   }
 
-  const profileHtml = await getProfileHtml(context)
-  const params = getProfileRequestParams(profileHtml, context.event?.username)
-  const payload = new URLSearchParams(params)
-  const response = await context.client.post(
-    context.config.profileDataPath,
-    payload.toString(),
-    {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest',
-        Referer: `${context.config.baseUrl}${context.config.profilePath}`,
+  try {
+    const profileHtml = await getProfileHtml(context)
+    const params = getProfileRequestParams(profileHtml, context.event?.username)
+    const payload = new URLSearchParams(params)
+    const response = await context.client.post(
+      context.config.profileDataPath,
+      payload.toString(),
+      {
+        timeout: OPTIONAL_TARGET_REQUEST_TIMEOUT_MS,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+          Referer: `${context.config.baseUrl}${context.config.profilePath}`,
+        },
       },
-    },
-  )
+    )
 
-  context.profileParams = params
-  context.profileData = parseJsonResponse(response, 'WHHXIT_PROFILE_PARSE_FAILED')
+    context.profileParams = params
+    context.profileData = parseJsonResponse(response, 'WHHXIT_PROFILE_PARSE_FAILED')
 
-  return context.profileData
+    return context.profileData
+  } catch (error) {
+    context.profileDataError = error
+    throw error
+  }
 }
 
 function createSourceHash(input) {
@@ -1557,7 +1631,20 @@ function createFeatureCacheResult(event, target, data, syncedAt, options = {}) {
     parsedCount: options.parsedCount,
     sourceHash,
     syncedAt,
+    ...(Array.isArray(options.warnings) && options.warnings.length
+      ? { warnings: options.warnings }
+      : {}),
   }
+}
+
+function getTargetErrorCode(error) {
+  const message = error instanceof Error ? error.message : String(error || '')
+
+  return (message.includes(':') ? message.split(':')[0] : message) || 'UNKNOWN_ERROR'
+}
+
+function createTargetWarning(target, error) {
+  return `WHHXIT_${String(target).toUpperCase()}_SYNC_FAILED:${getTargetErrorCode(error)}`
 }
 
 function normalizeTargets(event) {
@@ -1615,16 +1702,35 @@ async function fetchTargetCacheResult(target, event, context, syncedAt) {
   }
 
   if (target === 'profile') {
-    const profile = parseProfileData(await getProfileData(context), homeHtml, event.username)
+    const profileData = await getOptionalProfileData(context)
+    const warnings = profileData.warnings.length ? profileData.warnings : undefined
+    const profile = profileData.ok
+      ? parseProfileData(profileData.data, homeHtml, event.username)
+      : parseProfile('', homeHtml, event.username)
 
     return createFeatureCacheResult(event, 'profile', profile, syncedAt, {
       parsedCount: Object.keys(profile).filter((key) => profile[key]).length,
+      warnings,
     })
   }
 
   if (target === 'score') {
-    await getProfileData(context)
-    const score = await fetchGrades(client, config, event.semesterId, context.profileParams)
+    let warnings
+    const score = await (async () => {
+      try {
+        const profileData = await getOptionalProfileData(context)
+
+        if (!profileData.ok) {
+          warnings = [createTargetWarning('score', profileData.error)]
+          return emptyGrades()
+        }
+
+        return await fetchGrades(client, config, event.semesterId, context.profileParams)
+      } catch (error) {
+        warnings = [createTargetWarning('score', error)]
+        return emptyGrades()
+      }
+    })()
 
     return createFeatureCacheResult(event, 'score', score, syncedAt, {
       parsedCount: countScoreItems(score),
@@ -1632,15 +1738,39 @@ async function fetchTargetCacheResult(target, event, context, syncedAt) {
         scope: event.semesterId ? 'requested_term' : 'all_terms',
         source: event.semesterId ? 'grade_api_requested_term' : 'grade_api_all_terms',
       },
+      warnings,
     })
   }
 
-  const exam = await fetchExams(client, config, event.semesterId)
+  let warnings
+  const exam = await fetchExams(client, config, event.semesterId).catch((error) => {
+    warnings = [createTargetWarning('exam', error)]
+    return getEmptyExamResult()
+  })
 
   return createFeatureCacheResult(event, 'exam', exam, syncedAt, {
     parsedCount: countExamItems(exam),
     meta: { scope: 'current_term' },
+    warnings,
   })
+}
+
+async function getOptionalProfileData(context) {
+  if (context.optionalProfileDataResult) {
+    return context.optionalProfileDataResult
+  }
+
+  context.optionalProfileDataResult = getProfileData(context)
+    .then((data) => ({ ok: true, data, warnings: [] }))
+    .catch((error) => {
+      return {
+        ok: false,
+        error,
+        warnings: [createTargetWarning('profile', error)],
+      }
+    })
+
+  return context.optionalProfileDataResult
 }
 
 async function runWhhxitProviderSync(event) {
@@ -1660,12 +1790,18 @@ async function runWhhxitProviderSync(event) {
   const context = { event, client, config, homeHtml, profileHtml: '' }
   const syncedAt = new Date().toISOString()
   const cacheResults = []
+  const targetSet = new Set(targets)
 
-  for (const target of targets) {
-    cacheResults.push(
-      await fetchTargetCacheResult(target, event, context, syncedAt),
-    )
+  if (targetSet.has('course')) {
+    cacheResults.push(await fetchTargetCacheResult('course', event, context, syncedAt))
   }
+
+  const optionalTargets = targets.filter((target) => target !== 'course')
+  const optionalResults = await Promise.all(
+    optionalTargets.map((target) => fetchTargetCacheResult(target, event, context, syncedAt)),
+  )
+
+  cacheResults.push(...optionalResults)
 
   return ok({
     cacheResults,

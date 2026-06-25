@@ -61,7 +61,7 @@ function getErrorMessage(error: unknown) {
   if (error && typeof error === 'object') {
     const record = error as Record<string, unknown>
 
-    for (const key of ['errMsg', 'message', 'errorMessage']) {
+    for (const key of ['errMsg', 'message', 'errorMessage', 'errorCode']) {
       const value = record[key]
 
       if (typeof value === 'string' && value.trim()) {
@@ -71,6 +71,21 @@ function getErrorMessage(error: unknown) {
   }
 
   return String(error || '')
+}
+
+function getCloudSyncResponseError(
+  response: Taro.request.SuccessCallbackResult<
+    CloudCredentialSyncResponse | CloudCredentialSyncResult
+  >,
+) {
+  const data = response.data && typeof response.data === 'object'
+    ? response.data as CloudCredentialSyncResponse
+    : {}
+  const detail = String(data.errorMessage || data.errorCode || '').trim()
+
+  return detail
+    ? `CLOUD_SYNC_FAILED: ${response.statusCode} ${detail}`
+    : `CLOUD_SYNC_FAILED: ${response.statusCode}`
 }
 
 function unwrapCloudCredentialSyncResult(
@@ -157,7 +172,7 @@ export async function runCredentialSyncWithCloud(
   }
 
   if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new Error(`CLOUD_SYNC_FAILED: ${response.statusCode}`)
+    throw new Error(getCloudSyncResponseError(response))
   }
 
   return unwrapCloudCredentialSyncResult(response.data)

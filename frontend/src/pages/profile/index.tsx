@@ -504,7 +504,7 @@ export default function ProfilePage() {
   }
 
   if (shouldShowSchoolLogin) {
-    return <BindAccountPanel subPage={false} />
+    return <BindAccountPanel activeTab='profile' subPage={false} />
   }
 
   return (

@@ -17,9 +17,11 @@ import {
   buildTermOptions,
   courseRunsInWeek,
   dedupeAndSortTerms,
+  getAcademicYear,
   getCurrentTeachingWeek,
   getTodayTermOption,
   getWeekStartDate,
+  isSecondSemester,
 } from '../../shared/term'
 
 import './index.scss'
@@ -278,6 +280,29 @@ function mergeTermStarts(defaultStarts: Record<string, string> | undefined, loca
   }
 }
 
+function isTodayAcademicTerm(term: TermOption | null, fallbackTermId = '') {
+  const today = new Date()
+  const month = today.getMonth()
+  const academicStartYear = month >= 8 ? today.getFullYear() : today.getFullYear() - 1
+  const secondSemester = month >= 1 && month < 8
+
+  return (
+    getAcademicYear(term, fallbackTermId) === academicStartYear &&
+    isSecondSemester(term, fallbackTermId) === secondSemester
+  )
+}
+
+function resolveTermOptionId(term: TermOption | null, termId: string) {
+  if (!termId || term?.id === termId) {
+    return term
+  }
+
+  return {
+    id: termId,
+    label: term?.label || termId,
+  }
+}
+
 function buildWeekOptions(): WeekOption[] {
   return Array.from({ length: MAX_WEEK }, (_, index) => {
     const week = index + 1
@@ -470,6 +495,14 @@ export default function SchedulePage() {
     0,
   )
   const selectedTerm = termOptions[selectedTermIndex] || null
+  const activeTermId = timetable?.termId || selectedTermId || ''
+  const activeTerm = useMemo(
+    () => resolveTermOptionId(
+      termOptions.find((term) => term.id === activeTermId) || selectedTerm,
+      activeTermId,
+    ),
+    [activeTermId, selectedTerm, termOptions],
+  )
   const weekOptions = useMemo(() => buildWeekOptions(), [])
   const selectedWeekIndex = Math.max(
     weekOptions.findIndex((week) => week.value === selectedWeek),
@@ -497,18 +530,23 @@ export default function SchedulePage() {
     [termStarts, timetable?.termStarts],
   )
   const currentTeachingTerm = useMemo(
-    () => getTodayTermOption(termOptions) || selectedTerm,
-    [selectedTerm, termOptions],
+    () => {
+      if (isTodayAcademicTerm(activeTerm, activeTermId)) {
+        return activeTerm
+      }
+
+      return getTodayTermOption(termOptions) || activeTerm
+    },
+    [activeTerm, activeTermId, termOptions],
   )
   const currentTeachingWeek = useMemo(
     () => getCurrentTeachingWeek(
       currentTeachingTerm,
-      currentTeachingTerm?.id || timetable?.termId,
+      currentTeachingTerm?.id || activeTermId,
       effectiveTermStarts,
     ),
-    [currentTeachingTerm, effectiveTermStarts, timetable?.termId],
+    [activeTermId, currentTeachingTerm, effectiveTermStarts],
   )
-  const activeTermId = selectedTermId || timetable?.termId || ''
   const currentTeachingTermId = currentTeachingTerm?.id || ''
   const showBackThisWeekButton = Boolean(
     !loading &&
@@ -519,7 +557,7 @@ export default function SchedulePage() {
       ),
   )
   const weekdays = useMemo<WeekdayColumn[]>(() => {
-    const startDate = getWeekStartDate(selectedTerm, selectedWeek, timetable?.termId, effectiveTermStarts)
+    const startDate = getWeekStartDate(activeTerm, selectedWeek, activeTermId, effectiveTermStarts)
     const today = new Date()
 
     return WEEKDAYS.map((weekday, index) => {
@@ -543,7 +581,7 @@ export default function SchedulePage() {
         ].join(''),
       }
     })
-  }, [effectiveTermStarts, selectedTerm, selectedWeek, timetable?.termId])
+  }, [activeTerm, activeTermId, effectiveTermStarts, selectedWeek])
   const courseColorMap = useMemo(
     () => buildCourseColorMap(timetable?.courses || [], primaryCourseField),
     [primaryCourseField, timetable?.courses],
@@ -714,7 +752,7 @@ export default function SchedulePage() {
     const todayTerm = currentTeachingTerm
     const todayWeek = currentTeachingWeek
 
-    if (todayTerm && todayTerm.id !== selectedTermId) {
+    if (todayTerm && todayTerm.id !== activeTermId) {
       setSelectedTermId(todayTerm.id)
       void loadTimetable(accountId, todayTerm.id === '__current__' || todayTerm.id === latestTermId ? '' : todayTerm.id)
     }

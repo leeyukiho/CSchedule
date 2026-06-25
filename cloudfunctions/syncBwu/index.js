@@ -24,6 +24,23 @@ const BWU_EXAM_BATCH_REQUEST_DELAY_MS = 1200
 const BWU_REQUEST_DELAY_MS = 1200
 const FRONTEND_IMPORT_SOURCE = 'frontend_cloud_import'
 const CLIENT_IMPORT_CLOCK_SKEW_MS = 60 * 1000
+const RECOVERABLE_EDU_TLS_ERROR_CODES = new Set([
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'UNABLE_TO_GET_ISSUER_CERT',
+])
+
+function isRecoverableEduTlsError(error) {
+  const code = String(error?.code || '')
+  const message = String(error?.message || '').toLowerCase()
+
+  return (
+    RECOVERABLE_EDU_TLS_ERROR_CODES.has(code) ||
+    message.includes('unable to verify the first certificate') ||
+    message.includes('unable to get local issuer certificate') ||
+    message.includes('unable to get issuer certificate')
+  )
+}
 
 function ok(result) {
   return { ok: true, result }
@@ -306,12 +323,23 @@ function decodeBody(buffer, encoding, contentType) {
 
 function createHttpClient(baseUrl) {
   const jar = createCookieJar()
-  const httpsAgent = process.env.ALLOW_INSECURE_EDU_TLS === 'true'
-    ? new https.Agent({ rejectUnauthorized: false })
-    : undefined
   const allowedRedirectHosts = new Set(
     [new URL(baseUrl).host, ...(BWU_CONFIG.allowedRedirectHosts || [])].filter(Boolean),
   )
+  const tlsFallbackHosts = new Set(allowedRedirectHosts)
+  const tlsFallbackActiveHosts = new Set()
+  const tlsFallbackAgents = new Map()
+
+  function getTlsFallbackAgent(host) {
+    let agent = tlsFallbackAgents.get(host)
+
+    if (!agent) {
+      agent = new https.Agent({ rejectUnauthorized: false })
+      tlsFallbackAgents.set(host, agent)
+    }
+
+    return agent
+  }
 
   async function request(method, path, body, options = {}) {
     const url = new URL(path || '/', baseUrl)
@@ -335,7 +363,7 @@ function createHttpClient(baseUrl) {
       headers['Content-Length'] = payload.length
     }
 
-    const response = await new Promise((resolve, reject) => {
+    const sendRequest = (useTlsFallback) => new Promise((resolve, reject) => {
       const transport = isHttps ? https : http
       const req = transport.request(
         url,
@@ -343,7 +371,7 @@ function createHttpClient(baseUrl) {
           method,
           headers,
           timeout: options.timeout || 15000,
-          agent: isHttps ? httpsAgent : undefined,
+          agent: isHttps && useTlsFallback ? getTlsFallbackAgent(url.host) : undefined,
         },
         (res) => {
           const chunks = []
@@ -373,6 +401,27 @@ function createHttpClient(baseUrl) {
 
       req.end()
     })
+    const useTlsFallback = isHttps && tlsFallbackActiveHosts.has(url.host)
+    let response
+
+    try {
+      response = await sendRequest(useTlsFallback)
+    } catch (error) {
+      if (
+        isHttps &&
+        !useTlsFallback &&
+        tlsFallbackHosts.has(url.host) &&
+        isRecoverableEduTlsError(error)
+      ) {
+        tlsFallbackActiveHosts.add(url.host)
+        console.warn(
+          `Retrying ${url.host} with scoped TLS certificate fallback: ${error.message || error.code}`,
+        )
+        response = await sendRequest(true)
+      } else {
+        throw error
+      }
+    }
 
     const location = response.headers.location
 
