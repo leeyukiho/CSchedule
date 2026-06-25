@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import Taro, { useDidShow, useShareAppMessage } from '@tarojs/taro'
+import Taro, { useDidShow } from '@tarojs/taro'
 import { Button, Image, Input, ScrollView, Text, View } from '@tarojs/components'
 
 import { getAccount } from '../../shared/api/accounts'
@@ -16,6 +16,7 @@ import {
 } from '../../shared/api/types'
 import { formatTime } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
+import { useDefaultShare } from '../../shared/share'
 import {
   clearStoredDataCacheTerms,
   getStoredAccountId,
@@ -52,8 +53,6 @@ const EDIT_FIELDS: EditField[] = [
 const SYNC_POLL_INTERVAL_MS = 3000
 const SYNC_POLL_TIMEOUT_MS = 120000
 const STATUS_CLEAR_DELAY_MS = 3000
-const SHARE_TITLE = 'CSchedule 课表助手'
-const SHARE_PATH = '/pages/index/index'
 
 function formatAccountStatus(status?: StudentAccountSummary['status']) {
   if (status === 'unbound' || status === 'disabled') {
@@ -287,6 +286,7 @@ function persistSyncCache(accountId: string, job: SyncJobResponse) {
 }
 
 export default function ProfilePage() {
+  useDefaultShare()
   const [account, setAccount] = useState<StudentAccountSummary | null>(null)
   const [hasStoredAccount, setHasStoredAccount] = useState(() => Boolean(getStoredAccountId()))
   const [profile, setProfile] = useState<ProfileData>({})
@@ -297,11 +297,6 @@ export default function ProfilePage() {
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
   const shouldShowSchoolLogin = needsSchoolLogin(account, hasStoredAccount)
-
-  useShareAppMessage(() => ({
-    title: SHARE_TITLE,
-    path: SHARE_PATH,
-  }))
 
   useDidShow(() => {
     const accountId = getStoredAccountId()
@@ -571,11 +566,6 @@ export default function ProfilePage() {
           <Text>学校申请</Text>
           <View className='row-arrow' />
         </View>
-        <Button className='action-row action-share-button' openType='share'>
-          <View className='action-icon action-share' />
-          <Text>分享给好友</Text>
-          <View className='row-arrow' />
-        </Button>
         <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/about/index' })}>
           <View className='action-icon action-about' />
           <Text>关于</Text>

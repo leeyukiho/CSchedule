@@ -3,6 +3,7 @@ import Taro from '@tarojs/taro'
 import { Button, Input, Picker, Text, Textarea, View } from '@tarojs/components'
 import { submitSchoolAccess } from '../../shared/api/submissions'
 import { PageShell } from '../../shared/layout'
+import { useDefaultShare } from '../../shared/share'
 
 const STATUS_CLEAR_DELAY_MS = 3000
 const EXTRA_VERIFICATION_OPTIONS = ['不需要', '需要验证码或短信', '需要扫码或校内验证', '不确定']
@@ -20,6 +21,7 @@ function decodeRouteParam(value?: string) {
 }
 
 export default function SubmissionPage() {
+  useDefaultShare()
   const routeParams = Taro.getCurrentInstance().router?.params || {}
   const [schoolName, setSchoolName] = useState(() => decodeRouteParam(routeParams.schoolName))
   const [eduSystemWebsite, setEduSystemWebsite] = useState('')

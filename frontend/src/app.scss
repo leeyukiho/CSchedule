@@ -32,9 +32,9 @@ button::after {
   inset: 0;
   z-index: 9999;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: calc(84rpx + env(safe-area-inset-top)) 38rpx calc(84rpx + env(safe-area-inset-bottom));
+  padding: calc(176rpx + 24rpx) 38rpx calc(84rpx + env(safe-area-inset-bottom));
   background: rgba(15, 23, 42, 0.48);
   box-sizing: border-box;
 }
@@ -42,7 +42,7 @@ button::after {
 .notification-modal-panel {
   width: 100%;
   max-width: 640rpx;
-  max-height: calc(100vh - 168rpx - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-height: calc(100vh - 284rpx - env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   overflow: hidden;

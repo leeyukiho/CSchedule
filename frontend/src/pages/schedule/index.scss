@@ -1,5 +1,5 @@
 .schedule-content {
-  padding: 28rpx 32rpx calc(160rpx + env(safe-area-inset-bottom));
+  padding: 28rpx 16rpx calc(160rpx + env(safe-area-inset-bottom));
 }
 
 .schedule-filters {
@@ -124,8 +124,8 @@
   gap: 4rpx;
 }
 
-.weekday > view,
-.time-cell > view {
+.weekday>view,
+.time-cell>view {
   display: block;
   flex: 0 0 auto;
   width: 100%;
@@ -166,7 +166,7 @@
 .lesson-block {
   position: absolute;
   z-index: 2;
-  padding: 9rpx 5rpx;
+  padding: 9rpx 3rpx;
   box-sizing: border-box;
   border-radius: 10rpx;
   display: flex;
@@ -174,7 +174,7 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 7rpx;
+  gap: 6rpx;
   font-size: 19rpx;
   line-height: 1.12;
   font-weight: 800;
@@ -194,13 +194,13 @@
   gap: 2rpx;
 }
 
-.lesson-name-text {
+.lesson-name .lesson-name-text {
   display: block;
-  width: 100%;
+  width: 3em;
   max-width: 100%;
   color: currentColor;
-  font-size: 18rpx;
-  line-height: 1.1;
+  font-size: 20rpx;
+  line-height: 1.06;
   text-align: center;
   white-space: nowrap;
   word-break: normal;
@@ -210,7 +210,7 @@
 .lesson-room {
   width: 100%;
   color: currentColor;
-  font-size: 17rpx;
+  font-size: 16rpx;
   font-weight: 700;
   line-height: 1.1;
   opacity: 0.82;
@@ -220,6 +220,8 @@
   display: block;
   width: 4em;
   max-width: 100%;
+  font-size: 18rpx;
+  line-height: 1.1;
   text-align: center;
   white-space: normal;
   word-break: break-all;
@@ -281,7 +283,7 @@
   margin-bottom: 22rpx;
 }
 
-.lesson-detail-head > view:first-child {
+.lesson-detail-head>view:first-child {
   flex: 1;
   min-width: 0;
 }

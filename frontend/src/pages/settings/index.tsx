@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { Button, Picker, Text, View } from '@tarojs/components'
+import { Button, Picker, View } from '@tarojs/components'
 
 import { getTimetable } from '../../shared/api/timetable'
 import { PageShell } from '../../shared/layout'
+import { useDefaultShare } from '../../shared/share'
 import {
   clearStoredAccountId,
   clearStoredAccountSummary,
@@ -16,6 +17,7 @@ import {
 import { TermOption, buildTermOptions } from '../../shared/term'
 
 export default function SettingsPage() {
+  useDefaultShare()
   const [terms, setTerms] = useState<TermOption[]>([])
   const [termStarts, setTermStarts] = useState<Record<string, string>>({})
   const [selectedTermId, setSelectedTermId] = useState('')

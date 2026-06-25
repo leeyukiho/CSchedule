@@ -2130,7 +2130,7 @@
 .edit-panel {
   width: 100%;
   max-height: 82vh;
-  padding: 28rpx 28rpx calc(36rpx + env(safe-area-inset-bottom));
+  padding: 28rpx 28rpx 36rpx;
   border-radius: 32rpx 32rpx 0 0;
   background: #f7f8fb;
 }

@@ -3,6 +3,7 @@ import { Button, Input, Text, Textarea, View } from '@tarojs/components'
 
 import { submitFeedback } from '../../shared/api/feedback'
 import { PageShell } from '../../shared/layout'
+import { useDefaultShare } from '../../shared/share'
 import {
   getStoredAccountAccessToken,
   getStoredAccountId,
@@ -11,6 +12,7 @@ import {
 const STATUS_CLEAR_DELAY_MS = 3000
 
 export default function FeedbackPage() {
+  useDefaultShare()
   const [content, setContent] = useState('')
   const [contact, setContact] = useState('')
   const [message, setMessage] = useState('')

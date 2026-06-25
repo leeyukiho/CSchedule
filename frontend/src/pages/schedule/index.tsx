@@ -11,6 +11,7 @@ import {
   getSectionTimeMap,
 } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
+import { useDefaultShare } from '../../shared/share'
 import { getStoredAuthState, getStoredTermStarts } from '../../shared/storage'
 import {
   TermOption,
@@ -29,8 +30,8 @@ import './index.scss'
 const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const DEFAULT_SECTION_COUNT = 13
 const MAX_WEEK = 20
-const LEFT_WIDTH_PERCENT = 12
-const DAY_WIDTH_PERCENT = 12.57
+const LEFT_WIDTH_PERCENT = 8
+const DAY_WIDTH_PERCENT = 13.14
 const HEADER_HEIGHT = 100
 const ROW_HEIGHT = 110
 const LESSON_HORIZONTAL_GAP = 3
@@ -398,6 +399,7 @@ function splitRoomName(room: string) {
 }
 
 export default function SchedulePage() {
+  useDefaultShare()
   const [accountId, setAccountId] = useState('')
   const [timetable, setTimetable] = useState<TimetableCacheResponse | null>(null)
   const [termOptions, setTermOptions] = useState<TermOption[]>([])
@@ -954,12 +956,22 @@ export default function SchedulePage() {
           >
             <View className='lesson-name'>
               {lesson.nameLines.map((line, index) => (
-                <Text className='lesson-name-text' key={`${lesson.id}-name-${line}-${index}`}>{line}</Text>
+                <View
+                  className='lesson-name-text'
+                  key={`${lesson.id}-name-${line}-${index}`}
+                >
+                  {line}
+                </View>
               ))}
             </View>
             <View className='lesson-room'>
               {lesson.roomLines.map((line, index) => (
-                <Text className='lesson-room-text' key={`${lesson.id}-room-${line}-${index}`}>{line}</Text>
+                <View
+                  className='lesson-room-text'
+                  key={`${lesson.id}-room-${line}-${index}`}
+                >
+                  {line}
+                </View>
               ))}
             </View>
           </View>

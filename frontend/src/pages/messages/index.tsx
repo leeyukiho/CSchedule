@@ -3,6 +3,7 @@ import { Text, View } from '@tarojs/components'
 
 import { getNotifications, PendingNotification } from '../../shared/api/notifications'
 import { PageShell } from '../../shared/layout'
+import { useDefaultShare } from '../../shared/share'
 import { getStoredAccountId } from '../../shared/storage'
 
 function formatMessageTime(value?: string | null) {
@@ -22,6 +23,7 @@ function getMessageTypeClass(targetType?: string) {
 }
 
 export default function MessagesPage() {
+  useDefaultShare()
   const [messages, setMessages] = useState<PendingNotification[]>([])
   const [loading, setLoading] = useState(true)
   const [errorText, setErrorText] = useState('')

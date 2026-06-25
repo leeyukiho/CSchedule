@@ -1,8 +1,10 @@
 import { Text, View } from '@tarojs/components'
 
 import { PageShell } from '../../shared/layout'
+import { useDefaultShare } from '../../shared/share'
 
 export default function AboutPage() {
+  useDefaultShare()
   return (
     <PageShell title='关于 UniLink校园' back subPage>
       <View className='about-hero'>

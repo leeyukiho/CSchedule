@@ -12,6 +12,7 @@ import {
   TimetableCacheResponse,
 } from '../../shared/api/types'
 import { PageShell } from '../../shared/layout'
+import { useDefaultShare } from '../../shared/share'
 import {
   clearStoredDataCacheTerms,
   setStoredAccountId,
@@ -351,6 +352,7 @@ function buildAccountSummary(input: {
 }
 
 export default function WebviewSyncPage() {
+  useDefaultShare()
   const router = useRouter()
   const params = router.params || {}
   const initialAccountId = String(params.accountId || '')

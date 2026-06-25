@@ -49,7 +49,7 @@ export function getNotificationTone(targetType?: string) {
   return targetType === 'user' ? 'user' : 'global'
 }
 
-export function createNotificationPopup() {
+export function createNotificationPopup(maskStyle?: string, panelStyle?: string) {
   const currentState = getNotificationPopupState()
   const notification = currentState.notification
 
@@ -62,10 +62,10 @@ export function createNotificationPopup() {
 
   return createElement(
     View,
-    { className: 'notification-modal-mask' },
+    { className: 'notification-modal-mask', style: maskStyle },
     createElement(
       View,
-      { className: 'notification-modal-panel' },
+      { className: 'notification-modal-panel', style: panelStyle },
       createElement(
         View,
         { className: 'notification-modal-head' },

@@ -5,6 +5,7 @@ import { Text, View } from '@tarojs/components'
 import { getExams, getScores } from '../../shared/api/features'
 import { FeatureCacheResponse, FeatureDisplayConfig, FeatureDisplayField } from '../../shared/api/types'
 import { PageShell } from '../../shared/layout'
+import { useDefaultShare } from '../../shared/share'
 import { getStoredAccountId } from '../../shared/storage'
 
 import './index.scss'
@@ -538,6 +539,7 @@ function getExamTimeParts(exam: ExamItem) {
 }
 
 export default function GradesPage() {
+  useDefaultShare()
   const [scores, setScores] = useState<FeatureCacheResponse | null>(null)
   const [exams, setExams] = useState<FeatureCacheResponse | null>(null)
   const [loading, setLoading] = useState(false)

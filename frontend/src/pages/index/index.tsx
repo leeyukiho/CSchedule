@@ -22,6 +22,7 @@ import {
   getWeekday,
 } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
+import { useDefaultShare } from '../../shared/share'
 import { getStoredAccountSummary, getStoredAuthState, getStoredTermStarts } from '../../shared/storage'
 import { buildTermOptions, courseRunsInWeek, getTeachingWeekForDate } from '../../shared/term'
 
@@ -391,6 +392,7 @@ function getHomeTone(index: number) {
 }
 
 export default function HomePage() {
+  useDefaultShare()
   const [accountId, setAccountId] = useState('')
   const [timetable, setTimetable] = useState<TimetableCacheResponse | null>(null)
   const [exams, setExams] = useState<FeatureCacheResponse | null>(null)
