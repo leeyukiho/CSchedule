@@ -725,10 +725,18 @@
   padding-right: 78rpx;
 }
 
-.school-dropdown-icon {
+.school-dropdown-toggle {
   position: absolute;
-  right: 28rpx;
-  top: 37rpx;
+  right: 0;
+  top: 0;
+  width: 78rpx;
+  height: 96rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.school-dropdown-icon {
   width: 18rpx;
   height: 18rpx;
   border-right: 3rpx solid #667085;
@@ -738,7 +746,6 @@
 }
 
 .school-dropdown-icon-open {
-  top: 43rpx;
   transform: rotate(225deg);
 }
 

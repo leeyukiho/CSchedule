@@ -785,12 +785,23 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
                   placeholder='搜索或选择学校'
                   onFocus={() => setSchoolDropdownOpen(true)}
                   onClick={() => setSchoolDropdownOpen(true)}
+                  onBlur={() => {
+                    setTimeout(() => setSchoolDropdownOpen(false), 120)
+                  }}
                   onInput={(event) => {
                     setKeyword(event.detail.value)
                     setSchoolDropdownOpen(true)
                   }}
                 />
-                <View className={'school-dropdown-icon ' + (schoolDropdownOpen ? 'school-dropdown-icon-open' : '')} />
+                <View
+                  className='school-dropdown-toggle'
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setSchoolDropdownOpen((open) => !open)
+                  }}
+                >
+                  <View className={'school-dropdown-icon ' + (schoolDropdownOpen ? 'school-dropdown-icon-open' : '')} />
+                </View>
               </View>
               {schoolDropdownOpen && (
                 <View className='school-dropdown'>
