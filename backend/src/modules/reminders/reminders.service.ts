@@ -481,7 +481,7 @@ export class RemindersService {
         thing8: { value: this.truncate(courseName, 20) },
         thing4: { value: this.truncate(candidate.room, 20) },
         time15: { value: this.toWechatTimeValue(candidate.startTime, this.getLocalDateKey(candidate.startsAt)) },
-        thing13: { value: this.truncate(candidate.teacher, 20) },
+        thing14: { value: this.truncate(candidate.teacher, 20) },
       },
     }
   }
@@ -532,7 +532,7 @@ export class RemindersService {
           thing8: { value: title },
           thing4: { value: '地点待定' },
           time15: { value: this.toWechatTimeValue('07:30') },
-          thing13: { value: '教师待定' },
+          thing14: { value: '教师待定' },
         }
         : {
           thing10: { value: title },
