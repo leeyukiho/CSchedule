@@ -155,19 +155,6 @@ export default function SettingsPage() {
         )}
       </View>
 
-      <View className='soft-card action-panel settings-card'>
-        <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/feedback/index' })}>
-          <View className='action-icon action-feedback' />
-          <Text>意见反馈</Text>
-          <View className='row-arrow' />
-        </View>
-        <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/submission/index' })}>
-          <View className='action-icon action-school' />
-          <Text>申请添加新学校</Text>
-          <View className='row-arrow' />
-        </View>
-      </View>
-
       <View className='soft-card settings-card'>
         <View className='settings-row'>
           <View>

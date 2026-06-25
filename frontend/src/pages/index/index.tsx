@@ -760,6 +760,13 @@ export default function HomePage() {
 
       {loading && <View className='soft-card state-card'>正在读取数据</View>}
 
+      <View className='section-head'>
+        <View className='section-title'>今日安排</View>
+        <View className='section-head-actions'>
+          <Text>共 {todayItemCount} 项</Text>
+        </View>
+      </View>
+
       {showGuestEmpty && (
         <View className='soft-card home-empty-card'>
           <View className='home-empty-title'>今天没有安排</View>
@@ -767,13 +774,6 @@ export default function HomePage() {
           <View className='home-empty-button' onClick={openProfileTab}>去选择学校</View>
         </View>
       )}
-
-      <View className='section-head'>
-        <View className='section-title'>今日安排</View>
-        <View className='section-head-actions'>
-          <Text>共 {todayItemCount} 项</Text>
-        </View>
-      </View>
 
       {showTodayRestText && <View className='today-empty-text'>今天没有安排</View>}
 
