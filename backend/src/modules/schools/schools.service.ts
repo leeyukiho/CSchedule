@@ -707,8 +707,10 @@ export class SchoolsService {
   }
 
   private getWeatherLocation(config: unknown): SchoolWeatherLocation | null {
-    const provider = this.asRecord(this.asRecord(config).provider)
-    const weatherLocation = this.asRecord(provider.weatherLocation)
+    const root = this.asRecord(config)
+    const provider = this.asRecord(root.provider)
+    const providerConfig = this.asRecord(root.providerConfig)
+    const weatherLocation = this.asRecord(provider.weatherLocation || providerConfig.weatherLocation)
     const latitude = this.getFiniteNumber(weatherLocation.latitude)
     const longitude = this.getFiniteNumber(weatherLocation.longitude)
 

@@ -4,13 +4,13 @@ import { PageShell } from '../../shared/layout'
 
 export default function AboutPage() {
   return (
-    <PageShell title='关于我们' back subPage>
+    <PageShell title='关于 UniLink校园' back subPage>
       <View className='about-hero'>
         <View className='about-logo'>
           <View className='logo-mark' />
         </View>
         <View>
-          <View className='about-name'>课程表助手</View>
+          <View className='about-name'>UniLink校园</View>
           <View className='about-version'>Version 1.0.0</View>
         </View>
       </View>

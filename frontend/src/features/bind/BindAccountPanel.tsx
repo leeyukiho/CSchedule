@@ -27,9 +27,20 @@ import {
   setStoredAccountSummary,
   setStoredDataCache,
 } from '../../shared/storage'
+import {
+  FIRST_IMPORT_AGREEMENT_CONTENT,
+  FIRST_IMPORT_AGREEMENT_TITLE,
+  PASSWORD_SYNC_AGREEMENT_CONTENT,
+  PASSWORD_SYNC_AGREEMENT_TITLE,
+} from './agreements'
 
 type LoginForm = Record<string, string>
 type BindStep = 'select_school' | 'login'
+type AgreementModalType = 'first_import' | 'password_sync'
+type AgreementBlock =
+  | { kind: 'heading'; text: string }
+  | { kind: 'paragraph'; text: string }
+  | { kind: 'listItem'; marker: string; text: string }
 
 const DEFAULT_LOGIN_FIELDS: LoginField[] = [
   {
@@ -124,6 +135,53 @@ function getSchoolBindUrl(school: SchoolListItem) {
 
 function openSchoolSubmission() {
   Taro.navigateTo({ url: '/pages/submission/index' })
+}
+
+function buildAgreementBlocks(content: string): AgreementBlock[] {
+  const blocks: AgreementBlock[] = []
+  const paragraphLines: string[] = []
+
+  const flushParagraph = () => {
+    const text = paragraphLines.join('\n').trim()
+
+    if (text) {
+      blocks.push({ kind: 'paragraph', text })
+    }
+
+    paragraphLines.length = 0
+  }
+
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim()
+
+    if (!line) {
+      flushParagraph()
+      continue
+    }
+
+    if (line.startsWith('# ')) {
+      flushParagraph()
+      continue
+    }
+
+    if (line.startsWith('## ')) {
+      flushParagraph()
+      blocks.push({ kind: 'heading', text: line.replace(/^##\s+/, '') })
+      continue
+    }
+
+    const listMatch = line.match(/^(\d+)\.\s+(.+)$/)
+    if (listMatch) {
+      flushParagraph()
+      blocks.push({ kind: 'listItem', marker: `${listMatch[1]}.`, text: listMatch[2] })
+      continue
+    }
+
+    paragraphLines.push(line)
+  }
+
+  flushParagraph()
+  return blocks
 }
 
 function getBindErrorMessage(error: unknown) {
@@ -289,6 +347,8 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
   const [contextLoading, setContextLoading] = useState(false)
   const [schoolDropdownOpen, setSchoolDropdownOpen] = useState(false)
   const [savePassword, setSavePassword] = useState(false)
+  const [firstImportAgreementAccepted, setFirstImportAgreementAccepted] = useState(false)
+  const [agreementModal, setAgreementModal] = useState<AgreementModalType | null>(null)
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
   const [step, setStep] = useState<BindStep>('select_school')
@@ -340,6 +400,14 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
       : '进入学校页面导入'
   const schoolDropdownRows = Math.min(schools.length, SCHOOL_DROPDOWN_MAX_ROWS)
   const schoolScrollClassName = `school-scroll school-scroll-${schoolDropdownRows}`
+  const agreementTitle =
+    agreementModal === 'password_sync' ? PASSWORD_SYNC_AGREEMENT_TITLE : FIRST_IMPORT_AGREEMENT_TITLE
+  const agreementContent =
+    agreementModal === 'password_sync' ? PASSWORD_SYNC_AGREEMENT_CONTENT : FIRST_IMPORT_AGREEMENT_CONTENT
+  const agreementBlocks = useMemo(
+    () => buildAgreementBlocks(agreementContent),
+    [agreementContent],
+  )
 
   useDidShow(() => {
     const routeSchool = getInitialSchoolFromRoute()
@@ -430,6 +498,7 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
     setLoginContext(null)
     setForm({})
     setSavePassword(false)
+    setFirstImportAgreementAccepted(false)
     if (syncKeyword) setKeyword(school.name)
 
     const seq = contextSeq.current + 1
@@ -471,6 +540,11 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
   async function bind() {
     if (!selectedSchool) {
       setErrorText('请选择学校')
+      return
+    }
+
+    if (!firstImportAgreementAccepted) {
+      setErrorText('请先阅读并同意首次导入用户服务协议')
       return
     }
 
@@ -800,18 +874,95 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
                     value='password_vault'
                     checked={savePassword}
                   />
-                  <Text>{credentialSave.consentLabel}</Text>
+                  <Text className='credential-save-label'>保存密码并同意</Text>
+                  <Text
+                    className='agreement-link agreement-link-strong'
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setAgreementModal('password_sync')
+                    }}
+                  >
+                    《保存授权》
+                  </Text>
                 </View>
               )}
 
               {!contextLoading && (
-                <Button className='button' disabled={!canBind} loading={loading} onClick={bind}>
+                <View
+                  className='first-import-agreement-option'
+                  onClick={() =>
+                    setFirstImportAgreementAccepted((value) => !value)
+                  }
+                >
+                  <Checkbox
+                    value='first_import_agreement'
+                    checked={firstImportAgreementAccepted}
+                  />
+                  <Text className='agreement-option-text'>同意</Text>
+                  <Text
+                    className='agreement-link'
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setAgreementModal('first_import')
+                    }}
+                  >
+                    《导入协议》
+                  </Text>
+                </View>
+              )}
+
+              {!contextLoading && (
+                <Button className='button' disabled={!canBind || !firstImportAgreementAccepted} loading={loading} onClick={bind}>
                   {bindButtonText}
                 </Button>
               )}
             </View>
           )}
         </View>
+
+        {agreementModal && (
+          <View className='agreement-modal-mask' onClick={() => setAgreementModal(null)}>
+            <View className='agreement-modal-panel' onClick={(event) => event.stopPropagation()}>
+              <View className='agreement-modal-head'>
+                <Text className='agreement-modal-title'>{agreementTitle}</Text>
+                <Text className='agreement-modal-close' onClick={() => setAgreementModal(null)}>关闭</Text>
+              </View>
+              <ScrollView scrollY className='agreement-modal-scroll'>
+                <View className='agreement-modal-content'>
+                  {agreementBlocks.map((block, index) => {
+                    if (block.kind === 'heading') {
+                      return (
+                        <Text className='agreement-modal-section-title' key={`${block.kind}-${index}`}>
+                          {block.text}
+                        </Text>
+                      )
+                    }
+
+                    if (block.kind === 'listItem') {
+                      return (
+                        <View className='agreement-modal-list-row' key={`${block.kind}-${index}`}>
+                          <Text className='agreement-modal-list-marker'>{block.marker}</Text>
+                          <Text className='agreement-modal-list-text'>{block.text}</Text>
+                        </View>
+                      )
+                    }
+
+                    return (
+                      <Text className='agreement-modal-paragraph' key={`${block.kind}-${index}`}>
+                        {block.text}
+                      </Text>
+                    )
+                  })}
+                </View>
+              </ScrollView>
+              <View className='agreement-modal-footer'>
+                <Button className='agreement-modal-button' onClick={() => setAgreementModal(null)}>
+                  我知道了
+                </Button>
+              </View>
+            </View>
+          </View>
+        )}
       </View>
     </PageShell>
   )

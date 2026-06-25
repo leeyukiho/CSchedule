@@ -122,39 +122,20 @@ function resolveSchoolWeatherLocation(
 async function fetchSchoolWeatherText(location: SchoolWeatherLocation) {
   const cached = schoolWeatherCache.get(location.id)
 
-  if (cached && Date.now() - cached.cachedAt < WEATHER_CACHE_TTL_MS) {
-    if (cached.unavailable) {
-      throw new Error('天气未配置')
-    }
-
+  if (cached && !cached.unavailable && Date.now() - cached.cachedAt < WEATHER_CACHE_TTL_MS) {
     return cached.text
   }
 
   const stored = getStoredWeatherCache(location.id)
 
-  if (stored && Date.now() - stored.cachedAt < WEATHER_CACHE_TTL_MS) {
+  if (stored && !stored.unavailable && Date.now() - stored.cachedAt < WEATHER_CACHE_TTL_MS) {
     schoolWeatherCache.set(location.id, stored)
-    if (stored.unavailable) {
-      throw new Error('天气未配置')
-    }
-
     return stored.text
   }
 
   let response
 
-  try {
-    response = await getSchoolWeather(location.id)
-  } catch (error) {
-    const unavailableEntry = {
-      text: '',
-      cachedAt: Date.now(),
-      unavailable: true,
-    }
-    schoolWeatherCache.set(location.id, unavailableEntry)
-    setStoredWeatherCache(location.id, unavailableEntry)
-    throw error
-  }
+  response = await getSchoolWeather(location.id)
 
   if (!response.text) {
     throw new Error('天气读取失败')

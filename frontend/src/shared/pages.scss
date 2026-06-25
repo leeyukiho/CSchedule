@@ -1031,11 +1031,189 @@
   margin-top: 24rpx;
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  flex-wrap: nowrap;
+  gap: 8rpx;
   color: #344054;
-  font-size: 24rpx;
+  font-size: 23rpx;
   font-weight: 700;
   line-height: 1.35;
+}
+
+.credential-save-label {
+  color: #344054;
+  font-size: 23rpx;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.first-import-agreement-option {
+  margin-top: 26rpx;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8rpx;
+  color: #344054;
+  font-size: 23rpx;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.agreement-option-text {
+  color: #344054;
+  font-size: 23rpx;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.agreement-link {
+  color: #2f7bff;
+  font-size: 23rpx;
+  font-weight: 800;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.agreement-link-strong {
+  font-weight: 900;
+  text-decoration: underline;
+}
+
+.agreement-modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(74rpx + env(safe-area-inset-top)) 34rpx calc(74rpx + env(safe-area-inset-bottom));
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.agreement-modal-panel {
+  width: 100%;
+  max-width: 660rpx;
+  max-height: calc(100vh - 148rpx - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1rpx solid rgba(255, 255, 255, 0.82);
+  border-radius: 24rpx;
+  background: #ffffff;
+  box-shadow: 0 34rpx 88rpx rgba(15, 23, 42, 0.25);
+}
+
+.agreement-modal-head {
+  min-height: 94rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 24rpx 28rpx 18rpx;
+  border-bottom: 1rpx solid #eef0f4;
+}
+
+.agreement-modal-title {
+  flex: 1;
+  min-width: 0;
+  color: #101828;
+  font-size: 30rpx;
+  font-weight: 850;
+  line-height: 1.28;
+  word-break: break-word;
+}
+
+.agreement-modal-close {
+  flex: 0 0 auto;
+  color: #667085;
+  font-size: 24rpx;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.agreement-modal-scroll {
+  flex: 1;
+  min-height: 180rpx;
+  max-height: 58vh;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.agreement-modal-content {
+  width: 100%;
+  padding: 24rpx 28rpx 30rpx;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.agreement-modal-section-title {
+  display: block;
+  margin: 26rpx 0 12rpx;
+  color: #101828;
+  font-size: 27rpx;
+  font-weight: 850;
+  line-height: 1.38;
+  word-break: break-word;
+}
+
+.agreement-modal-section-title:first-child {
+  margin-top: 0;
+}
+
+.agreement-modal-paragraph {
+  display: block;
+  margin-bottom: 14rpx;
+  color: #344054;
+  font-size: 25rpx;
+  line-height: 1.68;
+  white-space: pre-line;
+  word-break: break-word;
+}
+
+.agreement-modal-list-row {
+  width: 100%;
+  margin-bottom: 12rpx;
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+  box-sizing: border-box;
+}
+
+.agreement-modal-list-marker {
+  flex: 0 0 42rpx;
+  color: #475467;
+  font-size: 24rpx;
+  font-weight: 800;
+  line-height: 1.62;
+  text-align: right;
+}
+
+.agreement-modal-list-text {
+  flex: 1;
+  min-width: 0;
+  color: #344054;
+  font-size: 25rpx;
+  line-height: 1.62;
+  word-break: break-word;
+}
+
+.agreement-modal-footer {
+  min-height: 104rpx;
+  padding: 18rpx 28rpx 26rpx;
+  border-top: 1rpx solid #eef0f4;
+  background: #fbfcff;
+}
+
+.agreement-modal-button {
+  height: 76rpx;
+  border-radius: 14rpx;
+  background: #101828;
+  color: #ffffff;
+  font-size: 27rpx;
+  font-weight: 800;
+  line-height: 76rpx;
 }
 
 .empty-state {
