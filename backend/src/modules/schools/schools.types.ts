@@ -52,6 +52,14 @@ export interface SchoolTermStartsResponse {
   updatedAt?: string
 }
 
+export interface SchoolWeatherResponse {
+  schoolId: string
+  displayName: string
+  text: string
+  cachedAt: string
+  expiresAt: string
+}
+
 export interface LoginContextResponse {
   contextId: string
   mode: LoginMode

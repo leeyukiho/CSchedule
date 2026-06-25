@@ -164,6 +164,11 @@
         "baseUrl": "https://jxgl.wtbu.edu.cn",
         "system": "EAMS",
         "scheduleParser": "TaskActivity",
+        "weatherLocation": {
+          "displayName": "武工商",
+          "latitude": 30.4611,
+          "longitude": 114.279297
+        },
         "cloudFunctions": {
           "course": {
             "functionName": "syncWtbu",

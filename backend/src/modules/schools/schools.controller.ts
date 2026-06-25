@@ -28,6 +28,11 @@ export class SchoolsController {
     return this.schoolsService.getSchoolTermStarts(schoolId)
   }
 
+  @Get(':schoolId/weather')
+  getSchoolWeather(@Param('schoolId') schoolId: string) {
+    return this.schoolsService.getSchoolWeather(schoolId)
+  }
+
   @Post(':schoolId/login-context')
   createLoginContext(@Param('schoolId') schoolId: string) {
     return this.schoolsService.createLoginContext(schoolId)

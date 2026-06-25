@@ -164,6 +164,14 @@ export interface SchoolTermStartsResponse {
   updatedAt?: string
 }
 
+export interface SchoolWeatherResponse {
+  schoolId: string
+  displayName: string
+  text: string
+  cachedAt: string
+  expiresAt: string
+}
+
 export type AccountStatus = 'active' | 'need_login' | 'cached_only' | 'disabled' | 'unbound'
 
 export interface AccountSessionSummary {
@@ -294,6 +302,11 @@ export interface StudentAccountSummary {
     id: string
     name: string
     shortName?: string
+    weatherLocation?: {
+      displayName?: string
+      latitude: number
+      longitude: number
+    }
   }
 }
 

@@ -18,5 +18,10 @@ export interface StudentAccountSummary {
     id: string
     name: string
     shortName?: string
+    weatherLocation?: {
+      displayName?: string
+      latitude: number
+      longitude: number
+    }
   }
 }

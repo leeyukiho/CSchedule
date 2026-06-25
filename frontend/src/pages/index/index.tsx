@@ -12,6 +12,7 @@ import {
   setLocalReminderPreferenceState,
   updateReminderPreference,
 } from '../../shared/api/reminders'
+import { getSchoolWeather } from '../../shared/api/schools'
 import { getTimetable } from '../../shared/api/timetable'
 import { CourseItem, FeatureCacheResponse, TimetableCacheResponse } from '../../shared/api/types'
 import {
@@ -34,17 +35,11 @@ const REMINDER_STATE_REFRESH_GRACE_MS = 2 * 60 * 1000
 const REMINDER_STATE_RETRY_MS = 2 * 60 * 1000
 const REMINDER_STATE_FAST_RETRY_WINDOW_MS = 30 * 60 * 1000
 const REMINDER_STATE_STALE_RETRY_MS = 30 * 60 * 1000
-const WEATHER_API_URL = 'https://api.open-meteo.com/v1/forecast'
-const AIR_QUALITY_API_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality'
+const WEATHER_STORAGE_CACHE_PREFIX = 'cschedule.weather.'
 
 type SchoolWeatherLocation = {
   id: string
-  schoolIds: string[]
-  providerIds: string[]
-  names: string[]
   displayName: string
-  latitude: number
-  longitude: number
 }
 
 type SchoolWeatherIdentity = {
@@ -56,6 +51,7 @@ type SchoolWeatherIdentity = {
 type WeatherCacheEntry = {
   text: string
   cachedAt: number
+  unavailable?: boolean
 }
 
 type HomeExamItem = {
@@ -74,58 +70,6 @@ const EMPTY_SCHOOL_IDENTITY: SchoolWeatherIdentity = {
   schoolId: '',
   providerId: '',
   schoolName: '',
-}
-
-const SCHOOL_WEATHER_LOCATIONS: SchoolWeatherLocation[] = [
-  {
-    id: 'wtbu',
-    schoolIds: ['wtbu', 'moe_4142013242', '4142013242'],
-    providerIds: ['wtbu'],
-    names: ['武汉工商学院', '武工商'],
-    displayName: '武工商',
-    latitude: 30.4611,
-    longitude: 114.279297,
-  },
-  {
-    id: 'whhxit',
-    schoolIds: ['whhxit', 'moe_4142013666', '4142013666'],
-    providerIds: ['whhxit'],
-    names: ['武汉华夏理工学院', '华夏理工学院', '华夏理工'],
-    displayName: '华夏理工',
-    latitude: 30.466706,
-    longitude: 114.412072,
-  },
-]
-
-const WEATHER_CODE_LABELS: Record<number, string> = {
-  0: '晴',
-  1: '晴间多云',
-  2: '多云',
-  3: '阴',
-  45: '有雾',
-  48: '雾凇',
-  51: '小毛毛雨',
-  53: '毛毛雨',
-  55: '大毛毛雨',
-  56: '冻毛毛雨',
-  57: '强冻毛毛雨',
-  61: '小雨',
-  63: '中雨',
-  65: '大雨',
-  66: '冻雨',
-  67: '强冻雨',
-  71: '小雪',
-  73: '中雪',
-  75: '大雪',
-  77: '米雪',
-  80: '阵雨',
-  81: '强阵雨',
-  82: '暴雨',
-  85: '阵雪',
-  86: '强阵雪',
-  95: '雷雨',
-  96: '雷雨冰雹',
-  99: '强雷雨冰雹',
 }
 
 const schoolWeatherCache = new Map<string, WeatherCacheEntry>()
@@ -156,202 +100,102 @@ function getTextValue(source: Record<string, unknown>, keys: string[]) {
   return ''
 }
 
-function normalizeSchoolMatchValue(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, '')
-}
+function resolveSchoolWeatherLocation(
+  identity: SchoolWeatherIdentity,
+  accountSummary: ReturnType<typeof getStoredAccountSummary>,
+) {
+  const schoolId = identity.schoolId || accountSummary?.schoolId || accountSummary?.school?.id || ''
 
-function hasSchoolMatch(candidate: string, keys: string[]) {
-  const normalizedCandidate = normalizeSchoolMatchValue(candidate)
-
-  if (!normalizedCandidate) {
-    return false
+  if (!schoolId) {
+    return null
   }
 
-  return keys.some((key) => {
-    const normalizedKey = normalizeSchoolMatchValue(key)
-
-    return normalizedKey && (
-      normalizedCandidate === normalizedKey ||
-      normalizedCandidate.includes(normalizedKey) ||
-      normalizedKey.includes(normalizedCandidate)
-    )
-  })
-}
-
-function resolveSchoolWeatherLocation(identity: SchoolWeatherIdentity) {
-  const candidates = [
-    identity.schoolId,
-    identity.providerId,
-    identity.schoolName,
-  ].filter(Boolean)
-
-  return SCHOOL_WEATHER_LOCATIONS.find((location) => {
-    const keys = [
-      location.id,
-      ...location.schoolIds,
-      ...location.providerIds,
-      ...location.names,
-    ]
-
-    return candidates.some((candidate) => hasSchoolMatch(candidate, keys))
-  }) || null
-}
-
-function getFiniteNumber(value: unknown) {
-  const numberValue = typeof value === 'number'
-    ? value
-    : typeof value === 'string'
-      ? Number(value)
-      : NaN
-
-  return Number.isFinite(numberValue) ? numberValue : undefined
-}
-
-function getWeatherCodeLabel(code: number | undefined) {
-  if (typeof code !== 'number') {
-    return '天气'
+  return {
+    id: schoolId,
+    displayName: accountSummary?.school?.weatherLocation?.displayName ||
+      accountSummary?.school?.shortName ||
+      identity.schoolName ||
+      '天气',
   }
-
-  return WEATHER_CODE_LABELS[code] || '天气'
-}
-
-function formatTemperature(value: number | undefined) {
-  return typeof value === 'number' ? `${Math.round(value)}°` : ''
-}
-
-function formatAirQualityLevel(value: number | undefined) {
-  if (typeof value !== 'number' || value < 0) {
-    return ''
-  }
-
-  if (value <= 50) {
-    return '优'
-  }
-
-  if (value <= 100) {
-    return '良'
-  }
-
-  if (value <= 150) {
-    return '轻度污染'
-  }
-
-  if (value <= 200) {
-    return '中度污染'
-  }
-
-  if (value <= 300) {
-    return '重度污染'
-  }
-
-  return '严重污染'
-}
-
-function buildWeatherRequestUrl(location: SchoolWeatherLocation) {
-  const currentFields = [
-    'temperature_2m',
-    'apparent_temperature',
-    'weather_code',
-  ].join(',')
-  const params = [
-    `latitude=${location.latitude}`,
-    `longitude=${location.longitude}`,
-    `current=${encodeURIComponent(currentFields)}`,
-    'timezone=Asia%2FShanghai',
-    'forecast_days=1',
-  ]
-
-  return `${WEATHER_API_URL}?${params.join('&')}`
-}
-
-function buildAirQualityRequestUrl(location: SchoolWeatherLocation) {
-  const params = [
-    `latitude=${location.latitude}`,
-    `longitude=${location.longitude}`,
-    'current=us_aqi',
-    'timezone=Asia%2FShanghai',
-    'forecast_days=1',
-  ]
-
-  return `${AIR_QUALITY_API_URL}?${params.join('&')}`
-}
-
-function buildWeatherText(data: unknown) {
-  const record = asRecord(data)
-  const current = asRecord(record.current)
-  const legacyCurrent = asRecord(record.current_weather)
-  const temperature = getFiniteNumber(current.temperature_2m) ?? getFiniteNumber(legacyCurrent.temperature)
-  const weatherCode = getFiniteNumber(current.weather_code) ?? getFiniteNumber(legacyCurrent.weathercode)
-  const conditionText = getWeatherCodeLabel(weatherCode)
-  const temperatureText = formatTemperature(temperature)
-
-  return [conditionText, temperatureText].filter(Boolean).join(' ')
-}
-
-function buildAirQualityText(data: unknown) {
-  const record = asRecord(data)
-  const current = asRecord(record.current)
-  const aqi = getFiniteNumber(current.us_aqi)
-  const level = formatAirQualityLevel(aqi)
-
-  return level ? `空气质量 ${level}` : ''
-}
-
-async function requestWeatherData(location: SchoolWeatherLocation) {
-  const response = await Taro.request<unknown>({
-    url: buildWeatherRequestUrl(location),
-    method: 'GET',
-  })
-
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new Error('天气读取失败')
-  }
-
-  return response.data
-}
-
-async function requestAirQualityData(location: SchoolWeatherLocation) {
-  const response = await Taro.request<unknown>({
-    url: buildAirQualityRequestUrl(location),
-    method: 'GET',
-  })
-
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new Error('空气质量读取失败')
-  }
-
-  return response.data
-}
-
-function settleRequest<T>(request: Promise<T>) {
-  return request.catch(() => undefined)
 }
 
 async function fetchSchoolWeatherText(location: SchoolWeatherLocation) {
   const cached = schoolWeatherCache.get(location.id)
 
   if (cached && Date.now() - cached.cachedAt < WEATHER_CACHE_TTL_MS) {
+    if (cached.unavailable) {
+      throw new Error('天气未配置')
+    }
+
     return cached.text
   }
 
-  const [weatherData, airQualityData] = await Promise.all([
-    settleRequest(requestWeatherData(location)),
-    settleRequest(requestAirQualityData(location)),
-  ])
-  const weatherText = weatherData ? buildWeatherText(weatherData) : ''
-  const airQualityText = airQualityData ? buildAirQualityText(airQualityData) : ''
+  const stored = getStoredWeatherCache(location.id)
 
-  if (!weatherText && !airQualityText) {
+  if (stored && Date.now() - stored.cachedAt < WEATHER_CACHE_TTL_MS) {
+    schoolWeatherCache.set(location.id, stored)
+    if (stored.unavailable) {
+      throw new Error('天气未配置')
+    }
+
+    return stored.text
+  }
+
+  let response
+
+  try {
+    response = await getSchoolWeather(location.id)
+  } catch (error) {
+    const unavailableEntry = {
+      text: '',
+      cachedAt: Date.now(),
+      unavailable: true,
+    }
+    schoolWeatherCache.set(location.id, unavailableEntry)
+    setStoredWeatherCache(location.id, unavailableEntry)
+    throw error
+  }
+
+  if (!response.text) {
     throw new Error('天气读取失败')
   }
 
-  const text = [location.displayName, weatherText, airQualityText].filter(Boolean).join(' · ')
+  const text = response.text
   schoolWeatherCache.set(location.id, {
+    text,
+    cachedAt: Date.now(),
+  })
+  setStoredWeatherCache(location.id, {
     text,
     cachedAt: Date.now(),
   })
 
   return text
+}
+
+function getWeatherStorageCacheKey(locationId: string) {
+  return `${WEATHER_STORAGE_CACHE_PREFIX}${locationId}`
+}
+
+function normalizeWeatherCacheEntry(value: unknown): WeatherCacheEntry | null {
+  const record = asRecord(value)
+  const text = typeof record.text === 'string' ? record.text : ''
+  const unavailable = record.unavailable === true
+  const cachedAt = typeof record.cachedAt === 'number'
+    ? record.cachedAt
+    : typeof record.cachedAt === 'string'
+      ? Number(record.cachedAt)
+      : 0
+
+  return (text || unavailable) && cachedAt > 0 ? { text, cachedAt, unavailable } : null
+}
+
+function getStoredWeatherCache(locationId: string) {
+  return normalizeWeatherCacheEntry(Taro.getStorageSync(getWeatherStorageCacheKey(locationId)))
+}
+
+function setStoredWeatherCache(locationId: string, entry: WeatherCacheEntry) {
+  Taro.setStorageSync(getWeatherStorageCacheKey(locationId), entry)
 }
 
 function getLocalDateKey(date = new Date()) {
@@ -576,6 +420,7 @@ export default function HomePage() {
   const [subscribingReminder, setSubscribingReminder] = useState(false)
   const [reminderSubscribed, setReminderSubscribed] = useState(false)
   const [schoolIdentity, setSchoolIdentity] = useState<SchoolWeatherIdentity>(EMPTY_SCHOOL_IDENTITY)
+  const [accountSummary, setAccountSummary] = useState<ReturnType<typeof getStoredAccountSummary>>(null)
   const [homeWeatherText, setHomeWeatherText] = useState('')
 
   useEffect(() => {
@@ -603,12 +448,22 @@ export default function HomePage() {
   }, [accountId, nowMs])
 
   const weatherLocation = useMemo(
-    () => resolveSchoolWeatherLocation({
-      schoolId: timetable?.schoolId || schoolIdentity.schoolId,
-      providerId: timetable?.providerId || schoolIdentity.providerId,
-      schoolName: schoolIdentity.schoolName,
-    }),
-    [schoolIdentity.providerId, schoolIdentity.schoolId, schoolIdentity.schoolName, timetable?.providerId, timetable?.schoolId],
+    () => resolveSchoolWeatherLocation(
+      {
+        schoolId: timetable?.schoolId || schoolIdentity.schoolId,
+        providerId: timetable?.providerId || schoolIdentity.providerId,
+        schoolName: schoolIdentity.schoolName,
+      },
+      accountSummary,
+    ),
+    [
+      accountSummary,
+      schoolIdentity.providerId,
+      schoolIdentity.schoolId,
+      schoolIdentity.schoolName,
+      timetable?.providerId,
+      timetable?.schoolId,
+    ],
   )
 
   useEffect(() => {
@@ -678,14 +533,15 @@ export default function HomePage() {
   useDidShow(() => {
     const authState = getStoredAuthState()
     const id = authState.accountId
-    const accountSummary = getStoredAccountSummary(id)
+    const nextAccountSummary = getStoredAccountSummary(id)
 
     setAccountId(id)
+    setAccountSummary(nextAccountSummary)
     setSchoolIdentity(id
       ? {
-          schoolId: authState.schoolId || accountSummary?.schoolId || '',
-          providerId: accountSummary?.providerId || '',
-          schoolName: accountSummary?.school?.name || '',
+          schoolId: authState.schoolId || nextAccountSummary?.schoolId || '',
+          providerId: nextAccountSummary?.providerId || '',
+          schoolName: nextAccountSummary?.school?.name || '',
         }
       : EMPTY_SCHOOL_IDENTITY)
     setTermStarts(getStoredTermStarts())
@@ -696,6 +552,7 @@ export default function HomePage() {
       setLoading(false)
       setErrorText('')
       setReminderSubscribed(false)
+      setAccountSummary(null)
       setHomeWeatherText('')
       return
     }

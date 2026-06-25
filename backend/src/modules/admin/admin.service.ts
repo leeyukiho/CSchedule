@@ -145,6 +145,7 @@ export class AdminService {
       return {
         items: schools.map((school) => ({
           ...school,
+          weatherLocation: this.getWeatherLocation(school.config),
           termStarts: this.getTermStarts(school.config),
           terms: this.getSchoolTerms(
             termMap.get(school.id),
@@ -186,6 +187,7 @@ export class AdminService {
     return {
       items: schools.map((school) => ({
         ...school,
+        weatherLocation: this.getWeatherLocation(school.config),
         termStarts: this.getTermStarts(school.config),
         terms: this.getSchoolTerms(
           termMap.get(school.id),
@@ -807,7 +809,7 @@ export class AdminService {
     }
 
     if (input.providerConfig !== undefined) {
-      nextConfig.provider = input.providerConfig
+      nextConfig.provider = this.mergeProviderConfig(config.provider, input.providerConfig)
     }
 
     if (input.termStarts !== undefined) {
@@ -823,6 +825,25 @@ export class AdminService {
     }
 
     return this.toJson(nextConfig)
+  }
+
+  private mergeProviderConfig(current: unknown, patch: Record<string, unknown> | null) {
+    if (patch === null) {
+      return null
+    }
+
+    const nextProvider = {
+      ...this.asRecord(current),
+      ...this.asRecord(patch),
+    }
+
+    for (const [key, value] of Object.entries(patch || {})) {
+      if (value === null || value === undefined) {
+        delete nextProvider[key]
+      }
+    }
+
+    return nextProvider
   }
 
   private normalizeTermStarts(value: Record<string, string>) {
@@ -881,6 +902,37 @@ export class AdminService {
     }
 
     return result
+  }
+
+  private getWeatherLocation(config: unknown) {
+    const provider = this.asRecord(this.asRecord(config).provider)
+    const weatherLocation = this.asRecord(provider.weatherLocation)
+    const latitude = this.getFiniteNumber(weatherLocation.latitude)
+    const longitude = this.getFiniteNumber(weatherLocation.longitude)
+
+    if (latitude === undefined || longitude === undefined) {
+      return undefined
+    }
+
+    return {
+      displayName: this.getOptionalText(weatherLocation.displayName),
+      latitude,
+      longitude,
+    }
+  }
+
+  private getOptionalText(value: unknown) {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined
+  }
+
+  private getFiniteNumber(value: unknown) {
+    const numberValue = typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number(value)
+        : NaN
+
+    return Number.isFinite(numberValue) ? numberValue : undefined
   }
 
   private getSchoolTermMap(

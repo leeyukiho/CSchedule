@@ -144,9 +144,45 @@ export class StudentAccountsService {
             id: account.school.id,
             name: account.school.name,
             shortName: account.school.shortName ?? undefined,
+            ...this.getSchoolWeatherLocation(account.school.config),
           }
         : undefined,
     }
+  }
+
+  private getSchoolWeatherLocation(config: unknown) {
+    const root = this.asRecord(config)
+    const provider = this.asRecord(root.provider)
+    const weatherLocation = this.asRecord(provider.weatherLocation)
+    const latitude = this.getFiniteNumber(weatherLocation.latitude)
+    const longitude = this.getFiniteNumber(weatherLocation.longitude)
+
+    if (latitude === undefined || longitude === undefined) {
+      return {}
+    }
+
+    return {
+      weatherLocation: {
+        displayName: this.getOptionalString(weatherLocation.displayName),
+        latitude,
+        longitude,
+      },
+    }
+  }
+
+  private getOptionalString(value: unknown) {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined
+  }
+
+  private getFiniteNumber(value: unknown) {
+    const numberValue =
+      typeof value === 'number'
+        ? value
+        : typeof value === 'string'
+          ? Number(value)
+          : NaN
+
+    return Number.isFinite(numberValue) ? numberValue : undefined
   }
 
   private getAccountSyncStrategy(account: {
@@ -223,6 +259,12 @@ export class StudentAccountsService {
       exam: Boolean(source.exam),
       profile: Boolean(source.profile),
     }
+  }
+
+  private asRecord(value: unknown) {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {}
   }
 
   private asDataAccess(value: unknown) {

@@ -93,6 +93,7 @@ interface SchoolItem {
   sectionTimeProfiles?: SectionTimeProfile[]
   courseBuildings?: CourseBuildingItem[]
   userCount?: number
+  weatherLocation?: WeatherLocationDraft
 }
 
 interface SubmissionItem {
@@ -297,8 +298,16 @@ interface CourseBuildingItem {
 interface ProviderDraft {
   providerId: string
   loginMode: string
+  weatherLocation?: WeatherLocationDraft
+  providerConfig?: Record<string, unknown>
   sectionTimes?: SectionTimeItem[]
   sectionTimeProfiles?: SectionTimeProfile[]
+}
+
+interface WeatherLocationDraft {
+  displayName?: string
+  latitude: number
+  longitude: number
 }
 
 type ProviderConfigTab = 'basic' | 'sectionTimes' | 'buildingTimes'
@@ -1396,6 +1405,7 @@ function getProviderDraft(school: SchoolItem) {
   return {
     providerId: school.providerId || school.id,
     loginMode: school.loginMode || 'direct_password',
+    weatherLocation: school.weatherLocation,
     sectionTimes: school.sectionTimes || [],
     sectionTimeProfiles: school.sectionTimeProfiles || [],
   }
@@ -3182,6 +3192,12 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
   const schoolProviderCode = getSchoolProviderCode(props.school)
   const courseBuildings = props.school?.courseBuildings || []
   const [draft, setDraft] = useState<ProviderDraft>(initial)
+  const [weatherEnabled, setWeatherEnabled] = useState(() => Boolean(initial.weatherLocation))
+  const [weatherDraft, setWeatherDraft] = useState(() => ({
+    displayName: initial.weatherLocation?.displayName || '',
+    latitude: initial.weatherLocation ? String(initial.weatherLocation.latitude) : '',
+    longitude: initial.weatherLocation ? String(initial.weatherLocation.longitude) : '',
+  }))
   const [sectionRows, setSectionRows] = useState<SectionTimeRow[]>(() => createSectionTimeRows(initial.sectionTimes))
   const [profileRows, setProfileRows] = useState<SectionTimeProfileRow[]>(() => createSingleBuildingProfileRows(initial.sectionTimeProfiles, courseBuildings))
   const [activeTab, setActiveTab] = useState<ProviderConfigTab>('basic')
@@ -3225,6 +3241,9 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
 
   const setValue = <K extends keyof ProviderDraft>(key: K, value: ProviderDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }))
+  }
+  const setWeatherValue = (key: keyof typeof weatherDraft, value: string) => {
+    setWeatherDraft((current) => ({ ...current, [key]: value }))
   }
   const updateSectionRow = (id: string, patch: Partial<SectionTimeRow>) => {
     setSectionRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row))
@@ -3372,8 +3391,20 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
       const sectionTimeProfiles = profileRowsToItems(profileRows)
       const shouldSubmitSectionTimes = Boolean(initial.sectionTimes?.length) || sectionTimes.length > 0
       const shouldSubmitSectionTimeProfiles = Boolean(initial.sectionTimeProfiles?.length) || sectionTimeProfiles.length > 0
+      const latitude = Number(weatherDraft.latitude)
+      const longitude = Number(weatherDraft.longitude)
+      const weatherLocation = weatherEnabled && Number.isFinite(latitude) && Number.isFinite(longitude)
+        ? {
+            displayName: weatherDraft.displayName.trim() || undefined,
+            latitude,
+            longitude,
+          }
+        : null
       props.onSubmit({
         ...draft,
+        providerConfig: {
+          weatherLocation,
+        },
         ...(shouldSubmitSectionTimes ? { sectionTimes } : {}),
         ...(shouldSubmitSectionTimeProfiles ? { sectionTimeProfiles } : {}),
       })
@@ -3417,6 +3448,38 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
                 options={LOGIN_MODE_OPTIONS}
                 onChange={(loginMode) => setValue('loginMode', loginMode)}
               />
+            </div>
+            <div className="form-section-subpanel">
+              <div className="form-section-header compact">
+                <div>
+                  <h4>天气位置</h4>
+                  <p>配置经纬度后，小程序首页才会显示天气；关闭后不请求天气 API。</p>
+                </div>
+                <label className="switch-row">
+                  <input
+                    type="checkbox"
+                    checked={weatherEnabled}
+                    onChange={(event) => setWeatherEnabled(event.target.checked)}
+                  />
+                  <span>启用</span>
+                </label>
+              </div>
+              {weatherEnabled && (
+                <div className="form-grid provider-simple-grid">
+                  <label className="field">
+                    <span>显示名称</span>
+                    <input value={weatherDraft.displayName} placeholder={props.school?.shortName || props.school?.name || '学校简称'} onChange={(event) => setWeatherValue('displayName', event.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>纬度</span>
+                    <input type="number" step="any" required value={weatherDraft.latitude} placeholder="30.4611" onChange={(event) => setWeatherValue('latitude', event.target.value.trim())} />
+                  </label>
+                  <label className="field">
+                    <span>经度</span>
+                    <input type="number" step="any" required value={weatherDraft.longitude} placeholder="114.279297" onChange={(event) => setWeatherValue('longitude', event.target.value.trim())} />
+                  </label>
+                </div>
+              )}
             </div>
           </section>
         )}

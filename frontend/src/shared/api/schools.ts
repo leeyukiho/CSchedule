@@ -1,5 +1,5 @@
 import { requestApi } from './client'
-import { LoginContextResponse, SchoolListResponse, SchoolTermStartsResponse } from './types'
+import { LoginContextResponse, SchoolListResponse, SchoolTermStartsResponse, SchoolWeatherResponse } from './types'
 import { setStoredSchoolTermStarts } from '../storage'
 
 export interface ListSchoolsOptions {
@@ -127,4 +127,10 @@ export async function refreshSchoolTermStarts(schoolId: string) {
 
   schoolTermStartsRequests.set(cleanSchoolId, request)
   return request
+}
+
+export function getSchoolWeather(schoolId: string) {
+  return requestApi<SchoolWeatherResponse>({
+    path: `/schools/${encodeURIComponent(schoolId)}/weather`,
+  })
 }

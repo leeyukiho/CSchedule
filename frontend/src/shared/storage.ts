@@ -123,6 +123,15 @@ function normalizeAccountSummary(value: unknown): StudentAccountSummary | null {
     return null
   }
 
+  const school = account.school && typeof account.school === 'object' && !Array.isArray(account.school)
+    ? (account.school as Record<string, unknown>)
+    : null
+  const weatherLocation = school && school.weatherLocation && typeof school.weatherLocation === 'object' && !Array.isArray(school.weatherLocation)
+    ? (school.weatherLocation as Record<string, unknown>)
+    : null
+  const latitude = getFiniteNumber(weatherLocation?.latitude)
+  const longitude = getFiniteNumber(weatherLocation?.longitude)
+
   return {
     id: account.id,
     schoolId: account.schoolId,
@@ -138,14 +147,35 @@ function normalizeAccountSummary(value: unknown): StudentAccountSummary | null {
     syncStrategy: account.syncStrategy && typeof account.syncStrategy === 'object' && !Array.isArray(account.syncStrategy)
       ? account.syncStrategy
       : undefined,
-    school: account.school && typeof account.school === 'object' && !Array.isArray(account.school)
+    school: school
       ? {
-          id: String(account.school.id || account.schoolId),
-          name: String(account.school.name || ''),
-          shortName: typeof account.school.shortName === 'string' ? account.school.shortName : undefined,
+          id: String(school.id || account.schoolId),
+          name: String(school.name || ''),
+          shortName: typeof school.shortName === 'string' ? school.shortName : undefined,
+          ...(latitude !== undefined && longitude !== undefined
+            ? {
+                weatherLocation: {
+                  displayName: typeof weatherLocation?.displayName === 'string' && weatherLocation.displayName.trim()
+                    ? weatherLocation.displayName.trim()
+                    : undefined,
+                  latitude,
+                  longitude,
+                },
+              }
+            : {}),
         }
       : undefined,
   }
+}
+
+function getFiniteNumber(value: unknown) {
+  const numberValue = typeof value === 'number'
+    ? value
+    : typeof value === 'string'
+      ? Number(value)
+      : NaN
+
+  return Number.isFinite(numberValue) ? numberValue : undefined
 }
 
 export function getStoredAccountSummary(accountId: string) {

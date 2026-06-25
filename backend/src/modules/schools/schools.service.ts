@@ -9,6 +9,7 @@ import {
   SchoolCatalogSeed,
   SchoolListResponse,
   SchoolTermStartsResponse,
+  SchoolWeatherResponse,
 } from './schools.types'
 import {
   CredentialSaveCapability,
@@ -23,8 +24,24 @@ import {
   createFrontendCloudImportToken,
 } from '../sync/frontend-cloud-import-proof'
 
+const WEATHER_CACHE_TTL_MS = 4 * 60 * 60 * 1000
+const WEATHER_API_URL = 'https://api.open-meteo.com/v1/forecast'
+const AIR_QUALITY_API_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality'
+
+type SchoolWeatherLocation = {
+  displayName?: string
+  latitude: number
+  longitude: number
+}
+
+type SchoolWeatherCacheEntry = SchoolWeatherResponse & {
+  expiresAtMs: number
+}
+
 @Injectable()
 export class SchoolsService {
+  private readonly weatherCache = new Map<string, SchoolWeatherCacheEntry>()
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly providers: ProviderRegistryService,
@@ -153,6 +170,60 @@ export class SchoolsService {
       termStarts: this.getTermStarts(school.config),
       updatedAt: school.updatedAt.toISOString(),
     }
+  }
+
+  async getSchoolWeather(schoolId: string): Promise<SchoolWeatherResponse> {
+    const school = await this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: {
+        id: true,
+        name: true,
+        shortName: true,
+        config: true,
+        enabled: true,
+        status: true,
+      },
+    })
+
+    if (!school) {
+      throw new NotFoundException('School not found')
+    }
+
+    this.assertSchoolAvailable(school)
+
+    const location = this.getWeatherLocation(school.config)
+
+    if (!location) {
+      throw new NotFoundException('School weather is not configured')
+    }
+
+    const cacheKey = this.getWeatherCacheKey(school.id, location)
+    const cached = this.weatherCache.get(cacheKey)
+
+    if (cached && cached.expiresAtMs > Date.now()) {
+      const { expiresAtMs: _expiresAtMs, ...response } = cached
+      return response
+    }
+
+    const text = await this.fetchSchoolWeatherText({
+      ...location,
+      displayName: location.displayName || school.shortName || school.name,
+    })
+    const cachedAtMs = Date.now()
+    const response: SchoolWeatherResponse = {
+      schoolId: school.id,
+      displayName: location.displayName || school.shortName || school.name,
+      text,
+      cachedAt: new Date(cachedAtMs).toISOString(),
+      expiresAt: new Date(cachedAtMs + WEATHER_CACHE_TTL_MS).toISOString(),
+    }
+
+    this.weatherCache.set(cacheKey, {
+      ...response,
+      expiresAtMs: cachedAtMs + WEATHER_CACHE_TTL_MS,
+    })
+
+    return response
   }
 
   async createLoginContext(schoolId: string): Promise<LoginContextResponse> {
@@ -633,6 +704,173 @@ export class SchoolsService {
     }
 
     return result
+  }
+
+  private getWeatherLocation(config: unknown): SchoolWeatherLocation | null {
+    const provider = this.asRecord(this.asRecord(config).provider)
+    const weatherLocation = this.asRecord(provider.weatherLocation)
+    const latitude = this.getFiniteNumber(weatherLocation.latitude)
+    const longitude = this.getFiniteNumber(weatherLocation.longitude)
+
+    if (latitude === undefined || longitude === undefined) {
+      return null
+    }
+
+    return {
+      displayName: this.getOptionalText(weatherLocation.displayName),
+      latitude,
+      longitude,
+    }
+  }
+
+  private getWeatherCacheKey(schoolId: string, location: SchoolWeatherLocation) {
+    return [
+      schoolId,
+      location.latitude.toFixed(6),
+      location.longitude.toFixed(6),
+    ].join(':')
+  }
+
+  private buildWeatherRequestUrl(location: SchoolWeatherLocation) {
+    const currentFields = [
+      'temperature_2m',
+      'apparent_temperature',
+      'weather_code',
+    ].join(',')
+    const params = new URLSearchParams({
+      latitude: String(location.latitude),
+      longitude: String(location.longitude),
+      current: currentFields,
+      timezone: 'Asia/Shanghai',
+      forecast_days: '1',
+    })
+
+    return `${WEATHER_API_URL}?${params.toString()}`
+  }
+
+  private buildAirQualityRequestUrl(location: SchoolWeatherLocation) {
+    const params = new URLSearchParams({
+      latitude: String(location.latitude),
+      longitude: String(location.longitude),
+      current: 'us_aqi',
+      timezone: 'Asia/Shanghai',
+      forecast_days: '1',
+    })
+
+    return `${AIR_QUALITY_API_URL}?${params.toString()}`
+  }
+
+  private async fetchJson(url: string) {
+    const response = await fetch(url)
+
+    if (!response.ok) {
+      throw new Error(`Weather request failed: ${response.status}`)
+    }
+
+    return response.json() as Promise<unknown>
+  }
+
+  private async fetchSchoolWeatherText(location: Required<SchoolWeatherLocation>) {
+    const [weatherData, airQualityData] = await Promise.all([
+      this.settleRequest(this.fetchJson(this.buildWeatherRequestUrl(location))),
+      this.settleRequest(this.fetchJson(this.buildAirQualityRequestUrl(location))),
+    ])
+    const weatherText = weatherData ? this.buildWeatherText(weatherData) : ''
+    const airQualityText = airQualityData ? this.buildAirQualityText(airQualityData) : ''
+
+    if (!weatherText && !airQualityText) {
+      throw new Error('Weather data unavailable')
+    }
+
+    return [location.displayName, weatherText, airQualityText].filter(Boolean).join(' · ')
+  }
+
+  private settleRequest<T>(request: Promise<T>) {
+    return request.catch(() => undefined)
+  }
+
+  private buildWeatherText(data: unknown) {
+    const record = this.asRecord(data)
+    const current = this.asRecord(record.current)
+    const legacyCurrent = this.asRecord(record.current_weather)
+    const temperature =
+      this.getFiniteNumber(current.temperature_2m) ??
+      this.getFiniteNumber(legacyCurrent.temperature)
+    const weatherCode =
+      this.getFiniteNumber(current.weather_code) ??
+      this.getFiniteNumber(legacyCurrent.weathercode)
+    const conditionText = this.getWeatherCodeLabel(weatherCode)
+    const temperatureText = typeof temperature === 'number' ? `${Math.round(temperature)}°` : ''
+
+    return [conditionText, temperatureText].filter(Boolean).join(' ')
+  }
+
+  private buildAirQualityText(data: unknown) {
+    const record = this.asRecord(data)
+    const current = this.asRecord(record.current)
+    const aqi = this.getFiniteNumber(current.us_aqi)
+    const level = this.getAirQualityLevel(aqi)
+
+    return level ? `空气质量 ${level}` : ''
+  }
+
+  private getWeatherCodeLabel(code: number | undefined) {
+    const labels: Record<number, string> = {
+      0: '晴',
+      1: '晴间多云',
+      2: '多云',
+      3: '阴',
+      45: '有雾',
+      48: '雾凇',
+      51: '小毛毛雨',
+      53: '毛毛雨',
+      55: '大毛毛雨',
+      56: '冻毛毛雨',
+      57: '强冻毛毛雨',
+      61: '小雨',
+      63: '中雨',
+      65: '大雨',
+      66: '冻雨',
+      67: '强冻雨',
+      71: '小雪',
+      73: '中雪',
+      75: '大雪',
+      77: '米雪',
+      80: '阵雨',
+      81: '强阵雨',
+      82: '暴雨',
+      85: '阵雪',
+      86: '强阵雪',
+      95: '雷雨',
+      96: '雷雨冰雹',
+      99: '强雷雨冰雹',
+    }
+
+    return typeof code === 'number' ? labels[code] || '天气' : '天气'
+  }
+
+  private getAirQualityLevel(value: number | undefined) {
+    if (typeof value !== 'number' || value < 0) return ''
+    if (value <= 50) return '优'
+    if (value <= 100) return '良'
+    if (value <= 150) return '轻度污染'
+    if (value <= 200) return '中度污染'
+    if (value <= 300) return '重度污染'
+    return '严重污染'
+  }
+
+  private getOptionalText(value: unknown) {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined
+  }
+
+  private getFiniteNumber(value: unknown) {
+    const numberValue = typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number(value)
+        : NaN
+
+    return Number.isFinite(numberValue) ? numberValue : undefined
   }
 
   private getStatusMessage(enabled: boolean, status: string) {
