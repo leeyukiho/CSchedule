@@ -15,6 +15,10 @@
 # Local mini-program prototype directory
 wxapp/
 
+# Local CloudBase function deployment files
+cloudbaserc.json
+cloudfunctions/
+
 # Local environment and machine-specific files
 **/.env
 **/.env.*
