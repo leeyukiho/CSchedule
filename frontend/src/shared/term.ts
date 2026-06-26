@@ -130,7 +130,7 @@ export function getTeachingWeekStart(
   const startYear = getAcademicYear(term, fallbackTermId)
 
   if (!startYear) {
-    return getMondayOnOrAfter(new Date())
+    return getMondayOnOrBefore(new Date())
   }
 
   if (isSecondSemester(term, fallbackTermId)) {
@@ -350,5 +350,12 @@ function getMondayOnOrAfter(date: Date) {
   const day = result.getDay() || 7
   const offset = day === 1 ? 0 : 8 - day
   result.setDate(result.getDate() + offset)
+  return result
+}
+
+function getMondayOnOrBefore(date: Date) {
+  const result = toLocalMidnight(date)
+  const day = result.getDay() || 7
+  result.setDate(result.getDate() - (day - 1))
   return result
 }

@@ -870,9 +870,6 @@ export default function SchedulePage() {
         { label: '任课教师', value: teacher },
         { label: '上课地点', value: room },
         { label: '上课周次', value: weeksText },
-        { label: '节次', value: section },
-        { label: '上课时间', value: timeText },
-        { label: '星期', value: weekdayText },
       ].filter((row) => row.value),
       style,
     }

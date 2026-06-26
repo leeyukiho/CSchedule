@@ -7,10 +7,12 @@ import { Prisma } from "@prisma/client";
 
 import { CredentialVaultService } from "../../common/crypto/credential-vault.service";
 import { PrismaService } from "../../common/prisma/prisma.service";
+import { OpenidAbuseTokenService } from "../../common/security/openid-abuse-token.service";
 import { AccountAccessTokenService } from "../accounts/account-access-token.service";
 import { StudentIdentityService } from "../accounts/student-identity.service";
 import { ProviderRegistryService } from "../providers/provider-registry.service";
 import { DataTarget } from "../providers/provider.types";
+import { WechatSubscribeMessageService } from "../reminders/wechat-subscribe-message.service";
 import { CloudCredentialSyncService } from "../sync/cloud-credential-sync.service";
 import { CourseSyncService } from "../sync/course-sync.service";
 import { verifyFrontendCloudImportProof } from "../sync/frontend-cloud-import-proof";
@@ -30,7 +32,24 @@ export class AuthService {
     private readonly courseSync: CourseSyncService,
     private readonly cloudSync: CloudCredentialSyncService,
     private readonly accountAccessTokens: AccountAccessTokenService,
+    private readonly openidAbuseTokens: OpenidAbuseTokenService,
+    private readonly wechat: WechatSubscribeMessageService,
   ) {}
+
+  async createWechatAbuseSession(code: string) {
+    const cleanCode = typeof code === "string" ? code.trim() : "";
+
+    if (!cleanCode) {
+      throw new BadRequestException("code is required");
+    }
+
+    const openid = await this.wechat.resolveOpenid(cleanCode);
+
+    return {
+      abuseToken: this.openidAbuseTokens.issue(openid),
+      expiresIn: 30 * 24 * 60 * 60,
+    };
+  }
 
   async bindWechatOpenid(accountId: string, openid: string) {
     const cleanOpenid = this.normalizeOpenid(openid);

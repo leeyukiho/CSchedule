@@ -36,6 +36,16 @@ export class AuthController {
   }
 }
 
+@Controller('wechat/session')
+export class WechatSessionController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Post()
+  createSession(@Body() input: { code?: string }) {
+    return this.authService.createWechatAbuseSession(String(input.code || ''))
+  }
+}
+
 @Controller('schools/:schoolId/session-import')
 export class SessionImportController {
   constructor(

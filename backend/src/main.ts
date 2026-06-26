@@ -58,6 +58,8 @@ async function bootstrap() {
       'x-admin-api-key',
       'x-cschedule-account-id',
       'x-cschedule-account-token',
+      'x-cschedule-client-id',
+      'x-cschedule-openid-token',
     ],
     credentials: false,
   })

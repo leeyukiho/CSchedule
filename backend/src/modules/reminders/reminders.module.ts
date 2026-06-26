@@ -19,5 +19,6 @@ import { WechatSubscribeMessageService } from './wechat-subscribe-message.servic
     WechatSubscribeMessageService,
     AdminGuard,
   ],
+  exports: [WechatSubscribeMessageService],
 })
 export class RemindersModule {}

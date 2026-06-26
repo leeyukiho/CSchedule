@@ -580,6 +580,10 @@ export default function HomePage() {
 
     try {
       const nextPreference = await getReminderPreferences(id, { forceRefresh: true })
+      if (!nextPreference) {
+        return
+      }
+
       if (refreshAction === 'expire' && nextPreference.enabled) {
         const expiredPreference = {
           ...nextPreference,

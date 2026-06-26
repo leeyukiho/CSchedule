@@ -114,7 +114,7 @@ function getSyncResultMessage(status: SyncJobResponse['status']) {
   }
 
   if (status === 'rate_limited') {
-    return '操作太频繁'
+    return '操作太频繁，请稍后再试'
   }
 
   return '同步未完成'
@@ -566,6 +566,11 @@ export default function ProfilePage() {
           <Text>学校申请</Text>
           <View className='row-arrow' />
         </View>
+        <Button className='action-row action-share-button' openType='share'>
+          <View className='action-icon action-share' />
+          <Text>分享给好友</Text>
+          <View className='row-arrow' />
+        </Button>
         <View className='action-row' onClick={() => Taro.navigateTo({ url: '/pages/about/index' })}>
           <View className='action-icon action-about' />
           <Text>关于</Text>

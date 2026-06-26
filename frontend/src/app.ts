@@ -2,6 +2,7 @@ import { PropsWithChildren, useEffect, useRef, useState } from 'react'
 import { useDidShow, useLaunch } from '@tarojs/taro'
 
 import { getPendingNotifications, markNotificationRead, PendingNotification } from './shared/api/notifications'
+import { initWechatAbuseSession } from './shared/api/wechat-session'
 import { setNotificationPopupState } from './shared/notification-popup'
 import { getStoredAccountId } from './shared/storage'
 import './app.scss'
@@ -37,6 +38,7 @@ function App({ children }: PropsWithChildren<unknown>) {
 
   useLaunch(() => {
     console.log('CSchedule launched.')
+    void initWechatAbuseSession()
     void loadPendingNotifications()
   })
 

@@ -1,18 +1,27 @@
-import Taro, { useDidShow, useShareAppMessage } from '@tarojs/taro'
+import Taro, { useDidShow, useShareAppMessage, useShareTimeline } from '@tarojs/taro'
+import shareCardImage from '../assets/share-card.png'
 
-const SHARE_TITLE = 'CSchedule 课表助手'
+const SHARE_TITLE = 'UniLink校园'
 const SHARE_PATH = '/pages/index/index'
+const SHARE_QUERY = 'from=share'
 
 export function useDefaultShare() {
   useDidShow(() => {
     Taro.showShareMenu({
       withShareTicket: true,
-      menus: ['shareAppMessage'],
+      showShareItems: ['shareAppMessage', 'shareTimeline'],
     })
   })
 
   useShareAppMessage(() => ({
     title: SHARE_TITLE,
     path: SHARE_PATH,
+    imageUrl: shareCardImage,
+  }))
+
+  useShareTimeline(() => ({
+    title: SHARE_TITLE,
+    query: SHARE_QUERY,
+    imageUrl: shareCardImage,
   }))
 }
