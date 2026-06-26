@@ -1,0 +1,3018 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="UniLink校园是面向大学生的校园课表与教务信息同步助手，支持课表同步、成绩查询、考试安排与提醒订阅。">
+  <title>UniLink校园 | 校园课表、成绩、考试，一站同步</title>
+  <style>
+    :root {
+      --color-primary: #2F7BFF;
+      --color-primary-soft: #5AA9FF;
+      --color-accent: #7DD3FC;
+      --color-bg: #F7F8FB;
+      --color-bg-deep: #EAF2FF;
+      --color-surface: rgba(255, 255, 255, 0.72);
+      --color-surface-strong: rgba(255, 255, 255, 0.88);
+      --color-surface-border: rgba(255, 255, 255, 0.56);
+      --color-line: rgba(104, 132, 185, 0.18);
+      --color-text: #0F172A;
+      --color-text-soft: #667085;
+      --color-text-faint: #94A3B8;
+      --color-success: #22C55E;
+      --color-warn: #FFB547;
+      --color-danger: #FB7185;
+      --gradient-hero: radial-gradient(circle at top left, rgba(125, 211, 252, 0.45), transparent 30%),
+        radial-gradient(circle at 82% 18%, rgba(90, 169, 255, 0.30), transparent 26%),
+        linear-gradient(180deg, #F9FBFF 0%, #F7F8FB 100%);
+      --gradient-panel: linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(243, 248, 255, 0.64));
+      --gradient-cta: linear-gradient(135deg, #1F6BFF 0%, #58A6FF 52%, #C8EDFF 100%);
+      --radius-sm: 14px;
+      --radius-md: 24px;
+      --radius-lg: 32px;
+      --radius-xl: 40px;
+      --shadow-soft: 0 12px 40px rgba(47, 123, 255, 0.10);
+      --shadow-card: 0 20px 48px rgba(20, 67, 145, 0.12);
+      --shadow-float: 0 24px 60px rgba(37, 86, 175, 0.18);
+      --shadow-button: 0 14px 30px rgba(47, 123, 255, 0.24);
+      --blur-glass: blur(18px);
+      --space-1: 8px;
+      --space-2: 12px;
+      --space-3: 16px;
+      --space-4: 20px;
+      --space-5: 24px;
+      --space-6: 32px;
+      --space-7: 40px;
+      --space-8: 56px;
+      --space-9: 72px;
+      --container: 1180px;
+      --nav-height: 74px;
+      --transition-fast: 180ms ease;
+      --transition-base: 260ms cubic-bezier(0.22, 1, 0.36, 1);
+      --transition-slow: 520ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--color-text);
+      background:
+        radial-gradient(circle at 12% 14%, rgba(125, 211, 252, 0.24), transparent 22%),
+        radial-gradient(circle at 85% 8%, rgba(47, 123, 255, 0.18), transparent 24%),
+        linear-gradient(180deg, #FAFBFF 0%, var(--color-bg) 100%);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button {
+      font: inherit;
+      border: 0;
+      background: none;
+      cursor: pointer;
+    }
+
+    img {
+      max-width: 100%;
+      display: block;
+    }
+
+    ::selection {
+      background: rgba(90, 169, 255, 0.22);
+    }
+
+    .site-shell {
+      position: relative;
+      isolation: isolate;
+    }
+
+    .site-shell::before,
+    .site-shell::after {
+      content: "";
+      position: fixed;
+      inset: auto;
+      width: 340px;
+      height: 340px;
+      border-radius: 999px;
+      pointer-events: none;
+      z-index: -1;
+      filter: blur(20px);
+      opacity: 0.55;
+    }
+
+    .site-shell::before {
+      top: 110px;
+      left: -140px;
+      background: rgba(125, 211, 252, 0.38);
+    }
+
+    .site-shell::after {
+      top: 520px;
+      right: -180px;
+      background: rgba(90, 169, 255, 0.28);
+    }
+
+    .container {
+      width: min(100% - 32px, var(--container));
+      margin: 0 auto;
+    }
+
+    .section {
+      padding: var(--space-8) 0;
+      position: relative;
+    }
+
+    .section-head {
+      display: grid;
+      gap: var(--space-3);
+      margin-bottom: var(--space-6);
+      justify-items: start;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(47, 123, 255, 0.10);
+      color: var(--color-primary);
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      text-transform: uppercase;
+      box-shadow: 0 10px 26px rgba(47, 123, 255, 0.08);
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+      box-shadow: 0 0 0 6px rgba(47, 123, 255, 0.08);
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: clamp(30px, 5vw, 44px);
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+    }
+
+    .section-desc {
+      margin: 0;
+      max-width: 660px;
+      color: var(--color-text-soft);
+      font-size: 16px;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 50px;
+      padding: 0 24px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-weight: 700;
+      transition:
+        transform var(--transition-fast),
+        box-shadow var(--transition-fast),
+        background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast);
+      will-change: transform;
+    }
+
+    .button:focus-visible,
+    .nav-link:focus-visible,
+    .carousel-dot:focus-visible,
+    .preview-card:focus-visible {
+      outline: 2px solid rgba(47, 123, 255, 0.42);
+      outline-offset: 3px;
+    }
+
+    .button:hover,
+    .button:active,
+    .nav-cta:hover,
+    .nav-cta:active {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: var(--shadow-button);
+    }
+
+    .button:active,
+    .nav-cta:active {
+      transform: translateY(0) scale(0.985);
+    }
+
+    .button-primary {
+      color: #FFFFFF;
+      background: linear-gradient(135deg, var(--color-primary), var(--color-primary-soft));
+      box-shadow: var(--shadow-button);
+    }
+
+    .button-secondary {
+      color: var(--color-primary);
+      background: rgba(255, 255, 255, 0.72);
+      border-color: rgba(47, 123, 255, 0.14);
+      box-shadow: 0 10px 24px rgba(47, 123, 255, 0.08);
+    }
+
+    .button-ghost {
+      color: #FFFFFF;
+      background: rgba(255, 255, 255, 0.16);
+      border-color: rgba(255, 255, 255, 0.18);
+      box-shadow: 0 16px 36px rgba(8, 21, 54, 0.16);
+      backdrop-filter: blur(12px);
+    }
+
+    .button-icon {
+      width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .button-icon::before,
+    .button-icon::after {
+      content: "";
+      position: absolute;
+      background: currentColor;
+      border-radius: 999px;
+    }
+
+    .button-icon::before {
+      width: 14px;
+      height: 2px;
+    }
+
+    .button-icon::after {
+      width: 8px;
+      height: 8px;
+      border-right: 2px solid currentColor;
+      border-top: 2px solid currentColor;
+      background: transparent;
+      transform: translateX(2px) rotate(45deg);
+      border-radius: 1px;
+    }
+
+    .site-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      transition:
+        background-color var(--transition-base),
+        box-shadow var(--transition-base),
+        border-color var(--transition-base),
+        backdrop-filter var(--transition-base);
+      border-bottom: 1px solid transparent;
+      background: transparent;
+    }
+
+    .site-nav.scrolled {
+      background: rgba(247, 248, 251, 0.72);
+      border-color: rgba(255, 255, 255, 0.44);
+      backdrop-filter: var(--blur-glass);
+      box-shadow: 0 8px 30px rgba(20, 67, 145, 0.08);
+    }
+
+    .nav-inner {
+      height: var(--nav-height);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+    }
+
+    .brand {
+      display: inline-grid;
+      gap: 2px;
+      align-items: center;
+    }
+
+    .brand-main {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      position: relative;
+      background: linear-gradient(160deg, rgba(47, 123, 255, 0.96), rgba(125, 211, 252, 0.92));
+      box-shadow: 0 12px 24px rgba(47, 123, 255, 0.24);
+      overflow: hidden;
+    }
+
+    .brand-mark::before,
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.92);
+    }
+
+    .brand-mark::before {
+      width: 10px;
+      height: 10px;
+      top: 8px;
+      left: 8px;
+      box-shadow:
+        0 0 0 5px rgba(255, 255, 255, 0.16),
+        8px 10px 0 3px rgba(255, 255, 255, 0.16);
+    }
+
+    .brand-mark::after {
+      width: 18px;
+      height: 18px;
+      right: -4px;
+      bottom: -4px;
+      opacity: 0.72;
+    }
+
+    .brand-sub {
+      padding-left: 44px;
+      color: var(--color-text-faint);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .nav-links {
+      display: none;
+      align-items: center;
+      gap: 22px;
+      color: var(--color-text-soft);
+      font-size: 15px;
+    }
+
+    .nav-link {
+      position: relative;
+      transition: color var(--transition-fast), transform var(--transition-fast);
+    }
+
+    .nav-link::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -8px;
+      height: 2px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--color-primary), var(--color-accent));
+      transform: scaleX(0);
+      transform-origin: center;
+      transition: transform var(--transition-fast);
+    }
+
+    .nav-link:hover,
+    .nav-link:active {
+      color: var(--color-text);
+      transform: translateY(-1px);
+    }
+
+    .nav-link:hover::after,
+    .nav-link:focus-visible::after {
+      transform: scaleX(1);
+    }
+
+    .nav-cta {
+      min-height: 46px;
+      padding: 0 18px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(47, 123, 255, 0.96), rgba(90, 169, 255, 0.94));
+      color: #FFFFFF;
+      box-shadow: 0 12px 24px rgba(47, 123, 255, 0.22);
+      transition:
+        transform var(--transition-fast),
+        box-shadow var(--transition-fast),
+        background-color var(--transition-fast);
+    }
+
+    .hero {
+      padding-top: 30px;
+      padding-bottom: var(--space-9);
+      background: var(--gradient-hero);
+      overflow: clip;
+    }
+
+    .hero-grid {
+      display: grid;
+      gap: var(--space-7);
+      align-items: center;
+    }
+
+    .hero-copy {
+      display: grid;
+      gap: var(--space-5);
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      width: fit-content;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.76);
+      border: 1px solid rgba(255, 255, 255, 0.62);
+      box-shadow: 0 18px 34px rgba(47, 123, 255, 0.10);
+      color: var(--color-primary);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .hero-badge::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+    }
+
+    .hero-title {
+      margin: 0;
+      font-size: clamp(40px, 9vw, 68px);
+      line-height: 1.06;
+      letter-spacing: -0.05em;
+      max-width: 11ch;
+      word-break: keep-all;
+      overflow-wrap: normal;
+      text-wrap: balance;
+    }
+
+    .hero-desc {
+      margin: 0;
+      max-width: 560px;
+      color: var(--color-text-soft);
+      font-size: clamp(17px, 2.8vw, 20px);
+    }
+
+    .hero-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .hero-tag {
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.68);
+      border: 1px solid rgba(255, 255, 255, 0.50);
+      color: var(--color-text);
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 14px 28px rgba(47, 123, 255, 0.08);
+    }
+
+    .hero-note {
+      color: var(--color-text-faint);
+      font-size: 14px;
+      margin: -4px 0 0;
+    }
+
+    .hero-visual-wrap {
+      position: relative;
+      display: grid;
+      gap: 18px;
+      justify-items: center;
+    }
+
+    .hero-visual-wrap::before,
+    .hero-visual-wrap::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      filter: blur(10px);
+      z-index: -1;
+    }
+
+    .hero-visual-wrap::before {
+      width: 220px;
+      height: 220px;
+      top: 30px;
+      right: 6%;
+      background: rgba(125, 211, 252, 0.22);
+    }
+
+    .hero-visual-wrap::after {
+      width: 180px;
+      height: 180px;
+      bottom: 40px;
+      left: 8%;
+      background: rgba(47, 123, 255, 0.18);
+    }
+
+    .phone-scene {
+      position: relative;
+      width: min(100%, 380px);
+      padding: 28px 20px 24px;
+      border-radius: 40px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.58));
+      border: 1px solid rgba(255, 255, 255, 0.68);
+      box-shadow: var(--shadow-float);
+      backdrop-filter: blur(24px);
+    }
+
+    .phone-scene::before {
+      content: "";
+      position: absolute;
+      inset: 12px;
+      border-radius: 32px;
+      border: 1px solid rgba(255, 255, 255, 0.46);
+      pointer-events: none;
+    }
+
+    .phone {
+      position: relative;
+      margin: 0 auto;
+      width: min(100%, 304px);
+      aspect-ratio: 304 / 630;
+      border-radius: 38px;
+      padding: 14px;
+      background: linear-gradient(180deg, #10203C 0%, #1E4074 28%, #EAF2FF 28%, #F9FBFF 100%);
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 28px 58px rgba(20, 67, 145, 0.28);
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 12px;
+      transform: translateX(-50%);
+      width: 34%;
+      height: 28px;
+      border-radius: 0 0 18px 18px;
+      background: rgba(6, 17, 37, 0.9);
+      z-index: 2;
+    }
+
+    .phone-screen {
+      position: relative;
+      height: 100%;
+      border-radius: 28px;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at top right, rgba(125, 211, 252, 0.35), transparent 28%),
+        linear-gradient(180deg, #E7F1FF 0%, #F9FBFF 28%, #F8FAFF 100%);
+    }
+
+    .mini-status {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 20px 12px;
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .mini-status-icons {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mini-status-icons span {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.8);
+      display: block;
+    }
+
+    .mini-header {
+      padding: 18px 20px 0;
+      display: grid;
+      gap: 6px;
+      color: #FFFFFF;
+    }
+
+    .mini-header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .mini-date {
+      font-size: 13px;
+      opacity: 0.88;
+    }
+
+    .mini-temp {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(10px);
+      font-size: 12px;
+    }
+
+    .mini-weather {
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      background: radial-gradient(circle at 35% 35%, #FFFFFF 0, #FFFFFF 26%, #FDE68A 28%, #FBBF24 68%);
+      box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.10);
+      position: relative;
+    }
+
+    .mini-weather::after {
+      content: "";
+      position: absolute;
+      width: 12px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.82);
+      left: 10px;
+      top: 9px;
+      box-shadow: -8px 2px 0 2px rgba(255, 255, 255, 0.58);
+    }
+
+    .mini-title {
+      font-size: 28px;
+      line-height: 1.1;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+
+    .mini-subtitle {
+      color: rgba(255, 255, 255, 0.84);
+      font-size: 13px;
+    }
+
+    .mini-body {
+      padding: 20px 16px 96px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .glass-card {
+      background: rgba(255, 255, 255, 0.80);
+      border: 1px solid rgba(255, 255, 255, 0.70);
+      box-shadow: 0 18px 34px rgba(44, 94, 190, 0.12);
+      backdrop-filter: blur(14px);
+    }
+
+    .schedule-card {
+      border-radius: 26px;
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .card-topline,
+    .mini-list-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .card-link {
+      color: var(--color-primary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .today-course {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      border-radius: 22px;
+      background: linear-gradient(145deg, rgba(47, 123, 255, 0.12), rgba(125, 211, 252, 0.18));
+      border: 1px solid rgba(47, 123, 255, 0.12);
+    }
+
+    .today-course-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .course-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.78);
+      color: var(--color-primary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .course-tag::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+    }
+
+    .course-time {
+      font-size: 13px;
+      color: var(--color-text-soft);
+      font-weight: 600;
+    }
+
+    .course-name {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.2;
+      font-weight: 800;
+    }
+
+    .course-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      color: var(--color-text-soft);
+      font-size: 13px;
+    }
+
+    .course-meta span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .course-meta i,
+    .info-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--color-primary-soft);
+      display: inline-block;
+      flex: none;
+    }
+
+    .mini-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .mini-stat {
+      padding: 14px 12px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(255, 255, 255, 0.68);
+      text-align: center;
+    }
+
+    .mini-stat strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .mini-stat span {
+      color: var(--color-text-soft);
+      font-size: 12px;
+    }
+
+    .reminder-card {
+      border-radius: 24px;
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .reminder-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--color-text-soft);
+      font-size: 13px;
+    }
+
+    .toggle {
+      position: relative;
+      width: 60px;
+      height: 34px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(47, 123, 255, 0.96), rgba(125, 211, 252, 0.90));
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+    }
+
+    .toggle::after {
+      content: "";
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      background: #FFFFFF;
+      box-shadow: 0 6px 12px rgba(27, 54, 102, 0.18);
+    }
+
+    .mini-tabbar {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      padding: 12px 10px 14px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      box-shadow: 0 18px 34px rgba(44, 94, 190, 0.12);
+      backdrop-filter: blur(18px);
+    }
+
+    .mini-tab {
+      display: grid;
+      justify-items: center;
+      gap: 7px;
+      color: var(--color-text-faint);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .mini-tab.active {
+      color: var(--color-primary);
+    }
+
+    .mini-tab-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 10px;
+      background: rgba(47, 123, 255, 0.10);
+      position: relative;
+      transition: background-color var(--transition-fast), transform var(--transition-fast);
+    }
+
+    .mini-tab.active .mini-tab-icon {
+      background: linear-gradient(135deg, rgba(47, 123, 255, 0.16), rgba(125, 211, 252, 0.24));
+      transform: translateY(-2px);
+    }
+
+    .mini-tab-icon::before,
+    .mini-tab-icon::after {
+      content: "";
+      position: absolute;
+      background: currentColor;
+      opacity: 0.9;
+    }
+
+    .mini-tab.home .mini-tab-icon::before {
+      width: 12px;
+      height: 10px;
+      left: 7px;
+      top: 10px;
+      border-radius: 4px 4px 3px 3px;
+    }
+
+    .mini-tab.home .mini-tab-icon::after {
+      width: 14px;
+      height: 14px;
+      left: 6px;
+      top: 4px;
+      background: transparent;
+      border-left: 2px solid currentColor;
+      border-top: 2px solid currentColor;
+      transform: rotate(45deg);
+      border-radius: 2px;
+    }
+
+    .mini-tab.schedule .mini-tab-icon::before {
+      inset: 6px;
+      border-radius: 6px;
+    }
+
+    .mini-tab.schedule .mini-tab-icon::after {
+      width: 12px;
+      height: 2px;
+      left: 7px;
+      top: 12px;
+      box-shadow:
+        0 -4px 0 currentColor,
+        0 4px 0 currentColor;
+    }
+
+    .mini-tab.grade .mini-tab-icon::before {
+      width: 4px;
+      height: 12px;
+      left: 6px;
+      bottom: 6px;
+      border-radius: 999px;
+      box-shadow:
+        7px -4px 0 0 currentColor,
+        14px -8px 0 0 currentColor;
+    }
+
+    .mini-tab.grade .mini-tab-icon::after {
+      width: 16px;
+      height: 2px;
+      left: 5px;
+      bottom: 6px;
+    }
+
+    .mini-tab.me .mini-tab-icon::before {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      left: 8px;
+      top: 5px;
+    }
+
+    .mini-tab.me .mini-tab-icon::after {
+      width: 14px;
+      height: 8px;
+      left: 6px;
+      bottom: 5px;
+      border-radius: 999px 999px 8px 8px;
+    }
+
+    .qr-hint {
+      width: min(100%, 340px);
+      display: grid;
+      grid-template-columns: 110px minmax(0, 1fr);
+      gap: 16px;
+      align-items: center;
+      padding: 16px;
+      border-radius: 26px;
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(255, 255, 255, 0.66);
+      box-shadow: 0 18px 40px rgba(47, 123, 255, 0.10);
+      backdrop-filter: blur(18px);
+    }
+
+    .qr-placeholder {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 20px;
+      background:
+        linear-gradient(135deg, rgba(226, 232, 240, 0.88), rgba(203, 213, 225, 0.76));
+      border: 1px dashed rgba(102, 112, 133, 0.26);
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      color: #475569;
+      font-size: 14px;
+      font-weight: 700;
+      text-align: center;
+      letter-spacing: 0.08em;
+    }
+
+    .qr-placeholder::before,
+    .qr-placeholder::after {
+      content: "";
+      position: absolute;
+      inset: 16px;
+      border-radius: 14px;
+      border: 2px solid rgba(148, 163, 184, 0.42);
+    }
+
+    .qr-placeholder::after {
+      inset: 30px;
+      border-style: dashed;
+      opacity: 0.8;
+    }
+
+    .qr-copy strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 16px;
+    }
+
+    .qr-copy span {
+      color: var(--color-text-soft);
+      font-size: 14px;
+    }
+
+    .feature-grid {
+      display: grid;
+      gap: 18px;
+    }
+
+    .feature-card,
+    .testimonial-card,
+    .trust-card,
+    .preview-panel,
+    .usage-card {
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--radius-lg);
+      background: var(--gradient-panel);
+      border: 1px solid rgba(255, 255, 255, 0.66);
+      box-shadow: var(--shadow-card);
+      backdrop-filter: blur(16px);
+    }
+
+    .feature-card::before,
+    .testimonial-card::before,
+    .trust-card::before,
+    .preview-panel::before,
+    .usage-card::before {
+      content: "";
+      position: absolute;
+      inset: 1px;
+      border-radius: inherit;
+      border: 1px solid rgba(255, 255, 255, 0.36);
+      pointer-events: none;
+    }
+
+    .feature-card {
+      padding: 28px;
+      display: grid;
+      gap: 18px;
+      min-height: 100%;
+      transition:
+        transform var(--transition-base),
+        box-shadow var(--transition-base),
+        border-color var(--transition-base);
+    }
+
+    .feature-card:hover,
+    .feature-card:focus-within {
+      transform: translateY(-6px);
+      box-shadow: 0 28px 54px rgba(20, 67, 145, 0.18);
+      border-color: rgba(47, 123, 255, 0.16);
+    }
+
+    .feature-card:active {
+      transform: translateY(-2px) scale(0.995);
+    }
+
+    .feature-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(47, 123, 255, 0.16), rgba(125, 211, 252, 0.26));
+      position: relative;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.48);
+    }
+
+    .feature-icon::before,
+    .feature-icon::after {
+      content: "";
+      position: absolute;
+      border-radius: 10px;
+      border: 2px solid var(--color-primary);
+    }
+
+    .feature-icon.schedule::before {
+      inset: 13px 11px 11px;
+    }
+
+    .feature-icon.schedule::after {
+      width: 22px;
+      height: 2px;
+      left: 17px;
+      top: 26px;
+      border: 0;
+      background: var(--color-primary);
+      box-shadow:
+        0 -6px 0 0 var(--color-primary),
+        0 6px 0 0 var(--color-primary);
+    }
+
+    .feature-icon.score::before {
+      width: 12px;
+      height: 18px;
+      left: 12px;
+      bottom: 12px;
+      background: linear-gradient(180deg, rgba(47, 123, 255, 0.10), rgba(47, 123, 255, 0.22));
+    }
+
+    .feature-icon.score::after {
+      width: 12px;
+      height: 26px;
+      right: 12px;
+      bottom: 12px;
+      background: linear-gradient(180deg, rgba(125, 211, 252, 0.16), rgba(47, 123, 255, 0.24));
+      box-shadow: -16px 6px 0 -2px rgba(47, 123, 255, 0.68);
+      border-color: rgba(47, 123, 255, 0.92);
+    }
+
+    .feature-icon.sync::before {
+      width: 20px;
+      height: 20px;
+      left: 13px;
+      top: 11px;
+      border-color: var(--color-primary);
+      border-right-color: transparent;
+      border-bottom-color: transparent;
+      transform: rotate(-18deg);
+      border-radius: 999px;
+    }
+
+    .feature-icon.sync::after {
+      width: 20px;
+      height: 20px;
+      right: 13px;
+      bottom: 11px;
+      border-color: var(--color-primary-soft);
+      border-left-color: transparent;
+      border-top-color: transparent;
+      transform: rotate(-18deg);
+      border-radius: 999px;
+    }
+
+    .feature-title {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+
+    .feature-desc {
+      margin: 0;
+      color: var(--color-text-soft);
+      font-size: 15px;
+    }
+
+    .feature-points {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+      color: var(--color-text-soft);
+      font-size: 14px;
+    }
+
+    .feature-points li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .feature-points li::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      margin-top: 6px;
+      flex: none;
+      background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+      box-shadow: 0 0 0 5px rgba(47, 123, 255, 0.06);
+    }
+
+    .preview-wrap {
+      display: grid;
+      gap: 22px;
+    }
+
+    .preview-panel {
+      padding: 22px;
+    }
+
+    .preview-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .preview-toolbar strong {
+      font-size: 16px;
+    }
+
+    .preview-toolbar span {
+      color: var(--color-text-soft);
+      font-size: 14px;
+    }
+
+    .preview-viewport {
+      overflow: hidden;
+      border-radius: 28px;
+      position: relative;
+    }
+
+    .preview-track {
+      display: flex;
+      transition: transform var(--transition-slow);
+      will-change: transform;
+      touch-action: pan-y;
+    }
+
+    .preview-card {
+      min-width: 100%;
+      padding: 8px 4px 18px;
+      display: grid;
+      gap: 18px;
+      user-select: none;
+    }
+
+    .preview-card-frame {
+      border-radius: 30px;
+      padding: 16px;
+      background: linear-gradient(180deg, rgba(244, 248, 255, 0.92), rgba(228, 238, 255, 0.84));
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.5),
+        0 24px 42px rgba(35, 77, 150, 0.14);
+    }
+
+    .preview-screen {
+      min-height: 420px;
+      border-radius: 24px;
+      padding: 18px;
+      background:
+        radial-gradient(circle at top right, rgba(125, 211, 252, 0.26), transparent 26%),
+        linear-gradient(180deg, #F7FAFF 0%, #FFFFFF 100%);
+      border: 1px solid rgba(212, 223, 242, 0.72);
+      display: grid;
+      gap: 14px;
+    }
+
+    .mock-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--color-text-soft);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .mock-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: rgba(47, 123, 255, 0.08);
+      color: var(--color-primary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .home-hero-card,
+    .grade-summary,
+    .profile-main-card,
+    .schedule-main-card {
+      padding: 18px;
+      border-radius: 24px;
+      background: linear-gradient(160deg, rgba(47, 123, 255, 0.92), rgba(125, 211, 252, 0.80));
+      color: #FFFFFF;
+      box-shadow: 0 18px 34px rgba(47, 123, 255, 0.22);
+    }
+
+    .home-hero-card h4,
+    .grade-summary h4,
+    .profile-main-card h4,
+    .schedule-main-card h4 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+    }
+
+    .home-hero-card p,
+    .grade-summary p,
+    .profile-main-card p,
+    .schedule-main-card p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.86);
+      font-size: 13px;
+    }
+
+    .home-course-list,
+    .exam-list,
+    .grade-list,
+    .profile-list,
+    .week-grid,
+    .binding-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .mock-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid rgba(226, 232, 240, 0.82);
+      box-shadow: 0 12px 24px rgba(28, 61, 121, 0.06);
+    }
+
+    .mock-row strong {
+      display: block;
+      margin-bottom: 2px;
+      font-size: 15px;
+    }
+
+    .mock-row span {
+      color: var(--color-text-soft);
+      font-size: 12px;
+    }
+
+    .mock-badge {
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .mock-badge.blue {
+      color: var(--color-primary);
+      background: rgba(47, 123, 255, 0.10);
+    }
+
+    .mock-badge.green {
+      color: #0F766E;
+      background: rgba(13, 148, 136, 0.12);
+    }
+
+    .mock-badge.yellow {
+      color: #B45309;
+      background: rgba(245, 158, 11, 0.16);
+    }
+
+    .mock-badge.pink {
+      color: #BE185D;
+      background: rgba(244, 114, 182, 0.16);
+    }
+
+    .home-meta-grid,
+    .profile-grid,
+    .grade-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .metric-card {
+      padding: 14px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(226, 232, 240, 0.82);
+      box-shadow: 0 12px 24px rgba(28, 61, 121, 0.06);
+    }
+
+    .metric-card strong {
+      display: block;
+      font-size: 20px;
+      line-height: 1.2;
+      margin-bottom: 4px;
+    }
+
+    .metric-card span {
+      color: var(--color-text-soft);
+      font-size: 12px;
+    }
+
+    .week-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .week-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(226, 232, 240, 0.82);
+      box-shadow: 0 12px 24px rgba(28, 61, 121, 0.06);
+      color: var(--color-text-soft);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .week-switch strong {
+      color: var(--color-text);
+      font-size: 14px;
+    }
+
+    .week-grid {
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .schedule-preview-screen .week-grid {
+      align-items: stretch;
+    }
+
+    .week-day,
+    .course-block {
+      border-radius: 18px;
+      padding: 12px 8px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(226, 232, 240, 0.82);
+      box-shadow: 0 10px 20px rgba(28, 61, 121, 0.05);
+    }
+
+    .week-day strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+
+    .week-day span {
+      color: var(--color-text-soft);
+      font-size: 11px;
+    }
+
+    .course-block {
+      text-align: left;
+      min-height: 88px;
+      padding: 10px;
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      line-height: 1.35;
+      border: 0;
+      color: #0B2447;
+    }
+
+    .course-block strong {
+      font-size: 13px;
+    }
+
+    .course-block.blue {
+      background: linear-gradient(160deg, #DCEBFF, #C7E0FF);
+    }
+
+    .course-block.green {
+      background: linear-gradient(160deg, #DBF5E6, #C8EFD7);
+    }
+
+    .course-block.purple {
+      background: linear-gradient(160deg, #E9DEFF, #DCCCFB);
+    }
+
+    .course-block.orange {
+      background: linear-gradient(160deg, #FFE7CE, #FFDAB8);
+    }
+
+    .course-block.pink {
+      background: linear-gradient(160deg, #FFE1EC, #FFD2E2);
+    }
+
+    .course-block.cyan {
+      background: linear-gradient(160deg, #D9F5FF, #C7EEFB);
+    }
+
+    .tiny-action-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .tiny-chip {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(47, 123, 255, 0.08);
+      color: var(--color-primary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .profile-main-card {
+      display: grid;
+      gap: 12px;
+    }
+
+    .profile-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .profile-badges span {
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.16);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .binding-row {
+      padding: 14px 16px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid rgba(226, 232, 240, 0.82);
+      box-shadow: 0 12px 24px rgba(28, 61, 121, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .binding-row strong {
+      display: block;
+      font-size: 15px;
+    }
+
+    .binding-row span {
+      color: var(--color-text-soft);
+      font-size: 12px;
+    }
+
+    .preview-copy {
+      display: grid;
+      gap: 8px;
+      padding: 0 8px;
+    }
+
+    .preview-copy strong {
+      font-size: 22px;
+      line-height: 1.2;
+    }
+
+    .preview-copy span {
+      color: var(--color-text-soft);
+      font-size: 15px;
+    }
+
+    .carousel-dots {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .carousel-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.34);
+      transition:
+        transform var(--transition-fast),
+        background-color var(--transition-fast),
+        box-shadow var(--transition-fast);
+      padding: 0;
+    }
+
+    .carousel-dot.active {
+      background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+      transform: scale(1.18);
+      box-shadow: 0 0 0 6px rgba(47, 123, 255, 0.08);
+    }
+
+    .testimonial-grid,
+    .trust-grid,
+    .usage-grid {
+      display: grid;
+      gap: 18px;
+    }
+
+    .testimonial-card {
+      padding: 26px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .testimonial-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .avatar {
+      width: 52px;
+      height: 52px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(47, 123, 255, 0.18), rgba(125, 211, 252, 0.30));
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--color-primary);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.48);
+    }
+
+    .testimonial-head strong {
+      display: block;
+      font-size: 16px;
+    }
+
+    .testimonial-head span {
+      color: var(--color-text-soft);
+      font-size: 13px;
+    }
+
+    .testimonial-card p {
+      margin: 0;
+      color: var(--color-text-soft);
+      font-size: 15px;
+    }
+
+    .testimonial-card p::before {
+      content: "“";
+      color: var(--color-primary);
+      font-size: 26px;
+      margin-right: 4px;
+      vertical-align: -2px;
+    }
+
+    .trust-card {
+      padding: 24px;
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+
+    .trust-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(47, 123, 255, 0.16), rgba(125, 211, 252, 0.26));
+      position: relative;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+    }
+
+    .trust-icon::before,
+    .trust-icon::after {
+      content: "";
+      position: absolute;
+      border: 2px solid var(--color-primary);
+    }
+
+    .trust-icon.shield::before {
+      inset: 8px 12px 10px;
+      border-radius: 12px 12px 16px 16px;
+      clip-path: polygon(50% 0%, 100% 18%, 100% 62%, 50% 100%, 0% 62%, 0% 18%);
+      background: linear-gradient(180deg, rgba(47, 123, 255, 0.10), rgba(125, 211, 252, 0.14));
+    }
+
+    .trust-icon.shield::after {
+      width: 10px;
+      height: 6px;
+      left: 18px;
+      top: 22px;
+      border-top: 0;
+      border-right: 0;
+      transform: rotate(-45deg);
+    }
+
+    .trust-icon.lock::before {
+      width: 18px;
+      height: 14px;
+      left: 15px;
+      top: 22px;
+      border-radius: 6px;
+      background: rgba(47, 123, 255, 0.12);
+    }
+
+    .trust-icon.lock::after {
+      width: 12px;
+      height: 12px;
+      left: 18px;
+      top: 10px;
+      border-bottom: 0;
+      border-radius: 999px 999px 0 0;
+    }
+
+    .trust-icon.eye::before {
+      width: 28px;
+      height: 18px;
+      left: 10px;
+      top: 15px;
+      border-radius: 999px / 75%;
+      background: rgba(47, 123, 255, 0.08);
+    }
+
+    .trust-icon.eye::after {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      left: 20px;
+      top: 20px;
+      background: var(--color-primary);
+      border: 0;
+      box-shadow: 0 0 0 5px rgba(47, 123, 255, 0.08);
+    }
+
+    .trust-card h3,
+    .testimonial-card h3,
+    .usage-card h3 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.2;
+    }
+
+    .trust-card p,
+    .usage-card p {
+      margin: 0;
+      color: var(--color-text-soft);
+      font-size: 14px;
+    }
+
+    .usage {
+      padding-bottom: var(--space-9);
+    }
+
+    .usage-panel {
+      border-radius: var(--radius-xl);
+      background: var(--gradient-cta);
+      padding: clamp(28px, 4vw, 48px);
+      color: #FFFFFF;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 30px 64px rgba(25, 86, 185, 0.24);
+    }
+
+    .usage-panel::before,
+    .usage-panel::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.16);
+      filter: blur(12px);
+    }
+
+    .usage-panel::before {
+      width: 280px;
+      height: 280px;
+      top: -140px;
+      right: -80px;
+    }
+
+    .usage-panel::after {
+      width: 200px;
+      height: 200px;
+      bottom: -100px;
+      left: -40px;
+    }
+
+    .usage-grid {
+      align-items: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    .usage-copy {
+      display: grid;
+      gap: 18px;
+    }
+
+    .usage-copy .eyebrow {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.18);
+      color: #FFFFFF;
+      box-shadow: none;
+    }
+
+    .usage-copy .eyebrow::before {
+      background: #FFFFFF;
+      box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.12);
+    }
+
+    .usage-title {
+      margin: 0;
+      font-size: clamp(32px, 5.8vw, 50px);
+      line-height: 1.08;
+      letter-spacing: -0.04em;
+      max-width: 14ch;
+    }
+
+    .usage-desc,
+    .usage-small {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.84);
+    }
+
+    .usage-cards {
+      display: grid;
+      gap: 16px;
+    }
+
+    .usage-card {
+      padding: 22px;
+      background: rgba(255, 255, 255, 0.16);
+      border-color: rgba(255, 255, 255, 0.18);
+      box-shadow: 0 18px 34px rgba(8, 21, 54, 0.12);
+    }
+
+    .usage-steps {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 14px;
+      color: rgba(255, 255, 255, 0.90);
+      font-size: 14px;
+    }
+
+    .usage-steps li {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .usage-steps li::before {
+      content: attr(data-step);
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.18);
+      display: inline-grid;
+      place-items: center;
+      font-size: 12px;
+      font-weight: 800;
+      flex: none;
+    }
+
+    .usage-qr-box {
+      display: grid;
+      gap: 18px;
+      justify-items: center;
+      text-align: center;
+    }
+
+    .usage-qr-frame {
+      width: min(100%, 260px);
+      padding: 18px;
+      border-radius: 30px;
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.20);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 20px 40px rgba(8, 21, 54, 0.16);
+    }
+
+    .usage-qr-frame .qr-placeholder {
+      width: 100%;
+      background: linear-gradient(135deg, rgba(235, 241, 249, 0.94), rgba(214, 223, 235, 0.90));
+      color: #425466;
+    }
+
+    .usage-qr-tip {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.88);
+      font-size: 14px;
+    }
+
+    .site-footer {
+      padding: 0 0 42px;
+    }
+
+    .footer-card {
+      padding: 24px;
+      text-align: center;
+      border-radius: var(--radius-lg);
+      background: rgba(255, 255, 255, 0.74);
+      border: 1px solid rgba(255, 255, 255, 0.64);
+      box-shadow: 0 18px 38px rgba(47, 123, 255, 0.08);
+      backdrop-filter: blur(14px);
+      color: var(--color-text-soft);
+    }
+
+    .footer-card p {
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .footer-card p + p {
+      margin-top: 8px;
+    }
+
+    .footer-card small {
+      font-size: 12px;
+      color: var(--color-text-faint);
+    }
+
+    [data-reveal] {
+      opacity: 0;
+      transform: translateY(28px);
+      transition:
+        opacity var(--transition-slow),
+        transform var(--transition-slow);
+    }
+
+    [data-reveal].is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (min-width: 760px) {
+      .container {
+        width: min(100% - 48px, var(--container));
+      }
+
+      .nav-links {
+        display: flex;
+      }
+
+      .hero {
+        padding-top: 42px;
+      }
+
+      .hero-grid {
+        grid-template-columns: minmax(0, 1.05fr) minmax(330px, 0.95fr);
+      }
+
+      .feature-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .testimonial-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .trust-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .usage-grid {
+        grid-template-columns: minmax(0, 1.02fr) minmax(320px, 0.98fr);
+      }
+    }
+
+    @media (min-width: 980px) {
+      .preview-panel {
+        padding: 28px;
+      }
+
+      .preview-card {
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
+        align-items: center;
+        gap: 28px;
+      }
+
+      .preview-copy {
+        padding-right: 14px;
+      }
+    }
+
+    @media (max-width: 759px) {
+      .nav-inner {
+        height: auto;
+        min-height: var(--nav-height);
+        padding: 12px 0;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .nav-actions {
+        width: 100%;
+        display: grid;
+        gap: 10px;
+      }
+
+      .nav-links {
+        display: flex;
+        width: 100%;
+        justify-content: space-between;
+        gap: 12px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        font-size: 14px;
+      }
+
+      .nav-links::-webkit-scrollbar {
+        display: none;
+      }
+
+      .nav-link {
+        white-space: nowrap;
+      }
+
+      .brand-sub {
+        padding-left: 44px;
+      }
+
+      .qr-hint {
+        grid-template-columns: 92px minmax(0, 1fr);
+      }
+
+      .phone-scene {
+        padding: 20px 14px 18px;
+      }
+
+      .mini-title {
+        font-size: 25px;
+      }
+
+      .preview-panel {
+        padding: 18px;
+      }
+
+      .preview-screen {
+        min-height: 360px;
+      }
+
+      .week-grid {
+        overflow-x: auto;
+        padding-bottom: 4px;
+      }
+
+      .week-grid::-webkit-scrollbar {
+        height: 6px;
+      }
+
+      .week-grid::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.32);
+        border-radius: 999px;
+      }
+
+      .week-day,
+      .course-block {
+        min-width: 86px;
+      }
+
+      .schedule-preview-screen {
+        gap: 12px;
+      }
+
+      .schedule-preview-screen .mock-topbar {
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+
+      .schedule-preview-screen .mock-pill {
+        white-space: nowrap;
+      }
+
+      .schedule-preview-screen .week-controls {
+        display: grid;
+        gap: 10px;
+      }
+
+      .schedule-preview-screen .week-switch {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .schedule-preview-screen .tiny-chip {
+        width: fit-content;
+      }
+
+      .schedule-preview-screen .week-grid {
+        grid-template-columns: repeat(7, 84px);
+        justify-content: start;
+        gap: 8px;
+        padding-bottom: 8px;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .schedule-preview-screen .week-grid.week-grid-courses {
+        grid-template-columns: repeat(7, 106px);
+      }
+
+      .schedule-preview-screen .week-day,
+      .schedule-preview-screen .course-block {
+        min-width: auto;
+      }
+
+      .usage-panel {
+        border-radius: 32px;
+      }
+    }
+
+    @media (max-width: 540px) {
+      .container {
+        width: min(100% - 24px, var(--container));
+      }
+
+      .section {
+        padding: 54px 0;
+      }
+
+      .hero-title {
+        font-size: clamp(34px, 9.6vw, 42px);
+        line-height: 1.1;
+        letter-spacing: -0.04em;
+        max-width: none;
+      }
+
+      .button-row {
+        align-items: stretch;
+      }
+
+      .button {
+        width: 100%;
+      }
+
+      .nav-actions {
+        gap: 10px;
+      }
+
+      .nav-cta {
+        margin-left: 0;
+        width: 100%;
+        justify-content: center;
+      }
+
+      .phone {
+        width: min(100%, 286px);
+      }
+
+      .phone-scene {
+        width: min(100%, 100%);
+      }
+
+      .mini-stat-grid,
+      .home-meta-grid,
+      .profile-grid,
+      .grade-metrics {
+        grid-template-columns: 1fr;
+      }
+
+      .schedule-preview-screen {
+        padding: 16px;
+      }
+
+      .schedule-preview-screen .schedule-main-card {
+        padding: 16px;
+      }
+
+      .schedule-preview-screen .schedule-main-card h4 {
+        font-size: 22px;
+      }
+
+      .schedule-preview-screen .week-switch {
+        padding: 10px 12px;
+        gap: 8px;
+        font-size: 12px;
+      }
+
+      .schedule-preview-screen .week-switch strong {
+        font-size: 13px;
+      }
+
+      .schedule-preview-screen .week-grid {
+        grid-template-columns: repeat(7, 78px);
+      }
+
+      .schedule-preview-screen .week-grid.week-grid-courses {
+        grid-template-columns: repeat(7, 100px);
+      }
+
+      .usage-qr-frame {
+        width: min(100%, 240px);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+
+      [data-reveal] {
+        opacity: 1;
+        transform: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="site-shell">
+    <header class="site-nav" id="top">
+      <div class="container nav-inner">
+        <a class="brand" href="#hero" aria-label="UniLink校园 首页">
+          <span class="brand-main">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <span>UniLink校园</span>
+          </span>
+          <span class="brand-sub">CSchedule</span>
+        </a>
+        <div class="nav-actions">
+          <nav class="nav-links" aria-label="页面导航">
+            <a class="nav-link" href="#features">功能亮点</a>
+            <a class="nav-link" href="#preview">界面预览</a>
+            <a class="nav-link" href="#usage">使用方式</a>
+          </nav>
+          <a class="button nav-cta" href="#usage">微信扫码体验</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero section" id="hero" aria-labelledby="hero-title">
+        <div class="container hero-grid">
+          <div class="hero-copy">
+            <div class="hero-badge" data-reveal>面向大学生的校园课表与教务信息同步助手</div>
+            <div data-reveal>
+              <h1 class="hero-title" id="hero-title">校园课表、<wbr>成绩、考试，<wbr>一站同步</h1>
+            </div>
+            <p class="hero-desc" data-reveal>连接学校教务系统，把今日课程、本周课表、考试安排和学业信息放进一个更清爽的小程序里。</p>
+            <div class="hero-tags" data-reveal>
+              <span class="hero-tag">课表同步</span>
+              <span class="hero-tag">成绩查询</span>
+              <span class="hero-tag">考试安排</span>
+              <span class="hero-tag">提醒订阅</span>
+            </div>
+            <div class="button-row" data-reveal>
+              <a class="button button-primary" href="#usage">
+                立即扫码体验
+                <span class="button-icon" aria-hidden="true"></span>
+              </a>
+              <a class="button button-secondary" href="#features">查看功能亮点</a>
+            </div>
+            <p class="hero-note" data-reveal>支持学校账号绑定与手动同步，学校接入申请也能在小程序内提交。</p>
+          </div>
+
+          <div class="hero-visual-wrap" data-reveal>
+            <div class="phone-scene">
+              <div class="phone" aria-label="UniLink校园 小程序界面示意">
+                <div class="phone-screen">
+                  <div class="mini-status">
+                    <span>9:41</span>
+                    <div class="mini-status-icons" aria-hidden="true">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                  </div>
+                  <div class="mini-header">
+                    <div class="mini-header-top">
+                      <div>
+                        <div class="mini-date">6 月 26 日 星期五</div>
+                        <div class="mini-title">今天也别漏课</div>
+                      </div>
+                      <div class="mini-temp">
+                        <span class="mini-weather" aria-hidden="true"></span>
+                        <span>27°C 多云</span>
+                      </div>
+                    </div>
+                    <div class="mini-subtitle">已同步本周课表、考试安排与提醒状态</div>
+                  </div>
+
+                  <div class="mini-body">
+                    <article class="schedule-card glass-card">
+                      <div class="card-topline">
+                        <span class="card-title">今日安排</span>
+                        <span class="card-link">查看全部</span>
+                      </div>
+                      <div class="today-course">
+                        <div class="today-course-head">
+                          <span class="course-tag">第 1 节</span>
+                          <span class="course-time">08:00 - 09:35</span>
+                        </div>
+                        <h2 class="course-name">高等数学 B2</h2>
+                        <div class="course-meta">
+                          <span><i aria-hidden="true"></i>知行楼 302</span>
+                          <span><i aria-hidden="true"></i>周次 1-16</span>
+                        </div>
+                      </div>
+                      <div class="mini-stat-grid">
+                        <div class="mini-stat">
+                          <strong>4 门</strong>
+                          <span>今日课程</span>
+                        </div>
+                        <div class="mini-stat">
+                          <strong>1 场</strong>
+                          <span>待提醒考试</span>
+                        </div>
+                        <div class="mini-stat">
+                          <strong>已同步</strong>
+                          <span>11:20 更新</span>
+                        </div>
+                      </div>
+                    </article>
+
+                    <article class="reminder-card glass-card">
+                      <div class="card-topline">
+                        <span class="card-title">订阅提醒</span>
+                        <span class="card-link">管理</span>
+                      </div>
+                      <div class="reminder-row">
+                        <div>
+                          <strong>课程 / 考试提醒</strong>
+                          <div>上课前 30 分钟、考试前 1 天</div>
+                        </div>
+                        <span class="toggle" aria-hidden="true"></span>
+                      </div>
+                    </article>
+                  </div>
+
+                  <div class="mini-tabbar" aria-hidden="true">
+                    <div class="mini-tab home active">
+                      <span class="mini-tab-icon"></span>
+                      <span>首页</span>
+                    </div>
+                    <div class="mini-tab schedule">
+                      <span class="mini-tab-icon"></span>
+                      <span>课表</span>
+                    </div>
+                    <div class="mini-tab grade">
+                      <span class="mini-tab-icon"></span>
+                      <span>成绩</span>
+                    </div>
+                    <div class="mini-tab me">
+                      <span class="mini-tab-icon"></span>
+                      <span>我的</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="qr-hint">
+              <!-- 后续请将这里的灰色占位块替换为真实微信小程序码图片 -->
+              <div class="qr-placeholder" aria-label="二维码占位图">二维码</div>
+              <div class="qr-copy">
+                <strong>微信扫码即可使用，无需下载</strong>
+                <span>打开微信扫一扫，就能直接进入 UniLink校园 小程序。</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="features" aria-labelledby="features-title">
+        <div class="container">
+          <div class="section-head">
+            <div class="eyebrow" data-reveal>功能亮点</div>
+            <h2 class="section-title" id="features-title" data-reveal>把校园信息放回你真正会每天打开的地方</h2>
+            <p class="section-desc" data-reveal>不需要在教务系统里反复跳转。课表、成绩、考试和同步状态，用一个清爽的小程序就能集中查看。</p>
+          </div>
+
+          <div class="feature-grid">
+            <article class="feature-card" data-reveal>
+              <div class="feature-icon schedule" aria-hidden="true"></div>
+              <div>
+                <h3 class="feature-title">课表智能同步</h3>
+                <p class="feature-desc">从学校教务系统导入课程，查看今日安排、周课表、上课时间与地点。</p>
+              </div>
+              <ul class="feature-points">
+                <li>支持学校账号绑定后导入课程，不用手动一门门录入。</li>
+                <li>今日课程、本周周视图、节次地点一眼可见，日常查看更轻松。</li>
+              </ul>
+            </article>
+
+            <article class="feature-card" data-reveal>
+              <div class="feature-icon score" aria-hidden="true"></div>
+              <div>
+                <h3 class="feature-title">成绩与考试集中查看</h3>
+                <p class="feature-desc">学业总览、学期成绩、考试时间与地点集中展示，减少在教务系统里反复查找。</p>
+              </div>
+              <ul class="feature-points">
+                <li>成绩列表、考试安排和关键信息会放在更统一的阅读节奏里。</li>
+                <li>备考前查教室、查时间、看成绩，不必来回切页面找入口。</li>
+              </ul>
+            </article>
+
+            <article class="feature-card" data-reveal>
+              <div class="feature-icon sync" aria-hidden="true"></div>
+              <div>
+                <h3 class="feature-title">提醒与同步状态</h3>
+                <p class="feature-desc">支持课程 / 考试提醒订阅，查看同步状态，需要时可重新同步。</p>
+              </div>
+              <ul class="feature-points">
+                <li>课程提醒、考试提醒可按需开启，尽量少打扰，但关键节点不漏掉。</li>
+                <li>如果学校系统有变动或缓存过期，也能在小程序里手动发起同步。</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="preview" aria-labelledby="preview-title">
+        <div class="container preview-wrap">
+          <div class="section-head">
+            <div class="eyebrow" data-reveal>界面预览</div>
+            <h2 class="section-title" id="preview-title" data-reveal>更像真实小程序，而不是几块漂亮的占位图</h2>
+            <p class="section-desc" data-reveal>首页、课表、成绩、我的四个常用页面都按真实使用习惯做了模拟，日常查看路径会更直观。</p>
+          </div>
+
+          <div class="preview-panel" data-reveal>
+            <div class="preview-toolbar">
+              <div>
+                <strong>小程序页面展示</strong>
+                <span>支持自动轮播、点击切换和触摸滑动</span>
+              </div>
+              <span>左右滑动查看</span>
+            </div>
+
+            <div class="preview-viewport" id="carousel">
+              <div class="preview-track">
+                <article class="preview-card" data-title="首页" data-desc="把日期、天气、今日课程和考试提醒放在进入小程序后的第一屏。">
+                  <div class="preview-card-frame">
+                    <div class="preview-screen">
+                      <div class="mock-topbar">
+                        <span>6 月 26 日 · 星期五</span>
+                        <span class="mock-pill">武汉 · 27°C 多云</span>
+                      </div>
+                      <div class="home-hero-card">
+                        <h4>今天先看哪一项？</h4>
+                        <p>本周第 14 周 · 已同步 11:20</p>
+                      </div>
+                      <div class="home-course-list">
+                        <div class="mock-row">
+                          <div>
+                            <strong>高等数学 B2</strong>
+                            <span>08:00 - 09:35 · 知行楼 302</span>
+                          </div>
+                          <span class="mock-badge blue">今日第 1 节</span>
+                        </div>
+                        <div class="mock-row">
+                          <div>
+                            <strong>大学英语口语</strong>
+                            <span>10:10 - 11:45 · 外语楼 205</span>
+                          </div>
+                          <span class="mock-badge green">待上课</span>
+                        </div>
+                      </div>
+                      <div class="home-meta-grid">
+                        <div class="metric-card">
+                          <strong>1 场</strong>
+                          <span>本周考试提醒</span>
+                        </div>
+                        <div class="metric-card">
+                          <strong>2 项</strong>
+                          <span>已订阅提醒</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="preview-copy">
+                    <strong>首页</strong>
+                    <span>打开小程序后，先看到今天课程、最近考试和同步状态，适合日常快速扫一眼。</span>
+                  </div>
+                </article>
+
+                <article class="preview-card" data-title="课表页" data-desc="按周查看课程安排，支持周次切换，也保留回到今天的入口。">
+                  <div class="preview-card-frame">
+                    <div class="preview-screen schedule-preview-screen">
+                      <div class="mock-topbar">
+                        <span>第 14 周课表</span>
+                        <span class="mock-pill">回到今天</span>
+                      </div>
+                      <div class="schedule-main-card">
+                        <h4>本周课程一览</h4>
+                        <p>周次切换、今日定位、彩色课程块清晰区分</p>
+                      </div>
+                      <div class="week-controls">
+                        <div class="week-switch">
+                          <span>上一周</span>
+                          <strong>第 14 周</strong>
+                          <span>下一周</span>
+                        </div>
+                        <div class="tiny-chip">今天在周五</div>
+                      </div>
+                      <div class="week-grid week-grid-days">
+                        <div class="week-day"><strong>周一</strong><span>06/22</span></div>
+                        <div class="week-day"><strong>周二</strong><span>06/23</span></div>
+                        <div class="week-day"><strong>周三</strong><span>06/24</span></div>
+                        <div class="week-day"><strong>周四</strong><span>06/25</span></div>
+                        <div class="week-day"><strong>周五</strong><span>06/26</span></div>
+                        <div class="week-day"><strong>周六</strong><span>06/27</span></div>
+                        <div class="week-day"><strong>周日</strong><span>06/28</span></div>
+                      </div>
+                      <div class="week-grid week-grid-courses">
+                        <div class="course-block blue"><strong>高数 B2</strong><span>1-2 节</span><span>知行楼 302</span></div>
+                        <div class="course-block green"><strong>英语口语</strong><span>3-4 节</span><span>外语楼 205</span></div>
+                        <div class="course-block purple"><strong>数据结构</strong><span>1-2 节</span><span>理科楼 408</span></div>
+                        <div class="course-block orange"><strong>体育</strong><span>5-6 节</span><span>东操场</span></div>
+                        <div class="course-block pink"><strong>数据库</strong><span>7-8 节</span><span>实验楼 109</span></div>
+                        <div class="course-block cyan"><strong>自习</strong><span>晚课前</span><span>图书馆</span></div>
+                        <div class="course-block blue"><strong>班会</strong><span>晚上</span><span>综合楼 201</span></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="preview-copy">
+                    <strong>课表页</strong>
+                    <span>按周查看课程块，颜色区分更直观，课名、节次和上课地点会保持在同一屏节奏里。</span>
+                  </div>
+                </article>
+
+                <article class="preview-card" data-title="成绩页" data-desc="把学业总览、考试安排和成绩列表集中放在一个页面里，复习前更方便。">
+                  <div class="preview-card-frame">
+                    <div class="preview-screen">
+                      <div class="mock-topbar">
+                        <span>2025-2026 学年</span>
+                        <span class="mock-pill">第 2 学期</span>
+                      </div>
+                      <div class="grade-summary">
+                        <h4>学业总览</h4>
+                        <p>总学分、平均分和绩点集中查看</p>
+                      </div>
+                      <div class="grade-metrics">
+                        <div class="metric-card">
+                          <strong>23.5</strong>
+                          <span>总学分</span>
+                        </div>
+                        <div class="metric-card">
+                          <strong>84.2</strong>
+                          <span>平均分</span>
+                        </div>
+                        <div class="metric-card">
+                          <strong>3.54</strong>
+                          <span>绩点</span>
+                        </div>
+                        <div class="metric-card">
+                          <strong>2 场</strong>
+                          <span>待考安排</span>
+                        </div>
+                      </div>
+                      <div class="exam-list">
+                        <div class="mock-row">
+                          <div>
+                            <strong>数据库原理</strong>
+                            <span>6 月 29 日 14:00 · 实验楼 201</span>
+                          </div>
+                          <span class="mock-badge yellow">待考试</span>
+                        </div>
+                        <div class="mock-row">
+                          <div>
+                            <strong>离散数学</strong>
+                            <span>成绩 88 · 学分 3.0</span>
+                          </div>
+                          <span class="mock-badge blue">已出分</span>
+                        </div>
+                        <div class="mock-row">
+                          <div>
+                            <strong>大学物理</strong>
+                            <span>成绩 91 · 学分 4.0</span>
+                          </div>
+                          <span class="mock-badge green">优秀</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="preview-copy">
+                    <strong>成绩页</strong>
+                    <span>学业总览和考试安排放在同一条信息链路里，期中期末查信息会少很多来回切换。</span>
+                  </div>
+                </article>
+
+                <article class="preview-card" data-title="个人页" data-desc="查看学校绑定状态、手动同步入口、反馈与学校接入申请，适合做日常管理。">
+                  <div class="preview-card-frame">
+                    <div class="preview-screen">
+                      <div class="mock-topbar">
+                        <span>我的</span>
+                        <span class="mock-pill">账号已绑定</span>
+                      </div>
+                      <div class="profile-main-card">
+                        <h4>学校绑定与同步</h4>
+                        <p>把账号状态、同步入口和反馈入口集中放在一个页面里。</p>
+                        <div class="profile-badges">
+                          <span>学校账号已绑定</span>
+                          <span>支持手动同步</span>
+                        </div>
+                      </div>
+                      <div class="binding-list">
+                        <div class="binding-row">
+                          <div>
+                            <strong>当前学校</strong>
+                            <span>武汉某高校 · 教务系统已接入</span>
+                          </div>
+                          <span class="mock-badge blue">正常</span>
+                        </div>
+                        <div class="binding-row">
+                          <div>
+                            <strong>同步状态</strong>
+                            <span>最近一次同步：今天 11:20</span>
+                          </div>
+                          <span class="mock-badge green">已更新</span>
+                        </div>
+                        <div class="binding-row">
+                          <div>
+                            <strong>通知与反馈</strong>
+                            <span>提醒设置、意见反馈、问题上报</span>
+                          </div>
+                          <span class="mock-badge pink">入口</span>
+                        </div>
+                        <div class="binding-row">
+                          <div>
+                            <strong>学校接入申请</strong>
+                            <span>如果你的学校还没适配，可以提交接入信息</span>
+                          </div>
+                          <span class="mock-badge yellow">提交</span>
+                        </div>
+                      </div>
+                      <div class="tiny-action-row">
+                        <span class="tiny-chip">重新同步</span>
+                        <span class="tiny-chip">管理提醒</span>
+                        <span class="tiny-chip">提交反馈</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="preview-copy">
+                    <strong>个人页</strong>
+                    <span>绑定状态、同步按钮、通知反馈和学校接入申请都能在这里找到，遇到问题也更容易自查。</span>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <div class="carousel-dots" aria-label="界面预览切换">
+              <button class="carousel-dot active" type="button" data-index="0" aria-label="查看首页预览"></button>
+              <button class="carousel-dot" type="button" data-index="1" aria-label="查看课表页预览"></button>
+              <button class="carousel-dot" type="button" data-index="2" aria-label="查看成绩页预览"></button>
+              <button class="carousel-dot" type="button" data-index="3" aria-label="查看个人页预览"></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="feedback" aria-labelledby="feedback-title">
+        <div class="container">
+          <div class="section-head">
+            <div class="eyebrow" data-reveal>用户反馈</div>
+            <h2 class="section-title" id="feedback-title" data-reveal>来自校园里的真实使用感受</h2>
+            <p class="section-desc" data-reveal>更省事、少跳转、日常看得更顺，这些比夸张口号更重要。</p>
+          </div>
+
+          <div class="testimonial-grid">
+            <article class="testimonial-card" data-reveal>
+              <div class="testimonial-head">
+                <div class="avatar" aria-hidden="true">林</div>
+                <div>
+                  <strong>林同学</strong>
+                  <span>大二学生</span>
+                </div>
+              </div>
+              <p>之前查课表和考试总要进学校系统翻半天，现在基本先打开这个小程序看一眼，日常安排顺很多。</p>
+            </article>
+
+            <article class="testimonial-card" data-reveal>
+              <div class="testimonial-head">
+                <div class="avatar" aria-hidden="true">乔</div>
+                <div>
+                  <strong>乔同学</strong>
+                  <span>期末备考中</span>
+                </div>
+              </div>
+              <p>成绩、考试时间和地点放在一起真的省事，复习周不用老去教务系统来回查，心里会踏实一点。</p>
+            </article>
+
+            <article class="testimonial-card" data-reveal>
+              <div class="testimonial-head">
+                <div class="avatar" aria-hidden="true">许</div>
+                <div>
+                  <strong>许同学</strong>
+                  <span>社团负责人</span>
+                </div>
+              </div>
+              <p>界面很清爽，平时排活动的时候顺手看看当天课程和提醒就够了，不会被一堆复杂信息打断。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="trust" aria-labelledby="trust-title">
+        <div class="container">
+          <div class="section-head">
+            <div class="eyebrow" data-reveal>信任说明</div>
+            <h2 class="section-title" id="trust-title" data-reveal>把该说清楚的地方，说得简单一点</h2>
+            <p class="section-desc" data-reveal>UniLink校园只做必要的数据同步与展示，信息使用边界、加密处理和参考属性会明确提醒。</p>
+          </div>
+
+          <div class="trust-grid">
+            <article class="trust-card" data-reveal>
+              <div class="trust-icon shield" aria-hidden="true"></div>
+              <h3>用户授权后才同步</h3>
+              <p>只有在你主动绑定学校账号并授权后，才会执行课表、成绩、考试等教务数据同步。</p>
+            </article>
+
+            <article class="trust-card" data-reveal>
+              <div class="trust-icon lock" aria-hidden="true"></div>
+              <h3>敏感信息加密处理</h3>
+              <p>账号相关敏感信息会结合实际场景做加密和必要保护，尽量减少不必要的数据传输与暴露。</p>
+            </article>
+
+            <article class="trust-card" data-reveal>
+              <div class="trust-icon eye" aria-hidden="true"></div>
+              <h3>数据仅供参考，请以学校官方信息为准</h3>
+              <p>课程、成绩、考试等内容更适合日常查看与提醒，关键安排仍请以学校教务系统和正式通知为准。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section usage" id="usage" aria-labelledby="usage-title">
+        <div class="container">
+          <div class="usage-panel" data-reveal>
+            <div class="usage-grid">
+              <div class="usage-copy">
+                <div class="eyebrow">使用方式</div>
+                <h2 class="usage-title" id="usage-title">打开微信，扫码体验更清爽的校园信息管理方式</h2>
+                <p class="usage-desc">无需下载 App，扫码即可进入小程序，查看课表、成绩、考试与提醒。</p>
+                <div class="button-row">
+                  <a class="button button-primary" href="#usage">微信扫码体验</a>
+                  <a class="button button-ghost" href="#features">查看功能亮点</a>
+                </div>
+                <p class="usage-small">支持课表、成绩、考试等信息同步，具体能力以学校适配情况为准。</p>
+                <div class="usage-cards">
+                  <article class="usage-card">
+                    <h3>第一次使用也很简单</h3>
+                    <ol class="usage-steps">
+                      <li data-step="1">微信扫码打开小程序，先看看首页和课表视图是否符合你的使用习惯。</li>
+                      <li data-step="2">如果需要同步学校数据，再绑定学校账号，按页面提示导入课程与考试信息。</li>
+                      <li data-step="3">想接收提醒时，可以开启课程 / 考试订阅，并在需要时手动重新同步。</li>
+                    </ol>
+                  </article>
+                </div>
+              </div>
+
+              <div class="usage-qr-box">
+                <div class="usage-qr-frame">
+                  <!-- 后续请将这里的灰色占位块替换为真实微信小程序码图片 -->
+                  <div class="qr-placeholder" aria-label="二维码占位图">二维码</div>
+                </div>
+                <p class="usage-qr-tip">微信扫码即可使用，无需下载，适合日常随手查看校园信息。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <div class="footer-card">
+          <p>© 2026 UniLink校园. All rights reserved.</p>
+          <p>由UniLink校园团队提供支持</p>
+          <p><small>本页面仅用于产品展示，课程、成绩、考试等信息请以学校官方系统为准。</small></p>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      var prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      var nav = document.querySelector('.site-nav');
+      function updateNavState() {
+        // 导航栏滚动状态切换：页面下滚后切换为半透明毛玻璃背景
+        if (!nav) {
+          return;
+        }
+
+        if (window.scrollY > 18) {
+          nav.classList.add('scrolled');
+        } else {
+          nav.classList.remove('scrolled');
+        }
+      }
+
+      updateNavState();
+      window.addEventListener('scroll', updateNavState, { passive: true });
+
+      var anchorLinks = document.querySelectorAll('a[href^="#"]');
+      anchorLinks.forEach(function (link) {
+        link.addEventListener('click', function (event) {
+          var targetId = link.getAttribute('href');
+          if (!targetId || targetId === '#') {
+            return;
+          }
+
+          var target = document.querySelector(targetId);
+          if (!target) {
+            return;
+          }
+
+          event.preventDefault();
+          target.scrollIntoView({
+            behavior: prefersReducedMotion ? 'auto' : 'smooth',
+            block: 'start'
+          });
+        });
+      });
+
+      var revealItems = document.querySelectorAll('[data-reveal]');
+      if (revealItems.length) {
+        // Intersection Observer 进入动画：元素进入视口后再执行淡入上滑
+        if ('IntersectionObserver' in window && !prefersReducedMotion) {
+          var revealObserver = new IntersectionObserver(function (entries, observer) {
+            entries.forEach(function (entry) {
+              if (!entry.isIntersecting) {
+                return;
+              }
+
+              entry.target.classList.add('is-visible');
+              observer.unobserve(entry.target);
+            });
+          }, {
+            threshold: 0.18,
+            rootMargin: '0px 0px -36px 0px'
+          });
+
+          revealItems.forEach(function (item) {
+            revealObserver.observe(item);
+          });
+        } else {
+          revealItems.forEach(function (item) {
+            item.classList.add('is-visible');
+          });
+        }
+      }
+
+      var carousel = document.getElementById('carousel');
+      var track = carousel ? carousel.querySelector('.preview-track') : null;
+      var slides = track ? Array.prototype.slice.call(track.children) : [];
+      var dots = Array.prototype.slice.call(document.querySelectorAll('.carousel-dot'));
+      var currentIndex = 0;
+      var autoplayTimer = null;
+      var startX = 0;
+      var currentTranslate = 0;
+      var isDragging = false;
+      var hasMoved = false;
+
+      function updateDots(index) {
+        dots.forEach(function (dot, dotIndex) {
+          var isActive = dotIndex === index;
+          dot.classList.toggle('active', isActive);
+          dot.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+      }
+
+      function moveTo(index, shouldAnimate) {
+        if (!track || !slides.length) {
+          return;
+        }
+
+        currentIndex = (index + slides.length) % slides.length;
+        var offset = -currentIndex * 100;
+        currentTranslate = offset;
+        track.style.transition = shouldAnimate === false || prefersReducedMotion ? 'none' : '';
+        track.style.transform = 'translateX(' + offset + '%)';
+        updateDots(currentIndex);
+      }
+
+      function stopAutoplay() {
+        if (autoplayTimer) {
+          window.clearInterval(autoplayTimer);
+          autoplayTimer = null;
+        }
+      }
+
+      function startAutoplay() {
+        if (prefersReducedMotion || slides.length <= 1) {
+          return;
+        }
+
+        stopAutoplay();
+        autoplayTimer = window.setInterval(function () {
+          moveTo(currentIndex + 1, true);
+        }, 4200);
+      }
+
+      if (track && slides.length) {
+        // 轮播逻辑：自动轮播、圆点切换与触摸滑动共用同一套索引更新
+        moveTo(0, false);
+        startAutoplay();
+
+        dots.forEach(function (dot) {
+          dot.addEventListener('click', function () {
+            var nextIndex = Number(dot.getAttribute('data-index') || 0);
+            moveTo(nextIndex, true);
+            startAutoplay();
+          });
+        });
+
+        function getPointX(event) {
+          if (event.touches && event.touches[0]) {
+            return event.touches[0].clientX;
+          }
+
+          if (event.changedTouches && event.changedTouches[0]) {
+            return event.changedTouches[0].clientX;
+          }
+
+          return event.clientX;
+        }
+
+        function onDragStart(event) {
+          isDragging = true;
+          hasMoved = false;
+          startX = getPointX(event);
+          stopAutoplay();
+          track.style.transition = 'none';
+        }
+
+        function onDragMove(event) {
+          if (!isDragging || !carousel) {
+            return;
+          }
+
+          var currentX = getPointX(event);
+          var deltaX = currentX - startX;
+          if (Math.abs(deltaX) > 8) {
+            hasMoved = true;
+          }
+
+          var width = carousel.clientWidth || 1;
+          var offset = currentTranslate + (deltaX / width) * 100;
+          track.style.transform = 'translateX(' + offset + '%)';
+        }
+
+        function onDragEnd(event) {
+          if (!isDragging || !carousel) {
+            return;
+          }
+
+          var endX = getPointX(event);
+          var deltaX = endX - startX;
+          var threshold = Math.max(carousel.clientWidth * 0.14, 40);
+          isDragging = false;
+          track.style.transition = '';
+
+          if (Math.abs(deltaX) > threshold) {
+            if (deltaX < 0) {
+              moveTo(currentIndex + 1, true);
+            } else {
+              moveTo(currentIndex - 1, true);
+            }
+          } else {
+            moveTo(currentIndex, true);
+          }
+
+          startAutoplay();
+        }
+
+        carousel.addEventListener('mouseenter', stopAutoplay);
+        carousel.addEventListener('mouseleave', startAutoplay);
+        carousel.addEventListener('touchstart', onDragStart, { passive: true });
+        carousel.addEventListener('touchmove', onDragMove, { passive: true });
+        carousel.addEventListener('touchend', onDragEnd);
+        carousel.addEventListener('mousedown', onDragStart);
+        window.addEventListener('mousemove', onDragMove);
+        window.addEventListener('mouseup', onDragEnd);
+        window.addEventListener('mouseleave', function () {
+          if (isDragging) {
+            moveTo(currentIndex, true);
+            isDragging = false;
+            startAutoplay();
+          }
+        });
+
+        slides.forEach(function (slide) {
+          slide.addEventListener('dragstart', function (event) {
+            event.preventDefault();
+          });
+
+          slide.addEventListener('click', function (event) {
+            if (hasMoved) {
+              event.preventDefault();
+              hasMoved = false;
+            }
+          });
+        });
+
+        window.addEventListener('resize', function () {
+          moveTo(currentIndex, false);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
