@@ -230,9 +230,10 @@
   font-size: 18rpx;
   line-height: 1.1;
   text-align: center;
-  white-space: normal;
-  word-break: break-all;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  word-break: normal;
+  overflow: hidden;
+  overflow-wrap: normal;
 }
 
 .state-card {

@@ -42,6 +42,15 @@ type ExamSection = {
   items: ExamItem[]
 }
 
+type ExamSummaryItem = {
+  exam: ExamItem
+  status: ExamDisplayStatus
+  isToday: boolean
+  showsTodayStatus: boolean
+}
+
+type ExamArrangementStatus = 'current' | 'next' | 'pending' | 'ended' | 'unscheduled'
+
 const DEFAULT_SCORE_ITEM_FIELDS: FeatureDisplayField[] = [
   { key: 'name', label: '课程' },
   { key: 'credit', label: '学分' },
@@ -417,8 +426,16 @@ function getExamSortTime(exam: ExamItem) {
   )
 }
 
+function getExamStartTime(exam: ExamItem) {
+  return parseExamTimeValue(exam.startAt) || parseExamRangeTime(exam, 'start')
+}
+
+function getExamEndTime(exam: ExamItem) {
+  return parseExamTimeValue(exam.endAt) || parseExamRangeTime(exam, 'end')
+}
+
 function getExamDisplayStatus(exam: ExamItem, now = Date.now()): ExamDisplayStatus {
-  const endTime = parseExamTimeValue(exam.endAt) || parseExamRangeTime(exam, 'end')
+  const endTime = getExamEndTime(exam)
 
   if (exam.status === 'finished') {
     return 'finished'
@@ -480,6 +497,68 @@ function buildExamSections(data: unknown, now = Date.now()): ExamSection[] {
 
 function getExamStatusText(status: ExamDisplayStatus) {
   return EXAM_SECTION_TITLES[status]
+}
+
+function getCollapsedExamSummary(item: ExamSummaryItem | undefined, examCount: number, now = Date.now()) {
+  if (!item) {
+    return examCount ? '点击展开查看全部考试记录' : '请同步后查看最新考试信息'
+  }
+
+  const { exam, isToday, status } = item
+  const startTime = getExamStartTime(exam)
+  const endTime = getExamEndTime(exam)
+  let label = '下一场考试'
+
+  if (status === 'unscheduled') {
+    label = '待安排考试'
+  } else if (status === 'finished') {
+    label = isToday ? '今日已结束' : '已结束考试'
+  } else if (startTime && startTime <= now && (!endTime || endTime >= now)) {
+    label = '正在考试'
+  } else if (isToday) {
+    label = '今日考试'
+  }
+
+  return `${label}：${exam.courseName || '未命名考试'}`
+}
+
+function getExamArrangementStatus(item: ExamSummaryItem, now = Date.now()): ExamArrangementStatus {
+  if (item.status === 'unscheduled') {
+    return 'unscheduled'
+  }
+
+  if (item.status === 'finished') {
+    return 'ended'
+  }
+
+  const startTime = getExamStartTime(item.exam)
+  const endTime = getExamEndTime(item.exam)
+
+  if (startTime && startTime <= now && (!endTime || endTime >= now)) {
+    return 'current'
+  }
+
+  return 'pending'
+}
+
+function getExamArrangementStatusText(status: ExamArrangementStatus) {
+  if (status === 'current') {
+    return '当前'
+  }
+
+  if (status === 'next') {
+    return '下一场'
+  }
+
+  if (status === 'pending') {
+    return '待考试'
+  }
+
+  if (status === 'unscheduled') {
+    return '待安排'
+  }
+
+  return '结束'
 }
 
 function getLocalDateKey(date = new Date()) {
@@ -635,7 +714,7 @@ export default function GradesPage() {
   const scoreCount = countScoreItems(scoreGroups)
   const examSections = buildExamSections(exams?.data, nowMs)
   const todayKey = getLocalDateKey()
-  const examItems = examSections.flatMap((section) =>
+  const examItems: ExamSummaryItem[] = examSections.flatMap((section) =>
     section.items.map((exam) => ({
       exam,
       status: section.key,
@@ -645,14 +724,18 @@ export default function GradesPage() {
   )
   const visibleCollapsedExamItems = examItems.filter((item) => item.status === 'upcoming' || item.isToday)
   const visibleExamItems = showAllExams ? examItems : visibleCollapsedExamItems
+  const nextExamStartTime = Math.min(
+    ...visibleExamItems
+      .filter((item) => getExamArrangementStatus(item, nowMs) === 'pending')
+      .map((item) => getExamStartTime(item.exam))
+      .filter((time) => time > 0),
+  )
   const examCount = examSections.reduce((count, section) => count + section.items.length, 0)
   const shouldShowCollapsedExamPlaceholder = !showAllExams && examCount > 0 && visibleCollapsedExamItems.length === 0
   const examSummaryTitle = examCount
     ? `共 ${examCount} 场考试`
     : '暂无考试安排'
-  const examSummarySubtitle = visibleCollapsedExamItems[0]
-    ? `${visibleCollapsedExamItems[0].exam.courseName} ${getExamStatusText(visibleCollapsedExamItems[0].status)}`
-    : (examCount ? '点击展开查看全部考试记录' : '请同步后查看最新考试信息')
+  const examSummarySubtitle = getCollapsedExamSummary(visibleCollapsedExamItems[0], examCount, nowMs)
   const toggleSemester = (id: string) => {
     setCollapsedSemesters((current) => ({ ...current, [id]: !(current[id] ?? true) }))
   }
@@ -703,13 +786,21 @@ export default function GradesPage() {
         )}
         {showAllExams && visibleExamItems.length > 0 && (
           <View className='exam-list'>
-            {visibleExamItems.map(({ exam, status, showsTodayStatus }, index) => {
+            {visibleExamItems.map((item, index) => {
+              const { exam, status } = item
               const timeParts = getExamTimeParts(exam)
               const examKey = getExamKey(status, exam, index)
+              const baseArrangementStatus = getExamArrangementStatus(item, nowMs)
+              const arrangementStatus = baseArrangementStatus === 'pending' &&
+                nextExamStartTime > 0 &&
+                getExamStartTime(exam) === nextExamStartTime
+                ? 'next'
+                : baseArrangementStatus
+              const arrangementStatusText = getExamArrangementStatusText(arrangementStatus)
 
               return (
                 <View
-                  className={`soft-card exam-row exam-row-${showsTodayStatus ? 'today' : status}`}
+                  className={`soft-card exam-row exam-row-${arrangementStatus}`}
                   key={examKey}
                 >
                   <View className='exam-head'>
@@ -724,8 +815,8 @@ export default function GradesPage() {
                         {exam.seatNo && <Text>座位：{exam.seatNo}</Text>}
                       </View>
                     </View>
-                    <View className={`exam-status exam-status-${showsTodayStatus ? 'today' : status}`}>
-                      {showsTodayStatus ? '今日' : getExamStatusText(status)}
+                    <View className={`exam-status exam-status-${arrangementStatus}`}>
+                      {arrangementStatusText}
                     </View>
                   </View>
                 </View>

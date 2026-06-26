@@ -22,6 +22,7 @@ const PERMANENT_REMINDER_DELIVERY_ERROR_CODES = new Set([
   '47003',
   'TEMPLATE_ID_MISSING',
 ])
+const REMINDER_LEAD_TIME_MS = 60 * 60 * 1000
 
 interface ReminderRunOptions {
   force?: boolean
@@ -37,6 +38,7 @@ interface ReminderContent {
   summary: string
   note: string
   shouldSend: boolean
+  defer?: boolean
   templateData: Record<string, { value: string }>
 }
 
@@ -329,7 +331,6 @@ export class RemindersService {
     options: ReminderRunOptions,
   ) {
     const limit = Math.min(options.limit || config.batchSize, config.batchSize)
-    const currentTime = this.getLocalTimeValue(now)
 
     return this.prisma.reminderSubscription.findMany({
       where: {
@@ -337,7 +338,6 @@ export class RemindersService {
         ...(options.type ? { type: options.type } : {}),
         ...(options.accountId ? { accountId: options.accountId } : {}),
         ...(options.openid ? { openid: options.openid } : {}),
-        preferredTime: { lte: currentTime },
         OR: [{ lastSentDate: null }, { lastSentDate: { not: dateKey } }],
         account: {
           status: { in: ['active', 'cached_only'] },
@@ -356,6 +356,10 @@ export class RemindersService {
     const content = await this.buildContent(subscription, config)
 
     if (!content.shouldSend) {
+      if (content.defer) {
+        return 'skipped'
+      }
+
       await this.recordDelivery(subscription, dateKey, 'skipped', content)
       return 'skipped'
     }
@@ -398,8 +402,12 @@ export class RemindersService {
       return this.emptyContent(subscription.type, '暂无后续课程或考试')
     }
 
+    if (!this.isWithinReminderLeadTime(candidate.startsAt)) {
+      return this.deferContent(subscription.type, `下一次安排将在${candidate.summary.replace(/^下一次[课程考试]+：/, '')}开始`)
+    }
+
     if (candidate.type !== subscription.type) {
-      return this.emptyContent(subscription.type, '下一次最近安排由另一类提醒发送')
+      return this.deferContent(subscription.type, '下一次最近安排由另一类提醒发送')
     }
 
     return candidate.type === 'daily_course'
@@ -541,6 +549,19 @@ export class RemindersService {
           thing3: { value: '打开小程序查看详情' },
         },
     }
+  }
+
+  private deferContent(type: ReminderType, reason: string): ReminderContent {
+    return {
+      ...this.emptyContent(type, reason),
+      defer: true,
+    }
+  }
+
+  private isWithinReminderLeadTime(startsAt: Date, now = new Date()) {
+    const msUntilStart = startsAt.getTime() - now.getTime()
+
+    return msUntilStart >= 0 && msUntilStart <= REMINDER_LEAD_TIME_MS
   }
 
   private async recordDelivery(

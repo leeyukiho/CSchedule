@@ -62,8 +62,8 @@ export function getReminderConfig(): ReminderWorkerConfig {
   return {
     enabled: getBooleanEnv('REMINDER_ENABLED', false),
     dryRun: getBooleanEnv('REMINDER_DRY_RUN', !hasWechatConfig),
-    sendWindowStart: '07:30',
-    sendWindowEnd: '08:00',
+    sendWindowStart: '00:00',
+    sendWindowEnd: '',
     scanIntervalMs: 60_000,
     batchSize: 100,
     concurrency: 5,

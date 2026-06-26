@@ -186,10 +186,13 @@
   overflow: hidden;
 }
 
+.exam-row-ended,
 .exam-row-finished {
   background: #fafafa;
 }
 
+.exam-row-ended .exam-title,
+.exam-row-ended .exam-date,
 .exam-row-finished .exam-title,
 .exam-row-finished .exam-date {
   color: #667085;
@@ -257,35 +260,50 @@
 
 .grades-page .exam-status {
   flex: 0 0 auto;
-  min-width: 72rpx;
-  height: 38rpx;
-  padding: 0 14rpx;
+  min-width: 96rpx;
+  height: 44rpx;
+  padding: 0 16rpx;
+  box-sizing: border-box;
+  border: 1rpx solid transparent;
   border-radius: 999rpx;
-  font-size: 24rpx;
-  font-weight: 800;
-  line-height: 38rpx;
+  font-size: 23rpx;
+  font-weight: 900;
+  line-height: 42rpx;
   text-align: center;
   white-space: nowrap;
 }
 
-.grades-page .exam-status-upcoming {
-  background: #eef4ff;
-  color: #2f7bff;
-}
-
+.grades-page .exam-status-current,
 .grades-page .exam-status-today {
-  background: #ffe8b3;
-  color: #b45309;
+  color: #047857;
+  background: #dcfce7;
+  border-color: #bbf7d0;
 }
 
+.grades-page .exam-status-next,
+.grades-page .exam-status-upcoming {
+  color: #1d4ed8;
+  background: #e0efff;
+  border-color: #bfdbfe;
+}
+
+.grades-page .exam-status-pending {
+  color: #92400e;
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+
+.grades-page .exam-status-ended,
 .grades-page .exam-status-finished {
-  background: #f2f4f7;
   color: #667085;
+  background: #eef2f6;
+  border-color: #d0d5dd;
 }
 
 .grades-page .exam-status-unscheduled {
-  background: #f8fafc;
-  color: #98a2b3;
+  color: #475569;
+  background: #f1f5f9;
+  border-color: #dbe3ea;
 }
 
 .exam-empty {

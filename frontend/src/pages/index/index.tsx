@@ -67,6 +67,8 @@ type HomeExamItem = {
   status: 'today' | 'finished'
 }
 
+type ArrangementStatus = 'current' | 'next' | 'pending' | 'ended'
+
 const EMPTY_SCHOOL_IDENTITY: SchoolWeatherIdentity = {
   schoolId: '',
   providerId: '',
@@ -314,6 +316,14 @@ function getExamSortTime(exam: HomeExamItem) {
   )
 }
 
+function getExamStartTime(exam: HomeExamItem) {
+  return (
+    parseExamTimeValue(exam.startAt) ||
+    parseExamRangeTime(exam, 'start') ||
+    0
+  )
+}
+
 function getExamTimeParts(exam: HomeExamItem) {
   const match = exam.time.match(/(\d{1,2})\s*:\s*(\d{2})\s*[~\-—至]\s*(\d{1,2})\s*:\s*(\d{2})/)
 
@@ -391,6 +401,74 @@ function getHomeTone(index: number) {
   return ['blue', 'green', 'purple', 'red'][index % 4]
 }
 
+function parseTodayTimeRangeMs(timeText: string, now: number) {
+  const match = timeText.match(/(\d{1,2})\s*:\s*(\d{2})(?:\s*[~\-—至]\s*(\d{1,2})\s*:\s*(\d{2}))?/)
+
+  if (!match) {
+    return { startAt: 0, endAt: 0 }
+  }
+
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  const endHour = match[3] ? Number(match[3]) : NaN
+  const endMinute = match[4] ? Number(match[4]) : NaN
+
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return { startAt: 0, endAt: 0 }
+  }
+
+  const startDate = new Date(now)
+  startDate.setHours(hour, minute, 0, 0)
+
+  if (!Number.isInteger(endHour) || !Number.isInteger(endMinute) || endHour < 0 || endHour > 23 || endMinute < 0 || endMinute > 59) {
+    return { startAt: startDate.getTime(), endAt: 0 }
+  }
+
+  const endDate = new Date(now)
+  endDate.setHours(endHour, endMinute, 0, 0)
+
+  return {
+    startAt: startDate.getTime(),
+    endAt: endDate.getTime(),
+  }
+}
+
+function getArrangementStatus(startAt: number, endAt: number, now: number, finished = false): ArrangementStatus {
+  if (finished || (endAt && endAt < now)) {
+    return 'ended'
+  }
+
+  if (startAt && startAt <= now && (!endAt || endAt >= now)) {
+    return 'current'
+  }
+
+  return 'next'
+}
+
+function getCourseStatusLabel(status: ArrangementStatus) {
+  if (status === 'current') {
+    return '当前'
+  }
+
+  if (status === 'ended') {
+    return '结束'
+  }
+
+  return status === 'next' ? '下一节' : '待上课'
+}
+
+function getExamStatusLabel(status: ArrangementStatus) {
+  if (status === 'current') {
+    return '当前'
+  }
+
+  if (status === 'ended') {
+    return '结束'
+  }
+
+  return status === 'next' ? '下一场' : '待考试'
+}
+
 export default function HomePage() {
   useDefaultShare()
   const [accountId, setAccountId] = useState('')
@@ -405,6 +483,8 @@ export default function HomePage() {
   const [schoolIdentity, setSchoolIdentity] = useState<SchoolWeatherIdentity>(EMPTY_SCHOOL_IDENTITY)
   const [accountSummary, setAccountSummary] = useState<ReturnType<typeof getStoredAccountSummary>>(null)
   const [homeWeatherText, setHomeWeatherText] = useState('')
+  const [showAllTodayEnded, setShowAllTodayEnded] = useState(false)
+  const currentDateKey = getLocalDateKey(new Date(nowMs))
 
   useEffect(() => {
     if (!errorText) {
@@ -421,6 +501,10 @@ export default function HomePage() {
 
     return () => clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    setShowAllTodayEnded(false)
+  }, [accountId, currentDateKey])
 
   useEffect(() => {
     if (!accountId) {
@@ -732,9 +816,91 @@ export default function HomePage() {
   }
 
   const showGuestEmpty = Boolean(!accountId && !loading && !errorText)
+  const todayCourseItems = useMemo(() => {
+    const items = todayCourses.map((course, index) => {
+      const time = formatCourseTime(
+        course,
+        timetable?.sectionTimes,
+        timetable?.providerId,
+        timetable?.sectionTimeProfiles,
+      )
+      const timeFallback = formatSections(course)
+      const timeText = time || '时间待定'
+      const { startAt, endAt } = parseTodayTimeRangeMs(time, nowMs)
+      const status = getArrangementStatus(startAt, endAt, nowMs)
+
+      return {
+        course,
+        index,
+        location: course.classroom || course.location || '地点待定',
+        startAt,
+        status,
+        teacher: course.teacher?.trim(),
+        timeText,
+        sectionText: timeFallback,
+        tone: getHomeTone(index),
+      }
+    })
+    const nextStartAt = Math.min(
+      ...items
+        .filter((item) => item.status === 'next' && item.startAt)
+        .map((item) => item.startAt),
+    )
+    let nextWithoutTimeUsed = false
+
+    return items.map((item) => {
+      let status = item.status
+
+      if (item.status === 'next') {
+        const isNextCourse = Number.isFinite(nextStartAt)
+          ? item.startAt === nextStartAt
+          : !nextWithoutTimeUsed
+
+        status = isNextCourse ? 'next' : 'pending'
+        nextWithoutTimeUsed = nextWithoutTimeUsed || isNextCourse
+      }
+
+      return {
+        ...item,
+        status,
+        statusLabel: getCourseStatusLabel(status),
+      }
+    })
+  }, [
+    nowMs,
+    timetable?.providerId,
+    timetable?.sectionTimeProfiles,
+    timetable?.sectionTimes,
+    todayCourses,
+  ])
+  const activeTodayCourseItems = todayCourseItems.filter((item) => item.status !== 'ended')
+  const foldedTodayCourseCount = todayCourseItems.length - activeTodayCourseItems.length
+  const shouldAutoExpandCourses = todayCourseItems.length > 0 && activeTodayCourseItems.length === 0
+  const visibleTodayCourseItems = showAllTodayEnded || shouldAutoExpandCourses
+    ? todayCourseItems
+    : activeTodayCourseItems
   const todayExamItems = useMemo(() => buildTodayExamItems(exams?.data, nowMs), [exams, nowMs])
-  const activeTodayExamItems = todayExamItems.filter((exam) => exam.status !== 'finished')
-  const finishedTodayExamItems = todayExamItems.filter((exam) => exam.status === 'finished')
+  const todayExamCards = todayExamItems.map((exam) => {
+    const startAt = getExamStartTime(exam)
+    const endAt = parseExamTimeValue(exam.endAt) || parseExamRangeTime(exam, 'end')
+    const status = getArrangementStatus(startAt, endAt, nowMs, exam.status === 'finished')
+
+    return {
+      exam,
+      status,
+      statusLabel: getExamStatusLabel(status),
+    }
+  })
+  const activeTodayExamItems = todayExamCards.filter((item) => item.status !== 'ended')
+  const foldedTodayExamCount = todayExamCards.length - activeTodayExamItems.length
+  const shouldAutoExpandExams = todayExamCards.length > 0 && activeTodayExamItems.length === 0
+  const visibleTodayExamItems = showAllTodayEnded || shouldAutoExpandExams
+    ? todayExamCards
+    : activeTodayExamItems
+  const hiddenTodayEndedCount =
+    (shouldAutoExpandCourses ? 0 : foldedTodayCourseCount) +
+    (shouldAutoExpandExams ? 0 : foldedTodayExamCount)
+  const shouldShowEndedToggle = hiddenTodayEndedCount > 0
   const todayItemCount = todayCourses.length + todayExamItems.length
   const showTodayRestText = Boolean(accountId && timetable && !loading && !errorText && todayItemCount === 0)
   const weatherDisplayText = homeWeatherText || (weatherLocation ? `${weatherLocation.displayName} · 天气加载中` : '')
@@ -767,9 +933,22 @@ export default function HomePage() {
       {loading && <View className='soft-card state-card'>正在读取数据</View>}
 
       <View className='section-head'>
-        <View className='section-title'>今日安排</View>
+        <View className='section-title'>
+          <Text>今日安排</Text>
+          <Text className='section-count'>共 {todayItemCount} 项</Text>
+        </View>
         <View className='section-head-actions'>
-          <Text>共 {todayItemCount} 项</Text>
+          {shouldShowEndedToggle && (
+            <View
+              className={`home-arrangement-toggle${showAllTodayEnded ? ' home-arrangement-toggle-open' : ''}`}
+              onClick={() => setShowAllTodayEnded((value) => !value)}
+            >
+              <Text className='home-arrangement-toggle-title'>
+                {showAllTodayEnded ? '收起已结束' : `展开已结束 ${hiddenTodayEndedCount}`}
+              </Text>
+              <View className='home-arrangement-toggle-icon' />
+            </View>
+          )}
         </View>
       </View>
 
@@ -785,34 +964,25 @@ export default function HomePage() {
 
       {todayCourses.length > 0 && (
         <View className='home-arrangement-group'>
-          {todayCourses.map((course: CourseItem, index) => {
-            const time = formatCourseTime(
-              course,
-              timetable?.sectionTimes,
-              timetable?.providerId,
-              timetable?.sectionTimeProfiles,
-            )
-            const timeFallback = formatSections(course)
-            const timeText = time || '时间待定'
-            const timeWithSections = timeFallback ? `${timeText} · ${timeFallback}` : timeText
-            const teacher = course.teacher?.trim()
-            const tone = getHomeTone(index)
-            const location = course.classroom || course.location || '地点待定'
-
+          {visibleTodayCourseItems.map(({ course, index, location, sectionText, status, statusLabel, teacher, timeText }) => {
             return (
-              <View className='soft-card course-card home-arrangement-card' key={course.id || `${course.name}-${index}`}>
+              <View
+                className={`soft-card course-card home-arrangement-card home-arrangement-card-${status}`}
+                key={course.id || `${course.name}-${index}`}
+              >
                 <View className='course-main home-card-main'>
                   <View className={`home-card-head ${teacher ? 'home-card-head-with-teacher' : ''}`}>
                     <Text className='home-primary-value'>{course.name || '未命名课程'}</Text>
                     {teacher && <Text className='home-side-meta home-side-meta-teacher'>{teacher}</Text>}
                   </View>
-                  <Text className='home-time-value'>{timeWithSections}</Text>
+                  <View className='home-time-row'>
+                    <Text className='home-time-value'>{timeText}</Text>
+                    {sectionText && <Text className='home-section-chip'>{sectionText}</Text>}
+                  </View>
                   <Text className='home-info-value home-info-secondary'>{location}</Text>
                 </View>
                 <View className='home-card-icon-side'>
-                  <View className={`class-icon class-icon-${tone}`}>
-                    <View className='card-symbol symbol-book' />
-                  </View>
+                  <Text className={`home-status-badge home-status-badge-${status}`}>{statusLabel}</Text>
                 </View>
               </View>
             )
@@ -825,12 +995,10 @@ export default function HomePage() {
           <View className='home-arrangement-title'>
             <Text>考试</Text>
           </View>
-          {[...activeTodayExamItems, ...finishedTodayExamItems].map((exam, index) => {
-            const status = exam.status === 'finished' ? 'finished' : 'today'
-
+          {visibleTodayExamItems.map(({ exam, status, statusLabel }, index) => {
             return (
               <View
-                className={`soft-card course-card exam-card home-exam-card home-arrangement-card home-arrangement-card-full exam-card-${status === 'today' ? 'today' : 'finished'}`}
+                className={`soft-card course-card exam-card home-exam-card home-arrangement-card home-arrangement-card-full home-arrangement-card-${status} exam-card-${status === 'ended' ? 'finished' : 'today'}`}
                 key={`exam-${exam.id}-${index}`}
               >
                 <View className='course-main home-card-main'>
@@ -842,9 +1010,7 @@ export default function HomePage() {
                   <Text className='home-info-value home-info-secondary'>座位：{exam.seatNo || '待安排'}</Text>
                 </View>
                 <View className='home-card-icon-side'>
-                  <View className='class-icon class-icon-red'>
-                    <View className='card-symbol symbol-exam' />
-                  </View>
+                  <Text className={`home-status-badge home-status-badge-${status}`}>{statusLabel}</Text>
                 </View>
               </View>
             )

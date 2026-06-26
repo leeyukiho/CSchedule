@@ -360,6 +360,10 @@ function formatWeeksText(weeks: number[] | undefined) {
 }
 
 function getLessonTextUnit(char: string) {
+  if (/^[（）]$/.test(char)) {
+    return 1
+  }
+
   return /^[\x00-\x7F]$/.test(char) ? 1 : 2
 }
 
