@@ -268,10 +268,14 @@
   white-space: nowrap;
 }
 
-.grades-page .exam-status-upcoming,
-.grades-page .exam-status-today {
+.grades-page .exam-status-upcoming {
   background: #eef4ff;
   color: #2f7bff;
+}
+
+.grades-page .exam-status-today {
+  background: #ffe8b3;
+  color: #b45309;
 }
 
 .grades-page .exam-status-finished {

@@ -709,7 +709,7 @@ export default function GradesPage() {
 
               return (
                 <View
-                  className={`soft-card exam-row exam-row-${status}`}
+                  className={`soft-card exam-row exam-row-${showsTodayStatus ? 'today' : status}`}
                   key={examKey}
                 >
                   <View className='exam-head'>
