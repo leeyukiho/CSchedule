@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { PrismaService } from '../../common/prisma/prisma.service'
@@ -478,7 +478,11 @@ export class AdminService {
     const and: Record<string, unknown>[] = []
     const take = Math.min(limit, 200)
     const orderFactor = sortOrder === 'asc' ? 1 : -1
-    if (status) where.status = status
+    if (status === 'candidate') {
+      where.status = { notIn: ['submitted', 'disabled'] }
+    } else if (status) {
+      where.status = status
+    }
     if (keyword) {
       where.OR = [
         { schoolName: { contains: keyword, mode: 'insensitive' } },
@@ -569,6 +573,25 @@ export class AdminService {
     return this.prisma.schoolAccessSubmission.update({
       where: { id: submissionId },
       data: data as any,
+    })
+  }
+
+  async deleteSubmission(submissionId: string) {
+    const submission = await this.prisma.schoolAccessSubmission.findUnique({
+      where: { id: submissionId },
+      select: { id: true, status: true },
+    })
+
+    if (!submission) {
+      throw new NotFoundException('Submission not found')
+    }
+
+    if (submission.status !== 'disabled') {
+      throw new BadRequestException('Only rejected submissions can be deleted')
+    }
+
+    return this.prisma.schoolAccessSubmission.delete({
+      where: { id: submissionId },
     })
   }
 

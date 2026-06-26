@@ -4,9 +4,9 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Clipboard,
   Bell,
   Eye,
+  ExternalLink,
   FileJson,
   Inbox,
   LayoutDashboard,
@@ -33,15 +33,6 @@ const DEFAULT_BASE_URL = 'http://localhost:3000/api/v1'
 const PAGE_SIZE = 50
 const SUBMISSION_PAGE_SIZE = 100
 const FILTER_DEBOUNCE_MS = 250
-
-const LOGIN_MODE_OPTIONS = [
-  ['direct_password', '账号密码'],
-  ['password_captcha', '账号密码 + 验证码'],
-  ['cas_simple', 'CAS'],
-  ['cas_webview', 'CAS WebView'],
-  ['oauth_webview', 'OAuth WebView'],
-  ['qrcode', '扫码登录'],
-] as const
 
 const SCHOOL_STATUS_OPTIONS = [
   ['catalog_only', '目录'],
@@ -244,7 +235,7 @@ interface StatusMessage {
 interface ModalState {
   title: string
   description?: string
-  mode: 'json' | 'term' | 'provider'
+  mode: 'json' | 'submission' | 'term' | 'provider'
   value: unknown
   school?: SchoolItem
 }
@@ -328,7 +319,14 @@ type UserFilters = { keyword: string; schoolId: string; schoolKeyword: string; s
 type SubmissionFilters = { keyword: string; status: string; extraVerification: string; adaptationHelp: string; sortBy: string; sortOrder: string; offset: number }
 type FeedbackFilters = { status: string; schoolKeyword: string; offset: number }
 type NotificationFilters = { keyword: string; targetType: string; active: string; offset: number }
-type SubmissionStatus = 'submitted' | 'catalog_only' | 'candidate' | 'researching' | 'beta' | 'enabled' | 'disabled'
+type SubmissionStatus = 'submitted' | 'candidate' | 'disabled'
+
+const SUBMISSION_STATUS_OPTIONS = [
+  ['', '全部'],
+  ['submitted', '待审核'],
+  ['disabled', '已驳回'],
+  ['candidate', '已通过'],
+] as const
 
 const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   overview: {
@@ -1054,6 +1052,35 @@ export function App() {
     }
   }
 
+  async function deleteSubmission(item: SubmissionItem) {
+    if (item.status !== 'disabled') return
+
+    try {
+      await requestApi(`/admin/submissions/${encodeURIComponent(item.id)}`, {
+        method: 'DELETE',
+      })
+      await refreshCurrentView('申请已删除。')
+    } catch (error) {
+      showStatus(describeFetchError(error, baseUrl), 'error')
+    }
+  }
+
+  async function deleteSubmissionGroup(items: SubmissionItem[]) {
+    const rejectedItems = items.filter((item) => item.status === 'disabled')
+    if (!rejectedItems.length || rejectedItems.length !== items.length) return
+
+    try {
+      await Promise.all(rejectedItems.map((item) => (
+        requestApi(`/admin/submissions/${encodeURIComponent(item.id)}`, {
+          method: 'DELETE',
+        })
+      )))
+      await refreshCurrentView(`${rejectedItems.length} 条申请已删除。`)
+    } catch (error) {
+      showStatus(describeFetchError(error, baseUrl), 'error')
+    }
+  }
+
   function requestUpdateSubmissions(schoolName: string, items: SubmissionItem[], nextStatus: string) {
     if (!items.length) return
     setSubmissionConfirmAction({ schoolName, items, nextStatus })
@@ -1178,6 +1205,7 @@ export function App() {
   if (!authed) {
     return (
       <main className="login-screen">
+        {loginStatus && <StatusLine status={loginStatus} />}
         <section className="login-card" aria-labelledby="login-title">
           <div className="login-brand">
             <div className="brand-mark">CS</div>
@@ -1209,7 +1237,6 @@ export function App() {
             <LogIn size={16} />
             登录后台
           </button>
-          {loginStatus && <StatusLine status={loginStatus} />}
         </section>
       </main>
     )
@@ -1238,6 +1265,7 @@ export function App() {
       </aside>
 
       <main className="main">
+        {status && <StatusLine status={status} />}
         <header className="topbar">
           <div>
             <div className="page-kicker">Admin</div>
@@ -1270,7 +1298,6 @@ export function App() {
           </button>
         </section>
 
-        {status && <StatusLine status={status} />}
         <MetricGrid stats={stats} />
 
         <section className="workspace">
@@ -1330,8 +1357,9 @@ export function App() {
                 void refreshSubmissionsWithFilters(nextFilters, '数据已刷新。')
               }}
               onUpdate={requestUpdateSubmissions}
-              onShowJson={(item) => setModal({ title: '申请详情', description: item.schoolName, mode: 'json', value: item })}
-              onCopied={() => showStatus('网址已复制。')}
+              onOpen={(item) => setModal({ title: '申请详情', description: item.schoolName, mode: 'submission', value: item })}
+              onDelete={(item) => void deleteSubmission(item)}
+              onDeleteGroup={(items) => void deleteSubmissionGroup(items)}
             />
           )}
           {!loading && activeView === 'feedback' && (
@@ -1507,6 +1535,27 @@ function getTermStartDisplayEntries(school: SchoolItem) {
       getTermDisplaySortKey(right.label, right.termId, getSchoolProviderCode(school)) -
       getTermDisplaySortKey(left.label, left.termId, getSchoolProviderCode(school))
     ))
+}
+
+function getTermStartDisplayOptions(school: SchoolItem) {
+  const entries = getTermStartDisplayEntries(school)
+  const entriesByTermId = new Map(entries.map((entry) => [entry.termId, entry]))
+  const knownOptions = groupTermOptionsForDisplay(school.terms || [], school).map((term) => {
+    const matchedEntry = term.ids.map((termId) => entriesByTermId.get(termId)).find(Boolean)
+
+    return {
+      termId: term.preferredId,
+      label: term.label,
+      date: matchedEntry?.date || '',
+      configuredTermId: matchedEntry?.termId,
+    }
+  })
+  const knownTermIds = new Set(knownOptions.flatMap((term) => [term.termId, term.configuredTermId].filter(Boolean)))
+  const extraOptions = entries
+    .filter((entry) => !knownTermIds.has(entry.termId))
+    .map((entry) => ({ ...entry, configuredTermId: entry.termId }))
+
+  return [...knownOptions, ...extraOptions]
 }
 
 function getPrimaryTermStartDisplay(school: SchoolItem) {
@@ -1925,17 +1974,13 @@ function getSchoolProviderCode(school?: SchoolItem) {
 function getSubmissionStatusCounts(items: SubmissionItem[]) {
   return items.reduce<Record<SubmissionStatus, number>>(
     (counts, item) => {
-      const status = item.status as SubmissionStatus
-      if (status in counts) counts[status] += 1
+      const status = item.status === 'submitted' || item.status === 'disabled' ? item.status : 'candidate'
+      counts[status] += 1
       return counts
     },
     {
       submitted: 0,
-      catalog_only: 0,
       candidate: 0,
-      researching: 0,
-      beta: 0,
-      enabled: 0,
       disabled: 0,
     },
   )
@@ -1945,12 +1990,8 @@ function getSubmissionGroupSummary(items: SubmissionItem[]) {
   const counts = getSubmissionStatusCounts(items)
   const parts = [
     counts.submitted ? `${counts.submitted} 待审核` : '',
-    counts.catalog_only ? `${counts.catalog_only} 目录` : '',
-    counts.candidate ? `${counts.candidate} 候选` : '',
-    counts.researching ? `${counts.researching} 调研中` : '',
-    counts.beta ? `${counts.beta} 灰度` : '',
-    counts.enabled ? `${counts.enabled} 已启用` : '',
-    counts.disabled ? `${counts.disabled} 已停用` : '',
+    counts.disabled ? `${counts.disabled} 已驳回` : '',
+    counts.candidate ? `${counts.candidate} 已通过` : '',
   ].filter(Boolean)
 
   return parts.length ? parts.join(' / ') : '暂无状态'
@@ -1962,7 +2003,9 @@ function getPendingSubmissions(items: SubmissionItem[]) {
 
 function getSubmissionStatusLabel(status: string) {
   if (status === 'submitted') return '待审核'
-  return SCHOOL_STATUS_OPTIONS.find(([value]) => value === status)?.[1] || status
+  if (status === 'disabled') return '已驳回'
+  if (status === 'candidate') return '已通过'
+  return status
 }
 
 async function copyText(value: string) {
@@ -2151,10 +2194,7 @@ function SchoolsView(props: {
               </tr>
             </thead>
             <tbody>
-              {sortedSchools.map((school) => {
-                const termStartEntries = getTermStartDisplayEntries(school)
-
-                return (
+              {sortedSchools.map((school) => (
                   <tr key={school.id}>
                   <td>
                     <div className="cell-title">{school.name}</div>
@@ -2174,11 +2214,7 @@ function SchoolsView(props: {
                     <div className="cell-meta">{display(school.loginMode, '未设置登录方式')}</div>
                   </td>
                   <td>
-                    <div className="cell-title">{getPrimaryTermStartDisplay(school)}</div>
-                    {termStartEntries.length > 0 && (
-                      <div className="cell-meta">{termStartEntries.map((entry) => `${entry.label}: ${entry.date}`).join('；')}</div>
-                    )}
-                    <div className="cell-meta">{school.sectionTimes?.length ? `上课时间：${school.sectionTimes.length} 节` : '上课时间未配置'}</div>
+                    <SchoolTermStartCell school={school} />
                   </td>
                   <td>
                     <div className="row-actions">
@@ -2193,14 +2229,44 @@ function SchoolsView(props: {
                     </div>
                   </td>
                   </tr>
-                )
-              })}
+              ))}
             </tbody>
           </table>
         </div>
       ) : <div className="empty">没有匹配的学校。</div>}
       <Pagination page={props.schools} offset={props.filters.offset} onPage={props.onPage} />
     </Panel>
+  )
+}
+
+function SchoolTermStartCell({ school }: { school: SchoolItem }) {
+  const entries = getTermStartDisplayOptions(school)
+  const primaryLabel = getPrimaryTermStartDisplay(school)
+  const [selectedTermId, setSelectedTermId] = useState(() => entries[0]?.termId || '')
+  const selectedEntry = entries.find((entry) => entry.termId === selectedTermId) || entries[0]
+  const displayValue = selectedEntry
+    ? `${selectedEntry.label}: ${selectedEntry.date || '未配置'}`
+    : primaryLabel
+
+  return (
+    <div className="term-start-cell">
+      <div className="term-start-main">
+        <div className="cell-title">{displayValue}</div>
+        <div className="cell-meta">{school.sectionTimes?.length ? `上课时间：${school.sectionTimes.length} 节` : '上课时间未配置'}</div>
+      </div>
+      {entries.length > 1 && (
+        <label className="term-start-picker">
+          <span>学期</span>
+          <select value={selectedEntry?.termId || ''} onChange={(event) => setSelectedTermId(event.target.value)}>
+            {entries.map((entry) => (
+              <option value={entry.termId} key={entry.termId}>
+                {entry.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </div>
   )
 }
 
@@ -2318,8 +2384,9 @@ function SubmissionsView(props: {
   onFiltersChange: React.Dispatch<React.SetStateAction<SubmissionFilters>>
   onPage: (offset: number) => void
   onUpdate: (schoolName: string, items: SubmissionItem[], status: string) => void
-  onShowJson: (item: SubmissionItem) => void
-  onCopied: () => void
+  onOpen: (item: SubmissionItem) => void
+  onDelete: (item: SubmissionItem) => void
+  onDeleteGroup: (items: SubmissionItem[]) => void
 }) {
   const updateFilters = (patch: Partial<SubmissionFilters>) => {
     props.onFiltersChange((current) => ({ ...current, ...patch, offset: 0 }))
@@ -2339,6 +2406,9 @@ function SubmissionsView(props: {
     return Array.from(groupMap.values())
       .filter((group) => group.items.some((item) => matchesSubmissionKeyword(item, keyword)))
       .sort((a, b) => {
+        const pendingDiff = Number(getPendingSubmissions(b.items).length > 0) - Number(getPendingSubmissions(a.items).length > 0)
+        if (pendingDiff) return pendingDiff
+
         if (props.filters.sortBy === 'requestCount') {
           return compareByOrder(a.items.length, b.items.length, props.filters.sortOrder) ||
             a.schoolName.localeCompare(b.schoolName, 'zh-CN')
@@ -2365,7 +2435,7 @@ function SubmissionsView(props: {
         <SelectField
           label="接入状态"
           value={props.filters.status}
-          options={[['', '全部'], ['submitted', '待审核'], ...SCHOOL_STATUS_OPTIONS]}
+          options={SUBMISSION_STATUS_OPTIONS}
           onChange={(status) => updateFilters({ status })}
         />
         <SelectField
@@ -2399,8 +2469,9 @@ function SubmissionsView(props: {
               key={group.key}
               group={group}
               onUpdate={props.onUpdate}
-              onShowJson={props.onShowJson}
-              onCopied={props.onCopied}
+              onOpen={props.onOpen}
+              onDelete={props.onDelete}
+              onDeleteGroup={props.onDeleteGroup}
             />
           ))}
         </div>
@@ -2413,14 +2484,13 @@ function SubmissionsView(props: {
 function SubmissionSchoolGroup(props: {
   group: { key: string; schoolName: string; items: SubmissionItem[] }
   onUpdate: (schoolName: string, items: SubmissionItem[], status: string) => void
-  onShowJson: (item: SubmissionItem) => void
-  onCopied: () => void
+  onOpen: (item: SubmissionItem) => void
+  onDelete: (item: SubmissionItem) => void
+  onDeleteGroup: (items: SubmissionItem[]) => void
 }) {
   const pendingItems = getPendingSubmissions(props.group.items)
+  const canDeleteGroup = props.group.items.length > 0 && props.group.items.every((item) => item.status === 'disabled')
   const statusSummary = getSubmissionGroupSummary(props.group.items)
-  const first = props.group.items[0]
-  const website = first?.eduSystemWebsite || first?.loginUrl || first?.officialWebsite
-  const [selectedStatus, setSelectedStatus] = useState('')
   const updatePending = (status: string) => {
     props.onUpdate(props.group.schoolName, pendingItems, status)
   }
@@ -2429,29 +2499,25 @@ function SubmissionSchoolGroup(props: {
     <section className="submission-school-group">
       <header className="submission-school-header">
         <div>
-          <div className="submission-school-kicker">学校分组</div>
-          <h3>{props.group.schoolName}</h3>
+          <div className="submission-school-title-row">
+            <h3>{props.group.schoolName}</h3>
+            <Badge tone="amber">{props.group.items.length} 人申请</Badge>
+          </div>
           <div className="submission-school-meta">
-            <span>{props.group.items.length} 条申请</span>
-            {website && <span>{website}</span>}
+            <span>存放 {props.group.items.length} 条申请</span>
+            <span>{statusSummary}</span>
           </div>
         </div>
         <div className="submission-school-actions">
           <Badge tone={pendingItems.length ? 'amber' : ''}>
             {pendingItems.length ? `${pendingItems.length} 条待审核` : '已处理'}
           </Badge>
-          <div className="cell-meta">{statusSummary}</div>
           <div className="row-actions">
             <button className="button secondary" type="button" disabled={!pendingItems.length} onClick={() => updatePending('candidate')}><Check size={16} />通过</button>
             <button className="button danger" type="button" disabled={!pendingItems.length} onClick={() => updatePending('disabled')}><X size={16} />驳回</button>
-            <select className="compact-select" value={selectedStatus} disabled={!pendingItems.length} onChange={(event) => {
-              const nextStatus = event.target.value
-              setSelectedStatus('')
-              if (nextStatus) updatePending(nextStatus)
-            }}>
-              <option value="">更多状态</option>
-              {SCHOOL_STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
+            {canDeleteGroup && (
+              <button className="button danger" type="button" onClick={() => props.onDeleteGroup(props.group.items)}><Trash2 size={16} />删除分组</button>
+            )}
           </div>
         </div>
       </header>
@@ -2460,8 +2526,8 @@ function SubmissionSchoolGroup(props: {
           <SubmissionCard
             key={item.id}
             item={item}
-            onShowJson={props.onShowJson}
-            onCopied={props.onCopied}
+            onOpen={props.onOpen}
+            onDelete={props.onDelete}
           />
         ))}
       </div>
@@ -2471,53 +2537,58 @@ function SubmissionSchoolGroup(props: {
 
 function SubmissionCard(props: {
   item: SubmissionItem
-  onShowJson: (item: SubmissionItem) => void
-  onCopied: () => void
+  onOpen: (item: SubmissionItem) => void
+  onDelete: (item: SubmissionItem) => void
 }) {
-  const formInfo = parseSubmissionNote(props.item.note)
   const website = props.item.eduSystemWebsite || props.item.loginUrl || props.item.officialWebsite || ''
+  const jump = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    if (!website) return
+    window.open(website, '_blank', 'noopener,noreferrer')
+  }
+  const remove = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    props.onDelete(props.item)
+  }
 
   return (
-    <article className="submission-card">
-      <div className="submission-fields">
-        <SubmissionField label="学校名称" value={props.item.schoolName} />
-        <SubmissionField label="教务系统网址" value={display(website)} copyValue={website} onCopied={props.onCopied} />
-        <SubmissionField label="验证方式" value={display(formInfo.extraVerification)} />
-        <SubmissionField label="协助意愿" value={display(formInfo.adaptationHelp)} />
-        <SubmissionField label="联系方式" value={display(formInfo.contact)} />
-        <SubmissionField label="备注" value={display(formInfo.note)} />
-      </div>
+    <article className="submission-card" role="button" tabIndex={0} onClick={() => props.onOpen(props.item)} onKeyDown={(event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        props.onOpen(props.item)
+      }
+    }}>
+      <span className="submission-link">{website || '未填写链接'}</span>
       <div className="submission-card-actions">
-        <button className="button ghost icon-button" type="button" aria-label="查看原始数据" onClick={() => props.onShowJson(props.item)}><FileJson size={16} /></button>
+        <button className="button ghost icon-button" type="button" title="打开链接" aria-label="打开链接" disabled={!website} onClick={jump}><ExternalLink size={16} /></button>
+        {props.item.status === 'disabled' && (
+          <button className="button danger icon-button" type="button" title="删除申请" aria-label="删除申请" onClick={remove}><Trash2 size={16} /></button>
+        )}
       </div>
     </article>
   )
 }
 
-function SubmissionField({ label, value, copyValue, onCopied }: { label: string; value: string; copyValue?: string; onCopied?: () => void }) {
-  const copy = async () => {
-    if (!copyValue) return
-    await copyText(copyValue)
-    onCopied?.()
-  }
-
+function SubmissionDetail({ item }: { item: SubmissionItem }) {
+  const formInfo = parseSubmissionNote(item.note)
+  const website = item.eduSystemWebsite || item.loginUrl || item.officialWebsite || ''
   return (
-    <div className="submission-field">
-      <div className="submission-field-label">{label}</div>
-      <div className="submission-field-value">
-        {copyValue ? (
-          <button className="copy-value" type="button" onClick={() => void copy()}>
-            {value}
-          </button>
-        ) : (
-          <span>{value}</span>
-        )}
-        {copyValue && (
-          <button className="copy-button" type="button" title="复制" onClick={() => void copy()}>
-            <Clipboard size={14} />
-          </button>
-        )}
+    <div className="submission-detail">
+      <div className="detail-list">
+        <DetailItem label="学校名称" value={item.schoolName} />
+        <DetailItem label="接入状态" value={getSubmissionStatusLabel(item.status)} />
+        <DetailItem label="省市" value={display(joinFilled([item.province, item.city]))} />
+        <DetailItem label="教务系统网址" value={display(website)} />
+        <DetailItem label="官网" value={display(item.officialWebsite)} />
+        <DetailItem label="登录地址" value={display(item.loginUrl)} />
+        <DetailItem label="验证方式" value={display(formInfo.extraVerification)} />
+        <DetailItem label="协助意愿" value={display(formInfo.adaptationHelp)} />
+        <DetailItem label="联系方式" value={display(formInfo.contact)} />
+        <DetailItem label="申请时间" value={formatDate(item.createdAt)} />
+        <DetailItem label="备注" value={display(formInfo.note)} />
+        <DetailItem label="申请能力" value={(item.requestedTargets || []).map(targetLabel).join(' / ') || '--'} />
       </div>
+      <pre className="json-output">{JSON.stringify(item, null, 2)}</pre>
     </div>
   )
 }
@@ -2993,6 +3064,7 @@ function ConfigModal({ modal, onClose, onSubmit }: { modal: ModalState; onClose:
         </header>
         <div className={`modal-body ${modal.mode === 'provider' ? 'provider-modal-body' : ''}`}>
           {modal.mode === 'json' && <pre className="json-output">{JSON.stringify(modal.value, null, 2)}</pre>}
+          {modal.mode === 'submission' && <SubmissionDetail item={modal.value as SubmissionItem} />}
           {modal.mode === 'term' && (
             <TermStartForm
               value={modal.value}
@@ -3010,7 +3082,7 @@ function ConfigModal({ modal, onClose, onSubmit }: { modal: ModalState; onClose:
             />
           )}
         </div>
-        {modal.mode === 'json' && (
+        {(modal.mode === 'json' || modal.mode === 'submission') && (
           <footer className="modal-footer">
             <button className="button secondary" type="button" onClick={onClose}><X size={16} />关闭</button>
           </footer>
@@ -3083,7 +3155,7 @@ function SubmissionConfirmModal(props: { action: SubmissionConfirmState; onCance
         </header>
         <div className="modal-body">
           <div className="confirm-copy">
-            将 {props.action.items.length} 条待审核申请调整为「{nextLabel}」。后续后端可以基于该状态拦截重复提交。
+            将 {props.action.items.length} 条待审核申请调整为「{nextLabel}」。这只会更新申请状态，不会新增持久拦截名单。
           </div>
         </div>
         <footer className="modal-footer">
@@ -3227,7 +3299,7 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
   const activeProfileIndex = activeProfileMatchIndex >= 0 ? activeProfileMatchIndex : 0
   const activeProfile = profileRows[activeProfileIndex]
   const providerTabs: Array<{ id: ProviderConfigTab; label: string; detail: string }> = [
-    { id: 'basic', label: '基础配置', detail: draft.providerId || schoolProviderCode || 'Provider' },
+    { id: 'basic', label: '基础配置', detail: '天气位置' },
     { id: 'sectionTimes', label: '默认上课时间', detail: `${sectionRowsToItems(sectionRows).length || 0} 节` },
     { id: 'buildingTimes', label: '楼栋上课时间', detail: buildingOptions.length ? `${profileRows.length}/${buildingOptions.length} 栋` : `${profileRows.length} 栋` },
   ]
@@ -3239,9 +3311,6 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
     })
   }, [profileRows])
 
-  const setValue = <K extends keyof ProviderDraft>(key: K, value: ProviderDraft[K]) => {
-    setDraft((current) => ({ ...current, [key]: value }))
-  }
   const setWeatherValue = (key: keyof typeof weatherDraft, value: string) => {
     setWeatherDraft((current) => ({ ...current, [key]: value }))
   }
@@ -3429,57 +3498,45 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
           <section className="form-section provider-tab-section">
             <header className="form-section-header">
               <div>
-                <h3>Provider</h3>
-                <p>只维护 Provider、学校简写和登录方式。</p>
+                <h3>基础配置</h3>
+                <p>Provider 适配器和登录方式由代码配置，后台只维护安全的展示选项。</p>
               </div>
             </header>
-            <div className="form-grid provider-simple-grid">
-              <label className="field">
-                <span>Provider</span>
-                <input value={draft.providerId} placeholder={schoolProviderCode || 'wtbu'} onChange={(event) => setValue('providerId', event.target.value.trim())} />
-              </label>
-              <label className="field">
-                <span>学校简写</span>
-                <input value={schoolProviderCode} disabled />
-              </label>
-              <SelectField
-                label="登录方式"
-                value={draft.loginMode}
-                options={LOGIN_MODE_OPTIONS}
-                onChange={(loginMode) => setValue('loginMode', loginMode)}
-              />
-            </div>
-            <div className="form-section-subpanel">
-              <div className="form-section-header compact">
-                <div>
-                  <h4>天气位置</h4>
-                  <p>配置经纬度后，小程序首页才会显示天气；关闭后不请求天气 API。</p>
+            <div className="provider-basic-layout">
+              <div className="provider-form-block">
+                <div className="provider-block-head with-action">
+                  <div>
+                    <h4>天气位置</h4>
+                    <p>只在启用并填写经纬度后请求天气 API。</p>
+                  </div>
+                  <label className="switch-row">
+                    <input
+                      type="checkbox"
+                      checked={weatherEnabled}
+                      onChange={(event) => setWeatherEnabled(event.target.checked)}
+                    />
+                    <span>启用</span>
+                  </label>
                 </div>
-                <label className="switch-row">
-                  <input
-                    type="checkbox"
-                    checked={weatherEnabled}
-                    onChange={(event) => setWeatherEnabled(event.target.checked)}
-                  />
-                  <span>启用</span>
-                </label>
+                {weatherEnabled ? (
+                  <div className="form-grid provider-simple-grid">
+                    <label className="field">
+                      <span>显示名称</span>
+                      <input value={weatherDraft.displayName} placeholder={props.school?.shortName || props.school?.name || '学校简称'} onChange={(event) => setWeatherValue('displayName', event.target.value)} />
+                    </label>
+                    <label className="field">
+                      <span>纬度</span>
+                      <input type="number" step="any" required value={weatherDraft.latitude} placeholder="30.4611" onChange={(event) => setWeatherValue('latitude', event.target.value.trim())} />
+                    </label>
+                    <label className="field">
+                      <span>经度</span>
+                      <input type="number" step="any" required value={weatherDraft.longitude} placeholder="114.279297" onChange={(event) => setWeatherValue('longitude', event.target.value.trim())} />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="provider-muted-note">天气未启用，保存后不会写入天气位置。</div>
+                )}
               </div>
-              {weatherEnabled && (
-                <div className="form-grid provider-simple-grid">
-                  <label className="field">
-                    <span>显示名称</span>
-                    <input value={weatherDraft.displayName} placeholder={props.school?.shortName || props.school?.name || '学校简称'} onChange={(event) => setWeatherValue('displayName', event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>纬度</span>
-                    <input type="number" step="any" required value={weatherDraft.latitude} placeholder="30.4611" onChange={(event) => setWeatherValue('latitude', event.target.value.trim())} />
-                  </label>
-                  <label className="field">
-                    <span>经度</span>
-                    <input type="number" step="any" required value={weatherDraft.longitude} placeholder="114.279297" onChange={(event) => setWeatherValue('longitude', event.target.value.trim())} />
-                  </label>
-                </div>
-              )}
             </div>
           </section>
         )}
@@ -3501,60 +3558,62 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
                 </button>
               </div>
             </header>
-            <div className="section-time-import">
-              <label className="field">
-                <span>批量导入</span>
-                <textarea
-                  className="section-time-import-input"
-                  value={sectionImportText}
-                  placeholder={'08:00-08:45\n08:55-09:40\n10:00-10:45'}
-                  onChange={(event) => {
-                    setSectionImportText(event.target.value)
-                    setSectionImportError('')
-                  }}
-                />
-              </label>
-              {sectionImportError && <div className="field-error">{sectionImportError}</div>}
-            </div>
-            <div className="section-time-table">
-              <div className="section-time-head">
-                <span>节次</span>
-                <span>开始</span>
-                <span>结束</span>
-                <span />
+            <div className="section-time-layout">
+              <div className="section-time-import">
+                <label className="field">
+                  <span>批量导入</span>
+                  <textarea
+                    className="section-time-import-input"
+                    value={sectionImportText}
+                    placeholder={'08:00-08:45\n08:55-09:40\n10:00-10:45'}
+                    onChange={(event) => {
+                      setSectionImportText(event.target.value)
+                      setSectionImportError('')
+                    }}
+                  />
+                </label>
+                {sectionImportError && <div className="field-error">{sectionImportError}</div>}
               </div>
-              {sectionRows.map((row) => (
-                <div className="section-time-row" key={row.id}>
-                  <label className="field compact-field">
-                    <span>节次</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={row.section}
-                      onChange={(event) => updateSectionRow(row.id, { section: event.target.value })}
-                    />
-                  </label>
-                  <label className="field compact-field">
-                    <span>开始</span>
-                    <input
-                      type="time"
-                      value={row.start}
-                      onChange={(event) => updateSectionRow(row.id, { start: event.target.value })}
-                    />
-                  </label>
-                  <label className="field compact-field">
-                    <span>结束</span>
-                    <input
-                      type="time"
-                      value={row.end}
-                      onChange={(event) => updateSectionRow(row.id, { end: event.target.value })}
-                    />
-                  </label>
-                  <button className="button ghost icon-button" type="button" aria-label="删除节次" onClick={() => removeSectionRow(row.id)}>
-                    <Trash2 size={16} />
-                  </button>
+              <div className="section-time-table">
+                <div className="section-time-head">
+                  <span>节次</span>
+                  <span>开始</span>
+                  <span>结束</span>
+                  <span />
                 </div>
-              ))}
+                {sectionRows.map((row) => (
+                  <div className="section-time-row" key={row.id}>
+                    <label className="field compact-field">
+                      <span>节次</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={row.section}
+                        onChange={(event) => updateSectionRow(row.id, { section: event.target.value })}
+                      />
+                    </label>
+                    <label className="field compact-field">
+                      <span>开始</span>
+                      <input
+                        type="time"
+                        value={row.start}
+                        onChange={(event) => updateSectionRow(row.id, { start: event.target.value })}
+                      />
+                    </label>
+                    <label className="field compact-field">
+                      <span>结束</span>
+                      <input
+                        type="time"
+                        value={row.end}
+                        onChange={(event) => updateSectionRow(row.id, { end: event.target.value })}
+                      />
+                    </label>
+                    <button className="button ghost icon-button" type="button" aria-label="删除节次" onClick={() => removeSectionRow(row.id)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
         )}

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common'
 import { AdminGuard } from './admin.guard'
 import {
   AdminProviderConfigUpsertInput,
@@ -102,6 +102,11 @@ export class AdminController {
     @Body() input: { status?: string; review?: Record<string, unknown> },
   ) {
     return this.adminService.updateSubmission(submissionId, input)
+  }
+
+  @Delete('submissions/:submissionId')
+  deleteSubmission(@Param('submissionId') submissionId: string) {
+    return this.adminService.deleteSubmission(submissionId)
   }
 
   @Get('feedback')
