@@ -9,6 +9,9 @@ const STATUS_CLEAR_DELAY_MS = 3000
 const EXTRA_VERIFICATION_OPTIONS = ['不需要', '需要验证码或短信', '需要扫码或校内验证', '不确定']
 const ADAPTATION_HELP_OPTIONS = ['愿意沟通', '先了解，愿意等', '暂不方便']
 const CONTACT_REQUIRED_ADAPTATION_HELP_INDEX = 0
+const URL_PROTOCOL_PATTERN = /^[a-z][a-z\d+.-]*:\/\//i
+const HTTP_URL_PROTOCOL_PATTERN = /^https?:\/\//i
+const HTTP_URL_HOST_PATTERN = /^(\[[0-9a-f:.]+\]|localhost|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}|(?:\d{1,3}\.){3}\d{1,3})(?::\d{1,5})?$/i
 
 function decodeRouteParam(value?: string) {
   if (!value) return ''
@@ -18,6 +21,25 @@ function decodeRouteParam(value?: string) {
   } catch {
     return value
   }
+}
+
+function normalizeHttpUrl(value: string) {
+  const text = value.trim()
+
+  if (!text) {
+    return undefined
+  }
+
+  const candidate = URL_PROTOCOL_PATTERN.test(text) ? text : `https://${text}`
+  const host = candidate
+    .replace(HTTP_URL_PROTOCOL_PATTERN, '')
+    .split(/[/?#]/)[0]
+
+  if (!HTTP_URL_PROTOCOL_PATTERN.test(candidate) || !HTTP_URL_HOST_PATTERN.test(host)) {
+    return undefined
+  }
+
+  return candidate
 }
 
 export default function SubmissionPage() {
@@ -62,6 +84,11 @@ export default function SubmissionPage() {
       setErrorText('请输入教务系统网址')
       return
     }
+    const normalizedEduSystemWebsite = normalizeHttpUrl(eduSystemWebsite)
+    if (!normalizedEduSystemWebsite) {
+      setErrorText('网址需为 http/https 或域名/IP，不能只填协议或文字说明')
+      return
+    }
     if (extraVerificationIndex < 0) {
       setErrorText('请选择验证方式')
       return
@@ -70,13 +97,22 @@ export default function SubmissionPage() {
       setErrorText('请填写联系方式')
       return
     }
+    const modalResult = await Taro.showModal({
+      title: '确认提交',
+      content: `请检查学校名称和教务系统网址是否正确。\n\n学校：${schoolName.trim()}\n网址：${normalizedEduSystemWebsite}\n\n提交后短期内不可重复提交相同申请。`,
+      confirmText: '确认提交',
+      cancelText: '再检查',
+    })
+    if (!modalResult.confirm) {
+      return
+    }
     setLoading(true)
     setMessage('')
     setErrorText('')
     try {
       await submitSchoolAccess({
         schoolName: schoolName.trim(),
-        eduSystemWebsite: eduSystemWebsite.trim(),
+        eduSystemWebsite: normalizedEduSystemWebsite,
         note: [
           `除账号密码外的验证：${EXTRA_VERIFICATION_OPTIONS[extraVerificationIndex]}`,
           `是否愿意协助首个接入适配：${ADAPTATION_HELP_OPTIONS[adaptationHelpIndex]}（不需要在此填写真实账号密码）`,

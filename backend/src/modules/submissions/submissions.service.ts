@@ -41,6 +41,7 @@ const CLIENT_WINDOW_MS = 24 * 60 * 60 * 1000
 const DUPLICATE_WINDOW_MS = 24 * 60 * 60 * 1000
 const MAX_CLIENT_SUBMISSIONS_PER_WINDOW = 3
 const MAX_CLIENT_RECORDS = 2000
+const URL_PROTOCOL_PATTERN = /^[a-z][a-z\d+.-]*:\/\//i
 
 interface ClientAbuseRecord {
   submittedAt: number[]
@@ -207,21 +208,22 @@ export class SubmissionsService {
     }
 
     let url: URL
+    const candidate = URL_PROTOCOL_PATTERN.test(text) ? text : `https://${text}`
 
     try {
-      url = new URL(text)
+      url = new URL(candidate)
     } catch {
       throw new BadRequestException(this.getUrlErrorMessage(field, 'invalid'))
     }
 
-    if (url.protocol !== 'https:') {
-      throw new BadRequestException(this.getUrlErrorMessage(field, 'https'))
+    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !url.hostname) {
+      throw new BadRequestException(this.getUrlErrorMessage(field, 'protocol'))
     }
 
     return url.toString()
   }
 
-  private getUrlErrorMessage(field: string, reason: 'required' | 'invalid' | 'https') {
+  private getUrlErrorMessage(field: string, reason: 'required' | 'invalid' | 'protocol') {
     const label =
       field === 'eduSystemWebsite'
         ? '教务系统网址'
@@ -233,11 +235,11 @@ export class SubmissionsService {
       return `请填写${label}`
     }
 
-    if (reason === 'https') {
-      return `${label}必须以 https:// 开头`
+    if (reason === 'protocol') {
+      return `${label}需为 http/https 或域名/IP，不能只填协议或文字说明`
     }
 
-    return `请填写合法的${label}`
+    return `${label}需为完整网址或域名/IP`
   }
 
   private getAliases(value: unknown) {
