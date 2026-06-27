@@ -495,9 +495,11 @@ function sortArrangementDisplayItems<T extends HomeArrangementDisplayItem>(items
   return [...activeItems, ...endedItems]
 }
 
-function getCollapsedArrangementDisplayItems<T extends HomeArrangementDisplayItem>(items: T[]) {
-  return sortArrangementDisplayItems(items)
-    .filter((item) => item.status !== 'ended')
+function getCollapsedCourseDisplayItems<T extends HomeArrangementDisplayItem>(items: T[]) {
+  const sortedItems = sortArrangementDisplayItems(items)
+  const nextItems = sortedItems.filter((item) => item.status === 'next')
+
+  return (nextItems.length ? nextItems : sortedItems.filter((item) => item.status !== 'ended'))
     .slice(0, 1)
 }
 
@@ -515,7 +517,8 @@ export default function HomePage() {
   const [schoolIdentity, setSchoolIdentity] = useState<SchoolWeatherIdentity>(EMPTY_SCHOOL_IDENTITY)
   const [accountSummary, setAccountSummary] = useState<ReturnType<typeof getStoredAccountSummary>>(null)
   const [homeWeatherText, setHomeWeatherText] = useState('')
-  const [showAllTodayEnded, setShowAllTodayEnded] = useState(false)
+  const [showAllCourses, setShowAllCourses] = useState(false)
+  const [showAllExams, setShowAllExams] = useState(false)
   const currentDateKey = getLocalDateKey(new Date(nowMs))
 
   useEffect(() => {
@@ -535,7 +538,8 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
-    setShowAllTodayEnded(false)
+    setShowAllCourses(false)
+    setShowAllExams(false)
   }, [accountId, currentDateKey])
 
   useEffect(() => {
@@ -634,6 +638,8 @@ export default function HomePage() {
     const id = authState.accountId
     const nextAccountSummary = getStoredAccountSummary(id)
 
+    setShowAllCourses(false)
+    setShowAllExams(false)
     setAccountId(id)
     setAccountSummary(nextAccountSummary)
     setSchoolIdentity(id
@@ -742,6 +748,69 @@ export default function HomePage() {
 
   function openProfileTab() {
     Taro.switchTab({ url: '/pages/profile/index' })
+  }
+
+  function expandTodayCourses() {
+    if (foldedTodayCourseCount <= 0 || showAllCourses) {
+      return
+    }
+
+    setShowAllCourses(true)
+  }
+
+  function toggleTodayCourses() {
+    if (foldedTodayCourseCount <= 0 && !showAllCourses) {
+      return
+    }
+
+    setShowAllCourses((value) => !value)
+  }
+
+  function expandTodayExams() {
+    if (foldedTodayExamCount <= 0 || showAllExams) {
+      return
+    }
+
+    setShowAllExams(true)
+  }
+
+  function toggleTodayExams() {
+    if (foldedTodayExamCount <= 0 && !showAllExams) {
+      return
+    }
+
+    setShowAllExams((value) => !value)
+  }
+
+  function renderArrangementFoldHint(
+    kind: string,
+    expanded: boolean,
+    hiddenCount: number,
+    remainingCount: number,
+    onClick: () => void,
+  ) {
+    if (hiddenCount <= 0 && !expanded) {
+      return null
+    }
+
+    return (
+      <View
+        className={`home-fold-hint${expanded ? ' home-fold-hint-open' : ''}`}
+        onClick={(event) => {
+          event.stopPropagation()
+          onClick()
+        }}
+      >
+        <Text>
+          {expanded
+            ? `收起${kind}`
+            : remainingCount > 0
+              ? `剩余 ${remainingCount} 项${kind}`
+              : `查看已结束${kind}`}
+        </Text>
+        <View className='home-fold-hint-icon' />
+      </View>
+    )
   }
 
   function getReminderOpenid(id: string) {
@@ -910,10 +979,33 @@ export default function HomePage() {
     todayCourseItems.map((item) => ({ ...item, order: item.index })),
   )
   const activeTodayCourseItems = sortedTodayCourseItems.filter((item) => item.status !== 'ended')
-  const visibleTodayCourseItems = showAllTodayEnded
+  const collapsedTodayCourseItems = getCollapsedCourseDisplayItems(sortedTodayCourseItems)
+  const foldedTodayCourseCount = todayCourseItems.length - collapsedTodayCourseItems.length
+  const visibleTodayCourseItems = showAllCourses
     ? sortedTodayCourseItems
-    : getCollapsedArrangementDisplayItems(sortedTodayCourseItems)
-  const foldedTodayCourseCount = todayCourseItems.length - visibleTodayCourseItems.length
+    : collapsedTodayCourseItems
+  const stackedCurrentCourseItem = !showAllCourses
+    ? activeTodayCourseItems.find((item) => item.status === 'current')
+    : undefined
+  const shouldShowStackedCurrentCourse = Boolean(
+    stackedCurrentCourseItem && visibleTodayCourseItems.some((item) => item.status === 'next'),
+  )
+  const visibleTodayCourseIds = new Set(
+    visibleTodayCourseItems.map((item) => item.course.id || `${item.course.name}-${item.index}`),
+  )
+  const hiddenTodayCourseLayerCount = !showAllCourses
+    ? activeTodayCourseItems.filter((item) => {
+      const itemId = item.course.id || `${item.course.name}-${item.index}`
+
+      if (visibleTodayCourseIds.has(itemId)) {
+        return false
+      }
+
+      return !shouldShowStackedCurrentCourse || item !== stackedCurrentCourseItem
+    }).length
+    : 0
+  const remainingTodayCourseCount = hiddenTodayCourseLayerCount
+  const courseUnderlayCount = Math.min(hiddenTodayCourseLayerCount, 2)
   const todayExamItems = useMemo(() => buildTodayExamItems(exams?.data, nowMs), [exams, nowMs])
   const todayExamCards = todayExamItems.map((exam, index) => {
     const startAt = getExamStartTime(exam)
@@ -955,17 +1047,38 @@ export default function HomePage() {
     }
   })
   const activeTodayExamItems = normalizedTodayExamItems.filter((item) => item.status !== 'ended')
-  const visibleTodayExamItems = showAllTodayEnded
+  const collapsedTodayExamItems = getCollapsedCourseDisplayItems(normalizedTodayExamItems)
+  const foldedTodayExamCount = todayExamCards.length - collapsedTodayExamItems.length
+  const visibleTodayExamItems = showAllExams
     ? normalizedTodayExamItems
-    : getCollapsedArrangementDisplayItems(normalizedTodayExamItems)
-  const foldedTodayExamCount = todayExamCards.length - visibleTodayExamItems.length
-  const foldedTodayArrangementCount = foldedTodayCourseCount + foldedTodayExamCount
+    : collapsedTodayExamItems
+  const stackedCurrentExamItem = !showAllExams
+    ? activeTodayExamItems.find((item) => item.status === 'current')
+    : undefined
+  const shouldShowStackedCurrentExam = Boolean(
+    stackedCurrentExamItem && visibleTodayExamItems.some((item) => item.status === 'next'),
+  )
+  const visibleTodayExamIds = new Set(
+    visibleTodayExamItems.map((item) => item.exam.id || `${item.exam.courseName}-${item.order}`),
+  )
+  const hiddenTodayExamLayerCount = !showAllExams
+    ? activeTodayExamItems.filter((item) => {
+      const itemId = item.exam.id || `${item.exam.courseName}-${item.order}`
+
+      if (visibleTodayExamIds.has(itemId)) {
+        return false
+      }
+
+      return !shouldShowStackedCurrentExam || item !== stackedCurrentExamItem
+    }).length
+    : 0
+  const remainingTodayExamCount = hiddenTodayExamLayerCount
+  const examUnderlayCount = Math.min(hiddenTodayExamLayerCount, 2)
   const todayItemCount = todayCourses.length + todayExamItems.length
   const activeTodayItemCount = activeTodayCourseItems.length + activeTodayExamItems.length
   const isCourseComplete = todayCourses.length > 0 && activeTodayCourseItems.length === 0
   const isExamComplete = todayExamItems.length > 0 && activeTodayExamItems.length === 0
   const isTodayComplete = todayItemCount > 0 && activeTodayItemCount === 0
-  const shouldShowEndedToggle = foldedTodayArrangementCount > 0
   const todayCompleteSummary = [
     todayCourses.length ? `${todayCourses.length} 节课程` : '',
     todayExamItems.length ? `${todayExamItems.length} 场考试` : '',
@@ -1005,19 +1118,7 @@ export default function HomePage() {
           <Text>今日安排</Text>
           <Text className='section-count'>共 {todayItemCount} 项</Text>
         </View>
-        <View className='section-head-actions'>
-          {shouldShowEndedToggle && (
-            <View
-              className={`home-arrangement-toggle${showAllTodayEnded ? ' home-arrangement-toggle-open' : ''}`}
-              onClick={() => setShowAllTodayEnded((value) => !value)}
-            >
-              <Text className='home-arrangement-toggle-title'>
-                {showAllTodayEnded ? '收起' : '展开全部'}
-              </Text>
-              <View className='home-arrangement-toggle-icon' />
-            </View>
-          )}
-        </View>
+        <View className='section-head-actions' />
       </View>
 
       {showGuestEmpty && (
@@ -1042,6 +1143,11 @@ export default function HomePage() {
         </View>
       )}
 
+      {isTodayComplete && !showAllCourses &&
+        renderArrangementFoldHint('课程', showAllCourses, foldedTodayCourseCount, remainingTodayCourseCount, toggleTodayCourses)}
+      {isTodayComplete && !showAllExams &&
+        renderArrangementFoldHint('考试', showAllExams, foldedTodayExamCount, remainingTodayExamCount, toggleTodayExams)}
+
       {!isTodayComplete && isCourseComplete && (
         <View className='soft-card today-complete-card today-complete-card-compact'>
           <View className='today-complete-icon' />
@@ -1052,8 +1158,22 @@ export default function HomePage() {
         </View>
       )}
 
-      {(showAllTodayEnded || !isTodayComplete) && visibleTodayCourseItems.length > 0 && (
-        <View className='home-arrangement-group'>
+      {!isTodayComplete && isCourseComplete && !showAllCourses &&
+        renderArrangementFoldHint('课程', showAllCourses, foldedTodayCourseCount, remainingTodayCourseCount, toggleTodayCourses)}
+
+      {(showAllCourses || !isTodayComplete) && visibleTodayCourseItems.length > 0 && (
+        <View
+          className={`home-arrangement-group home-arrangement-group-animated${showAllCourses ? ' home-arrangement-group-open' : ' home-arrangement-group-collapsed'}`}
+          onClick={expandTodayCourses}
+        >
+          {shouldShowStackedCurrentCourse && stackedCurrentCourseItem && (
+            <View className='home-current-course-stack'>
+              <Text className='home-current-course-name'>
+                {stackedCurrentCourseItem.course.name || '未命名课程'}
+              </Text>
+              <Text className='home-current-course-status'>{stackedCurrentCourseItem.statusLabel}</Text>
+            </View>
+          )}
           {visibleTodayCourseItems.map(({ course, index, location, sectionText, status, statusLabel, teacher, timeText }) => {
             return (
               <View
@@ -1077,6 +1197,14 @@ export default function HomePage() {
               </View>
             )
           })}
+          {courseUnderlayCount > 0 && (
+            <View className='home-course-underlay-stack'>
+              {Array.from({ length: courseUnderlayCount }).map((_, index) => (
+                <View className={`home-course-underlay home-course-underlay-${index + 1}`} key={`course-underlay-${index}`} />
+              ))}
+            </View>
+          )}
+          {renderArrangementFoldHint('课程', showAllCourses, foldedTodayCourseCount, remainingTodayCourseCount, toggleTodayCourses)}
         </View>
       )}
 
@@ -1090,11 +1218,22 @@ export default function HomePage() {
         </View>
       )}
 
-      {(showAllTodayEnded || !isTodayComplete) && visibleTodayExamItems.length > 0 && (
-        <View className='home-arrangement-group'>
-          <View className='home-arrangement-title'>
-            <Text>考试</Text>
-          </View>
+      {!isTodayComplete && isExamComplete && !showAllExams &&
+        renderArrangementFoldHint('考试', showAllExams, foldedTodayExamCount, remainingTodayExamCount, toggleTodayExams)}
+
+      {(showAllExams || !isTodayComplete) && visibleTodayExamItems.length > 0 && (
+        <View
+          className={`home-arrangement-group home-arrangement-group-animated${showAllExams ? ' home-arrangement-group-open' : ' home-arrangement-group-collapsed'}`}
+          onClick={expandTodayExams}
+        >
+          {shouldShowStackedCurrentExam && stackedCurrentExamItem && (
+            <View className='home-current-course-stack home-current-exam-stack'>
+              <Text className='home-current-course-name home-current-exam-name'>
+                {stackedCurrentExamItem.exam.courseName || '未命名考试'}
+              </Text>
+              <Text className='home-current-course-status home-current-exam-status'>{stackedCurrentExamItem.statusLabel}</Text>
+            </View>
+          )}
           {visibleTodayExamItems.map(({ exam, status, statusLabel }, index) => {
             return (
               <View
@@ -1115,6 +1254,14 @@ export default function HomePage() {
               </View>
             )
           })}
+          {examUnderlayCount > 0 && (
+            <View className='home-course-underlay-stack home-exam-underlay-stack'>
+              {Array.from({ length: examUnderlayCount }).map((_, index) => (
+                <View className={`home-course-underlay home-exam-underlay home-course-underlay-${index + 1}`} key={`exam-underlay-${index}`} />
+              ))}
+            </View>
+          )}
+          {renderArrangementFoldHint('考试', showAllExams, foldedTodayExamCount, remainingTodayExamCount, toggleTodayExams)}
         </View>
       )}
 

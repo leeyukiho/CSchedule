@@ -124,6 +124,122 @@
   margin-bottom: 0;
 }
 
+.home-content .home-arrangement-group-animated {
+  position: relative;
+}
+
+.home-content .home-arrangement-group-animated .home-arrangement-card,
+.home-content .home-arrangement-group-animated .home-current-course-stack {
+  will-change: transform;
+  transition: transform 360ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 360ms ease;
+}
+
+.home-content .home-arrangement-group-collapsed .home-arrangement-card {
+  animation: homeArrangementSettle 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.home-content .home-arrangement-group-collapsed .home-current-course-stack + .home-arrangement-card {
+  animation-name: homeArrangementMainPushed;
+}
+
+.home-content .home-arrangement-group-open .home-arrangement-card {
+  animation: homeArrangementOpen 460ms cubic-bezier(0.18, 0.78, 0.22, 1) both;
+}
+
+.home-content .home-arrangement-group-open .home-arrangement-card:nth-child(2) {
+  animation-delay: 36ms;
+}
+
+.home-content .home-arrangement-group-open .home-arrangement-card:nth-child(3) {
+  animation-delay: 72ms;
+}
+
+.home-content .home-arrangement-group-open .home-arrangement-card:nth-child(n + 4) {
+  animation-delay: 96ms;
+}
+
+.home-content .home-arrangement-group-collapsed .home-current-course-stack {
+  animation: homeArrangementStackIn 430ms cubic-bezier(0.16, 0.84, 0.28, 1) both;
+}
+
+.home-content .home-arrangement-group-collapsed .home-course-underlay {
+  animation: homeArrangementUnderlayOut 390ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.home-content .home-arrangement-group-collapsed .home-course-underlay-2 {
+  animation-delay: 58ms;
+}
+
+@keyframes homeArrangementOpen {
+  from {
+    transform: translateY(-28rpx) scale(0.985);
+  }
+
+  62% {
+    transform: translateY(4rpx) scale(1);
+  }
+
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes homeArrangementSettle {
+  from {
+    transform: translateY(-18rpx) scale(0.992);
+  }
+
+  64% {
+    transform: translateY(5rpx) scale(1);
+  }
+
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes homeArrangementMainPushed {
+  from {
+    transform: translateY(-42rpx) scale(0.992);
+  }
+
+  68% {
+    transform: translateY(6rpx) scale(1);
+  }
+
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes homeArrangementStackIn {
+  from {
+    transform: translateY(54rpx) scale(0.96);
+  }
+
+  70% {
+    transform: translateY(-5rpx) scale(1);
+  }
+
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes homeArrangementUnderlayOut {
+  from {
+    transform: translateY(-18rpx) scaleX(0.94);
+  }
+
+  70% {
+    transform: translateY(3rpx) scaleX(1);
+  }
+
+  to {
+    transform: translateY(0) scaleX(1);
+  }
+}
+
 .home-content .home-arrangement-title {
   min-height: 44rpx;
   margin: 2rpx 0 12rpx;
@@ -136,69 +252,154 @@
   font-weight: 800;
 }
 
-.home-content .soft-card {
-  border-radius: 28rpx;
-}
-
-.home-content .home-arrangement-toggle {
-  min-height: 40rpx;
-  padding: 0 4rpx 0 12rpx;
+.home-content .home-current-course-stack {
+  width: calc(100% - 44rpx);
+  min-height: 68rpx;
+  margin: 0 auto -15rpx;
+  padding: 11rpx 20rpx 20rpx;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 8rpx;
-  margin: 0;
-  color: #667085;
-  border-radius: 999rpx;
+  justify-content: space-between;
+  gap: 18rpx;
+  position: relative;
+  z-index: 0;
+  border: 1rpx solid #bbf7d0;
+  border-radius: 22rpx 22rpx 12rpx 12rpx;
+  background: #f0fdf4;
+  box-shadow: 0 10rpx 26rpx rgba(16, 185, 129, 0.1);
 }
 
-.home-content .home-arrangement-toggle-title {
+.home-content .home-current-course-name {
+  flex: 1;
+  min-width: 0;
+  color: #166534;
+  font-size: 24rpx;
+  font-weight: 900;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #667085;
-  font-size: 21rpx;
-  font-weight: 800;
-  line-height: 1.2;
 }
 
-.home-content .home-arrangement-toggle-icon {
+.home-content .home-current-course-status {
+  flex: 0 0 auto;
+  color: #047857;
+  font-size: 21rpx;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.home-content .home-current-exam-stack {
+  border-color: #fde68a;
+  background: #fffbeb;
+  box-shadow: 0 8rpx 20rpx rgba(217, 119, 6, 0.08);
+}
+
+.home-content .home-current-exam-name {
+  color: #854d0e;
+}
+
+.home-content .home-current-exam-status {
+  color: #a16207;
+}
+
+.home-content .home-course-underlay-stack {
+  height: 14rpx;
+  margin: -7rpx 0 0;
+  position: relative;
+  pointer-events: none;
+}
+
+.home-content .home-course-underlay {
+  height: 6rpx;
+  position: absolute;
+  left: 32rpx;
+  right: 32rpx;
+  border-bottom: 1rpx solid rgba(47, 123, 255, 0.22);
+  border-radius: 0 0 18rpx 18rpx;
+  background: #f6faff;
+  box-shadow: 0 5rpx 10rpx rgba(47, 123, 255, 0.06);
+}
+
+.home-content .home-course-underlay-1 {
+  top: 0;
+  opacity: 1;
+}
+
+.home-content .home-course-underlay-2 {
+  top: 5rpx;
+  left: 46rpx;
+  right: 46rpx;
+  opacity: 0.78;
+}
+
+.home-content .home-exam-underlay {
+  border-bottom-color: rgba(217, 119, 6, 0.2);
+  background: #fffaf0;
+  box-shadow: 0 5rpx 10rpx rgba(217, 119, 6, 0.06);
+}
+
+.home-content .soft-card {
+  border-radius: 24rpx;
+}
+
+.home-content .home-fold-hint {
+  min-height: 38rpx;
+  margin: -6rpx 8rpx 6rpx;
+  padding: 0 12rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  color: #98a2b3;
+  font-size: 21rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.home-content .home-fold-hint-open {
+  color: #667085;
+}
+
+.home-content .home-fold-hint-icon {
   flex: 0 0 10rpx;
   width: 10rpx;
   height: 10rpx;
   margin-top: -3rpx;
-  border-right: 3rpx solid #98a2b3;
-  border-bottom: 3rpx solid #98a2b3;
+  border-right: 3rpx solid currentColor;
+  border-bottom: 3rpx solid currentColor;
   transform: rotate(45deg);
 }
 
-.home-content .home-arrangement-toggle-open .home-arrangement-toggle-icon {
+.home-content .home-fold-hint-open .home-fold-hint-icon {
   margin-top: 4rpx;
   transform: rotate(225deg);
 }
 
 .home-content .today-complete-card {
-  min-height: 148rpx;
-  margin-bottom: 16rpx;
-  padding: 26rpx 28rpx;
+  min-height: 136rpx;
+  margin-bottom: 12rpx;
+  padding: 22rpx 24rpx;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 20rpx;
+  gap: 16rpx;
   border-color: #d1fadf;
   background: #f0fdf4;
-  box-shadow: 0 16rpx 36rpx rgba(16, 185, 129, 0.08);
+  box-shadow: 0 12rpx 28rpx rgba(16, 185, 129, 0.07);
 }
 
 .home-content .today-complete-card-compact {
-  min-height: 132rpx;
+  min-height: 120rpx;
 }
 
 .home-content .today-complete-card-exam {
   border-color: #fed7aa;
   background: #fff7ed;
-  box-shadow: 0 16rpx 36rpx rgba(249, 115, 22, 0.08);
+  box-shadow: 0 12rpx 28rpx rgba(249, 115, 22, 0.07);
 }
 
 .home-content .today-complete-icon {
@@ -254,15 +455,15 @@
 
 .home-content .course-card {
   position: relative;
-  min-height: 174rpx;
-  padding: 16rpx 18rpx 14rpx 22rpx;
-  border-radius: 28rpx;
+  min-height: 160rpx;
+  padding: 14rpx 16rpx 12rpx 20rpx;
+  border-radius: 24rpx;
   box-sizing: border-box;
   display: flex;
   align-items: stretch;
   justify-content: space-between;
-  gap: 14rpx;
-  margin-bottom: 12rpx;
+  gap: 12rpx;
+  margin-bottom: 10rpx;
   overflow: hidden;
 }
 
@@ -312,12 +513,31 @@
 }
 
 .home-content .home-arrangement-card-full {
-  min-height: 184rpx;
+  min-height: 170rpx;
 }
 
 .home-content .exam-card {
   border-color: #e5e7eb;
   background: #fff9f3;
+}
+
+.home-content .home-exam-card::after {
+  content: "考试";
+  position: absolute;
+  right: 26rpx;
+  bottom: 18rpx;
+  z-index: 0;
+  color: rgba(234, 88, 12, 0.08);
+  font-size: 58rpx;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.home-content .home-exam-card .home-card-main,
+.home-content .home-exam-card .home-card-icon-side {
+  position: relative;
+  z-index: 1;
 }
 
 .home-content .exam-card.home-arrangement-card-ended {
@@ -335,11 +555,11 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 9rpx;
+  gap: 7rpx;
 }
 
 .home-content .home-card-head {
-  min-height: 38rpx;
+  min-height: 36rpx;
   display: flex;
   align-items: baseline;
   gap: 10rpx;
@@ -367,7 +587,7 @@
 .home-content .home-time-value {
   flex: 0 1 auto;
   min-width: 0;
-  color: #175cd3;
+  color: #2f7bff;
   font-size: 28rpx;
   font-weight: 900;
   line-height: 1.2;
@@ -378,7 +598,7 @@
 
 .home-content .home-time-row {
   width: 100%;
-  min-height: 34rpx;
+  min-height: 32rpx;
   display: flex;
   align-items: center;
   gap: 10rpx;
@@ -407,8 +627,8 @@
 }
 
 .home-content .home-card-icon-side {
-  flex: 0 0 112rpx;
-  min-width: 112rpx;
+  flex: 0 0 104rpx;
+  min-width: 104rpx;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -417,17 +637,17 @@
 }
 
 .home-content .home-status-badge {
-  min-width: 96rpx;
-  max-width: 112rpx;
-  min-height: 46rpx;
-  padding: 0 16rpx;
+  min-width: 90rpx;
+  max-width: 106rpx;
+  min-height: 40rpx;
+  padding: 0 14rpx;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1rpx solid transparent;
   border-radius: 999rpx;
-  font-size: 24rpx;
+  font-size: 23rpx;
   font-weight: 900;
   line-height: 1;
   white-space: nowrap;
