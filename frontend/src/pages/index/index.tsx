@@ -469,6 +469,38 @@ function getExamStatusLabel(status: ArrangementStatus) {
   return status === 'next' ? '下一场' : '待考试'
 }
 
+type HomeArrangementDisplayItem = {
+  status: ArrangementStatus
+  startAt: number
+  endAt: number
+  order: number
+}
+
+function getArrangementSortValue(item: HomeArrangementDisplayItem) {
+  return item.startAt || item.endAt || Number.MAX_SAFE_INTEGER
+}
+
+function compareArrangementDisplayItems<T extends HomeArrangementDisplayItem>(left: T, right: T) {
+  return getArrangementSortValue(left) - getArrangementSortValue(right) || left.order - right.order
+}
+
+function sortArrangementDisplayItems<T extends HomeArrangementDisplayItem>(items: T[]) {
+  const activeItems = items
+    .filter((item) => item.status !== 'ended')
+    .sort(compareArrangementDisplayItems)
+  const endedItems = items
+    .filter((item) => item.status === 'ended')
+    .sort(compareArrangementDisplayItems)
+
+  return [...activeItems, ...endedItems]
+}
+
+function getCollapsedArrangementDisplayItems<T extends HomeArrangementDisplayItem>(items: T[]) {
+  return sortArrangementDisplayItems(items)
+    .filter((item) => item.status !== 'ended')
+    .slice(0, 1)
+}
+
 export default function HomePage() {
   useDefaultShare()
   const [accountId, setAccountId] = useState('')
@@ -831,6 +863,7 @@ export default function HomePage() {
 
       return {
         course,
+        endAt,
         index,
         location: course.classroom || course.location || '地点待定',
         startAt,
@@ -873,35 +906,70 @@ export default function HomePage() {
     timetable?.sectionTimes,
     todayCourses,
   ])
-  const activeTodayCourseItems = todayCourseItems.filter((item) => item.status !== 'ended')
-  const foldedTodayCourseCount = todayCourseItems.length - activeTodayCourseItems.length
-  const shouldAutoExpandCourses = todayCourseItems.length > 0 && activeTodayCourseItems.length === 0
-  const visibleTodayCourseItems = showAllTodayEnded || shouldAutoExpandCourses
-    ? todayCourseItems
-    : activeTodayCourseItems
+  const sortedTodayCourseItems = sortArrangementDisplayItems(
+    todayCourseItems.map((item) => ({ ...item, order: item.index })),
+  )
+  const activeTodayCourseItems = sortedTodayCourseItems.filter((item) => item.status !== 'ended')
+  const visibleTodayCourseItems = showAllTodayEnded
+    ? sortedTodayCourseItems
+    : getCollapsedArrangementDisplayItems(sortedTodayCourseItems)
+  const foldedTodayCourseCount = todayCourseItems.length - visibleTodayCourseItems.length
   const todayExamItems = useMemo(() => buildTodayExamItems(exams?.data, nowMs), [exams, nowMs])
-  const todayExamCards = todayExamItems.map((exam) => {
+  const todayExamCards = todayExamItems.map((exam, index) => {
     const startAt = getExamStartTime(exam)
     const endAt = parseExamTimeValue(exam.endAt) || parseExamRangeTime(exam, 'end')
     const status = getArrangementStatus(startAt, endAt, nowMs, exam.status === 'finished')
 
     return {
+      endAt,
       exam,
+      order: index,
+      startAt,
       status,
       statusLabel: getExamStatusLabel(status),
     }
   })
-  const activeTodayExamItems = todayExamCards.filter((item) => item.status !== 'ended')
-  const foldedTodayExamCount = todayExamCards.length - activeTodayExamItems.length
-  const shouldAutoExpandExams = todayExamCards.length > 0 && activeTodayExamItems.length === 0
-  const visibleTodayExamItems = showAllTodayEnded || shouldAutoExpandExams
-    ? todayExamCards
-    : activeTodayExamItems
-  const hiddenTodayEndedCount =
-    (shouldAutoExpandCourses ? 0 : foldedTodayCourseCount) +
-    (shouldAutoExpandExams ? 0 : foldedTodayExamCount)
-  const shouldShowEndedToggle = hiddenTodayEndedCount > 0
+  const sortedTodayExamItems = sortArrangementDisplayItems(todayExamCards)
+  const nextExamStartAt = Math.min(
+    ...sortedTodayExamItems
+      .filter((item) => item.status === 'next' && item.startAt)
+      .map((item) => item.startAt),
+  )
+  let nextExamWithoutTimeUsed = false
+  const normalizedTodayExamItems = sortedTodayExamItems.map((item) => {
+    let status = item.status
+
+    if (item.status === 'next') {
+      const isNextExam = Number.isFinite(nextExamStartAt)
+        ? item.startAt === nextExamStartAt
+        : !nextExamWithoutTimeUsed
+
+      status = isNextExam ? 'next' : 'pending'
+      nextExamWithoutTimeUsed = nextExamWithoutTimeUsed || isNextExam
+    }
+
+    return {
+      ...item,
+      status,
+      statusLabel: getExamStatusLabel(status),
+    }
+  })
+  const activeTodayExamItems = normalizedTodayExamItems.filter((item) => item.status !== 'ended')
+  const visibleTodayExamItems = showAllTodayEnded
+    ? normalizedTodayExamItems
+    : getCollapsedArrangementDisplayItems(normalizedTodayExamItems)
+  const foldedTodayExamCount = todayExamCards.length - visibleTodayExamItems.length
+  const foldedTodayArrangementCount = foldedTodayCourseCount + foldedTodayExamCount
   const todayItemCount = todayCourses.length + todayExamItems.length
+  const activeTodayItemCount = activeTodayCourseItems.length + activeTodayExamItems.length
+  const isCourseComplete = todayCourses.length > 0 && activeTodayCourseItems.length === 0
+  const isExamComplete = todayExamItems.length > 0 && activeTodayExamItems.length === 0
+  const isTodayComplete = todayItemCount > 0 && activeTodayItemCount === 0
+  const shouldShowEndedToggle = foldedTodayArrangementCount > 0
+  const todayCompleteSummary = [
+    todayCourses.length ? `${todayCourses.length} 节课程` : '',
+    todayExamItems.length ? `${todayExamItems.length} 场考试` : '',
+  ].filter(Boolean).join('，')
   const showTodayRestText = Boolean(accountId && timetable && !loading && !errorText && todayItemCount === 0)
   const weatherDisplayText = homeWeatherText || (weatherLocation ? `${weatherLocation.displayName} · 天气加载中` : '')
 
@@ -944,7 +1012,7 @@ export default function HomePage() {
               onClick={() => setShowAllTodayEnded((value) => !value)}
             >
               <Text className='home-arrangement-toggle-title'>
-                {showAllTodayEnded ? '收起已结束' : `展开已结束 ${hiddenTodayEndedCount}`}
+                {showAllTodayEnded ? '收起' : '展开全部'}
               </Text>
               <View className='home-arrangement-toggle-icon' />
             </View>
@@ -962,7 +1030,29 @@ export default function HomePage() {
 
       {showTodayRestText && <View className='today-empty-text'>今天没有安排</View>}
 
-      {todayCourses.length > 0 && (
+      {isTodayComplete && (
+        <View className='soft-card today-complete-card'>
+          <View className='today-complete-icon' />
+          <View className='today-complete-main'>
+            <View className='today-complete-title'>今日安排已完成</View>
+            <View className='today-complete-desc'>
+              {todayCompleteSummary ? `已结束 ${todayCompleteSummary}` : '今天的安排都已结束'}
+            </View>
+          </View>
+        </View>
+      )}
+
+      {!isTodayComplete && isCourseComplete && (
+        <View className='soft-card today-complete-card today-complete-card-compact'>
+          <View className='today-complete-icon' />
+          <View className='today-complete-main'>
+            <View className='today-complete-title'>今日课程已完成</View>
+            <View className='today-complete-desc'>已结束 {todayCourses.length} 节课程</View>
+          </View>
+        </View>
+      )}
+
+      {(showAllTodayEnded || !isTodayComplete) && visibleTodayCourseItems.length > 0 && (
         <View className='home-arrangement-group'>
           {visibleTodayCourseItems.map(({ course, index, location, sectionText, status, statusLabel, teacher, timeText }) => {
             return (
@@ -990,7 +1080,17 @@ export default function HomePage() {
         </View>
       )}
 
-      {todayExamItems.length > 0 && (
+      {!isTodayComplete && isExamComplete && (
+        <View className='soft-card today-complete-card today-complete-card-compact today-complete-card-exam'>
+          <View className='today-complete-icon today-complete-icon-exam' />
+          <View className='today-complete-main'>
+            <View className='today-complete-title'>今日考试已完成</View>
+            <View className='today-complete-desc'>已结束 {todayExamItems.length} 场考试</View>
+          </View>
+        </View>
+      )}
+
+      {(showAllTodayEnded || !isTodayComplete) && visibleTodayExamItems.length > 0 && (
         <View className='home-arrangement-group'>
           <View className='home-arrangement-title'>
             <Text>考试</Text>

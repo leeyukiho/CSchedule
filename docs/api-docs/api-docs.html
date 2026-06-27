@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CSchedule API 文档</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f8fb;
+        --panel: #ffffff;
+        --text: #172033;
+        --muted: #667085;
+        --line: #d8dee8;
+        --soft: #edf2f7;
+        --brand: #1f6feb;
+        --green: #0f8a5f;
+        --amber: #a15c00;
+        --red: #c2410c;
+        --shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+        line-height: 1.5;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow: auto;
+        border-right: 1px solid var(--line);
+        background: #fff;
+        padding: 24px 18px;
+      }
+
+      .brand {
+        margin-bottom: 22px;
+      }
+
+      .brand h1 {
+        margin: 0 0 6px;
+        font-size: 22px;
+        letter-spacing: 0;
+      }
+
+      .brand p,
+      .small {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .search {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: #fff;
+        margin-bottom: 14px;
+      }
+
+      .nav {
+        display: grid;
+        gap: 4px;
+      }
+
+      .nav a {
+        color: var(--text);
+        text-decoration: none;
+        padding: 8px 10px;
+        border-radius: 8px;
+        font-size: 14px;
+      }
+
+      .nav a:hover {
+        background: var(--soft);
+      }
+
+      .content {
+        padding: 32px min(5vw, 64px);
+      }
+
+      .hero {
+        max-width: 1120px;
+        margin: 0 auto 20px;
+      }
+
+      .hero h2 {
+        margin: 0 0 10px;
+        font-size: clamp(28px, 5vw, 44px);
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      .hero p {
+        max-width: 760px;
+        color: var(--muted);
+        margin: 0;
+      }
+
+      .quick-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        max-width: 1120px;
+        margin: 22px auto;
+      }
+
+      .stat,
+      .note,
+      .endpoint,
+      .auth-item {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+      }
+
+      .stat {
+        padding: 16px;
+      }
+
+      .stat strong {
+        display: block;
+        font-size: 24px;
+      }
+
+      .note {
+        max-width: 1120px;
+        margin: 0 auto 20px;
+        padding: 16px;
+      }
+
+      .note code,
+      code {
+        background: #eef3fb;
+        border: 1px solid #dbe5f3;
+        border-radius: 6px;
+        padding: 2px 6px;
+        color: #193b6a;
+        font-size: 0.92em;
+      }
+
+      .auth-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .auth-item {
+        padding: 14px;
+      }
+
+      .auth-item h4 {
+        margin: 0 0 6px;
+      }
+
+      .section {
+        max-width: 1120px;
+        margin: 26px auto;
+      }
+
+      .section-head {
+        margin-bottom: 12px;
+      }
+
+      .section-head h3 {
+        margin: 0;
+        font-size: 22px;
+      }
+
+      .section-head p {
+        margin: 4px 0 0;
+        color: var(--muted);
+      }
+
+      .endpoint-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .endpoint {
+        overflow: hidden;
+      }
+
+      .endpoint summary {
+        display: grid;
+        grid-template-columns: 74px minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 14px 16px;
+        cursor: pointer;
+        list-style: none;
+      }
+
+      .endpoint summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .method {
+        display: inline-flex;
+        justify-content: center;
+        border-radius: 6px;
+        padding: 4px 8px;
+        color: #fff;
+        font-weight: 700;
+        font-size: 12px;
+      }
+
+      .GET { background: var(--green); }
+      .POST { background: var(--brand); }
+      .PATCH { background: var(--amber); }
+      .PUT { background: #7c3aed; }
+      .DELETE { background: var(--red); }
+
+      .route {
+        min-width: 0;
+      }
+
+      .route code {
+        display: inline-block;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+      }
+
+      .summary-text {
+        color: var(--muted);
+        margin-top: 4px;
+        font-size: 14px;
+      }
+
+      .badge {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 9px;
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .endpoint-body {
+        border-top: 1px solid var(--line);
+        padding: 14px 16px 16px;
+        display: grid;
+        gap: 10px;
+        background: #fbfcfe;
+      }
+
+      .field {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 1fr);
+        gap: 12px;
+      }
+
+      .field b {
+        color: #344054;
+      }
+
+      .field span {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      @media (max-width: 860px) {
+        .shell {
+          display: block;
+        }
+
+        .sidebar {
+          position: static;
+          height: auto;
+        }
+
+        .quick-grid,
+        .auth-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .content {
+          padding: 24px 16px;
+        }
+
+        .endpoint summary {
+          grid-template-columns: 64px minmax(0, 1fr);
+        }
+
+        .endpoint summary .badge {
+          grid-column: 2;
+          width: fit-content;
+        }
+
+        .field {
+          grid-template-columns: 1fr;
+          gap: 4px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>CSchedule API</h1>
+          <p id="doc-meta">加载中...</p>
+        </div>
+        <input id="search" class="search" type="search" placeholder="搜索接口、路径、说明" />
+        <nav id="nav" class="nav" aria-label="API 分组"></nav>
+      </aside>
+      <main class="content">
+        <section class="hero">
+          <h2>简洁、可维护的接口文档</h2>
+          <p>按业务模块组织端点，保留认证方式、参数、请求体、响应和注意事项。接口变更后运行检查脚本即可发现文档是否需要同步。</p>
+        </section>
+
+        <section class="quick-grid" aria-label="文档统计">
+          <div class="stat"><strong id="stat-endpoints">0</strong><span class="small">接口总数</span></div>
+          <div class="stat"><strong id="stat-groups">0</strong><span class="small">业务分组</span></div>
+          <div class="stat"><strong id="stat-base">/api/v1</strong><span class="small">统一前缀</span></div>
+          <div class="stat"><strong>可检查</strong><span class="small">node check-api-docs.mjs</span></div>
+        </section>
+
+        <section class="note">
+          <p><strong>维护方式：</strong>接口说明维护在 <code>api-docs.data.js</code>；页面读取同一份数据。代码变更后运行 <code>node check-api-docs.mjs</code>，脚本会对比后端 Controller 路由和文档路由。</p>
+        </section>
+
+        <section class="note">
+          <h3>认证约定</h3>
+          <div id="auth-grid" class="auth-grid"></div>
+        </section>
+
+        <div id="sections"></div>
+      </main>
+    </div>
+
+    <script src="./api-docs.data.js"></script>
+    <script>
+      const docs = window.CSCHEDULE_API_DOCS;
+      const authMap = new Map(docs.auth.map((item) => [item.key, item]));
+      const allEndpoints = docs.groups.flatMap((group) =>
+        group.endpoints.map((endpoint) => ({ ...endpoint, groupId: group.id, groupTitle: group.title })),
+      );
+
+      document.title = docs.title;
+      document.getElementById('doc-meta').textContent = `${docs.version} · 更新 ${docs.updatedAt}`;
+      document.getElementById('stat-endpoints').textContent = String(allEndpoints.length);
+      document.getElementById('stat-groups').textContent = String(docs.groups.length);
+      document.getElementById('stat-base').textContent = docs.basePath;
+
+      const nav = document.getElementById('nav');
+      nav.innerHTML = docs.groups
+        .map((group) => `<a href="#${group.id}">${group.title} <span class="small">${group.endpoints.length}</span></a>`)
+        .join('');
+
+      document.getElementById('auth-grid').innerHTML = docs.auth
+        .map((item) => `<article class="auth-item"><h4>${escapeHtml(item.label)}</h4><p class="small">${escapeHtml(item.detail)}</p></article>`)
+        .join('');
+
+      const sections = document.getElementById('sections');
+      sections.innerHTML = docs.groups.map(renderGroup).join('');
+
+      document.getElementById('search').addEventListener('input', (event) => {
+        const keyword = event.target.value.trim().toLowerCase();
+        document.querySelectorAll('[data-endpoint]').forEach((node) => {
+          node.classList.toggle('hidden', keyword && !node.dataset.search.includes(keyword));
+        });
+        document.querySelectorAll('[data-section]').forEach((section) => {
+          const visible = section.querySelectorAll('[data-endpoint]:not(.hidden)').length;
+          section.classList.toggle('hidden', visible === 0);
+        });
+      });
+
+      function renderGroup(group) {
+        return `
+          <section class="section" id="${group.id}" data-section>
+            <div class="section-head">
+              <h3>${escapeHtml(group.title)}</h3>
+              <p>${escapeHtml(group.description || '')}</p>
+            </div>
+            <div class="endpoint-list">
+              ${group.endpoints.map(renderEndpoint).join('')}
+            </div>
+          </section>
+        `;
+      }
+
+      function renderEndpoint(endpoint) {
+        const auth = authMap.get(endpoint.auth) || { label: endpoint.auth, detail: '' };
+        const searchText = [
+          endpoint.method,
+          endpoint.path,
+          endpoint.summary,
+          endpoint.query,
+          endpoint.body,
+          endpoint.response,
+          endpoint.notes,
+          auth.label,
+        ].join(' ').toLowerCase();
+
+        return `
+          <details class="endpoint" data-endpoint data-search="${escapeAttribute(searchText)}">
+            <summary>
+              <span class="method ${endpoint.method}">${endpoint.method}</span>
+              <span class="route">
+                <code>${docs.basePath}${escapeHtml(endpoint.path)}</code>
+                <div class="summary-text">${escapeHtml(endpoint.summary || '')}</div>
+              </span>
+              <span class="badge">${escapeHtml(auth.label)}</span>
+            </summary>
+            <div class="endpoint-body">
+              ${field('认证', auth.detail)}
+              ${field('Query', endpoint.query)}
+              ${field('Body', endpoint.body)}
+              ${field('Response', endpoint.response)}
+              ${field('备注', endpoint.notes)}
+            </div>
+          </details>
+        `;
+      }
+
+      function field(label, value) {
+        if (!value) return '';
+        return `<div class="field"><b>${label}</b><span>${escapeHtml(value)}</span></div>`;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function escapeAttribute(value) {
+        return escapeHtml(value).replace(/\n/g, ' ');
+      }
+    </script>
+  </body>
+</html>

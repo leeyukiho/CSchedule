@@ -178,6 +178,80 @@
   transform: rotate(225deg);
 }
 
+.home-content .today-complete-card {
+  min-height: 148rpx;
+  margin-bottom: 16rpx;
+  padding: 26rpx 28rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  border-color: #d1fadf;
+  background: #f0fdf4;
+  box-shadow: 0 16rpx 36rpx rgba(16, 185, 129, 0.08);
+}
+
+.home-content .today-complete-card-compact {
+  min-height: 132rpx;
+}
+
+.home-content .today-complete-card-exam {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  box-shadow: 0 16rpx 36rpx rgba(249, 115, 22, 0.08);
+}
+
+.home-content .today-complete-icon {
+  flex: 0 0 58rpx;
+  width: 58rpx;
+  height: 58rpx;
+  border-radius: 999rpx;
+  background: #dcfce7;
+  position: relative;
+}
+
+.home-content .today-complete-icon-exam {
+  background: #ffedd5;
+}
+
+.home-content .today-complete-icon::after {
+  content: "";
+  position: absolute;
+  left: 17rpx;
+  top: 17rpx;
+  width: 22rpx;
+  height: 12rpx;
+  border-left: 5rpx solid #16a34a;
+  border-bottom: 5rpx solid #16a34a;
+  transform: rotate(-45deg);
+}
+
+.home-content .today-complete-icon-exam::after {
+  border-color: #ea580c;
+}
+
+.home-content .today-complete-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.home-content .today-complete-title {
+  color: #166534;
+  font-size: 30rpx;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.home-content .today-complete-desc {
+  margin-top: 8rpx;
+  color: #475467;
+  font-size: 24rpx;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .home-content .course-card {
   position: relative;
   min-height: 174rpx;
