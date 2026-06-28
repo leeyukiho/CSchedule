@@ -898,6 +898,54 @@ tbody tr:hover {
   border-bottom: 1px solid var(--line);
 }
 
+.shortcut-settings-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfdff;
+}
+
+.shortcut-settings-list {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  background: #f8fafc;
+}
+
+.shortcut-settings-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 110px) minmax(180px, 1fr) minmax(140px, 180px) minmax(96px, 120px);
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.shortcut-settings-row.is-enabled {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
+
+.shortcut-toggle {
+  min-height: 34px;
+}
+
+.shortcut-settings-info {
+  min-width: 0;
+  align-self: center;
+}
+
+.shortcut-label-field,
+.shortcut-order-field {
+  min-width: 0;
+}
+
 .notification-workspace {
   gap: 12px;
 }
@@ -1848,6 +1896,16 @@ tbody tr:hover {
   }
 
   .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .shortcut-settings-summary,
+  .shortcut-settings-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .shortcut-settings-row {
     grid-template-columns: 1fr;
   }
 

@@ -2475,6 +2475,155 @@
   line-height: 1.45;
 }
 
+.query-page-head {
+  margin: 6rpx 0 22rpx;
+}
+
+.query-page-title {
+  display: block;
+  color: #101828;
+  font-size: 42rpx;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.query-page-subtitle {
+  display: block;
+  margin-top: 10rpx;
+  color: #667085;
+  font-size: 25rpx;
+  line-height: 1.45;
+}
+
+.query-entry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.query-entry-card {
+  min-height: 132rpx;
+  padding: 22rpx 22rpx 22rpx 20rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+
+.query-entry-card-blue {
+  border-color: #dbeafe;
+}
+
+.query-entry-card-green {
+  border-color: #dcfce7;
+}
+
+.query-entry-card-purple {
+  border-color: #ede9fe;
+}
+
+.query-entry-icon {
+  flex: 0 0 68rpx;
+  width: 68rpx;
+  height: 68rpx;
+  border-radius: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.query-entry-icon text {
+  color: currentColor;
+  font-size: 21rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.query-entry-icon-blue {
+  color: #1d4ed8;
+  background: #e0efff;
+}
+
+.query-entry-icon-green {
+  color: #047857;
+  background: #dcfce7;
+}
+
+.query-entry-icon-purple {
+  color: #6d28d9;
+  background: #f3e8ff;
+}
+
+.query-entry-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.query-entry-title {
+  display: block;
+  color: #101828;
+  font-size: 30rpx;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.query-entry-desc {
+  display: block;
+  margin-top: 8rpx;
+  color: #667085;
+  font-size: 23rpx;
+  line-height: 1.35;
+}
+
+.query-entry-arrow {
+  flex: 0 0 18rpx;
+  width: 18rpx;
+  height: 18rpx;
+  margin-right: 4rpx;
+  border-right: 4rpx solid #98a2b3;
+  border-bottom: 4rpx solid #98a2b3;
+  transform: rotate(-45deg);
+}
+
+.query-webview-toolbar {
+  min-height: 72rpx;
+  margin-bottom: 14rpx;
+  padding: 0 18rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 16rpx;
+  background: #ffffff;
+}
+
+.query-webview-url {
+  flex: 1;
+  min-width: 0;
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.query-webview-copy {
+  flex: 0 0 auto;
+  min-width: 104rpx;
+  height: 44rpx;
+  padding: 0 14rpx;
+  box-sizing: border-box;
+  border-radius: 999rpx;
+  background: #e0efff;
+  color: #1d4ed8;
+  font-size: 22rpx;
+  font-weight: 900;
+  line-height: 44rpx;
+  text-align: center;
+}
+
 .messages-list {
   display: flex;
   flex-direction: column;

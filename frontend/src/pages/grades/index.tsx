@@ -516,12 +516,20 @@ function getCollapsedExamTimeText(item: ExamSummaryItem | undefined) {
   return `${timeParts.date} ${timeText}`
 }
 
-function getCollapsedExamTitle(item: ExamSummaryItem | undefined, examCount: number) {
-  if (!item) {
-    return examCount ? '暂无下场考试' : '暂无考试安排'
+function getCollapsedExamTitle(
+  currentItem: ExamSummaryItem | undefined,
+  nextItem: ExamSummaryItem | undefined,
+  examCount: number,
+) {
+  if (currentItem && !nextItem) {
+    return '当前考试'
   }
 
-  return `下一场考试 ${getCollapsedExamTimeText(item)}`
+  if (!nextItem) {
+    return examCount ? '暂未安排考试' : '暂无考试安排'
+  }
+
+  return `下一场考试 ${getCollapsedExamTimeText(nextItem)}`
 }
 
 function getCollapsedExamSummary(
@@ -552,7 +560,7 @@ function getCollapsedExamSummary(
 
   return {
     prefix: '',
-    title: '点击展开查看全部考试记录',
+    title: '',
   }
 }
 
@@ -792,11 +800,11 @@ export default function GradesPage() {
       .filter((time) => time > 0),
   )
   const examCount = examSections.reduce((count, section) => count + section.items.length, 0)
-  const shouldShowCollapsedExamPlaceholder = !showAllExams && examCount > 0 && visibleCollapsedExamItems.length === 0
   const currentExamItem = examItems.find((item) => isCurrentExamItem(item, nowMs))
   const nextCollapsedExamItem = getNextCollapsedExamItem(examItems, nowMs)
-  const examSummaryTitle = getCollapsedExamTitle(nextCollapsedExamItem, examCount)
+  const examSummaryTitle = getCollapsedExamTitle(currentExamItem, nextCollapsedExamItem, examCount)
   const examSummarySubtitle = getCollapsedExamSummary(currentExamItem, nextCollapsedExamItem, examCount)
+  const shouldShowExamSummarySubtitle = Boolean(examSummarySubtitle.prefix || examSummarySubtitle.title)
   const examSummarySubtitleScrolls = shouldScrollCollapsedExamSummary(
     examSummarySubtitle.title,
     examSummarySubtitle.prefix,
@@ -839,35 +847,36 @@ export default function GradesPage() {
             onClick={toggleExamSection}
           >
             <View className='exam-stack-main'>
-              <View className='exam-stack-title'>{examSummaryTitle}</View>
-              <View className='exam-stack-subtitle'>
-                {examSummarySubtitle.prefix && (
-                  <Text className='exam-stack-subtitle-prefix'>{examSummarySubtitle.prefix}</Text>
-                )}
-                <View className='exam-stack-subtitle-name'>
-                  {examSummarySubtitleScrolls ? (
-                    <View className='exam-stack-subtitle-track exam-stack-subtitle-track-scroll'>
-                      <Text className='exam-stack-subtitle-text'>
-                        {examSummarySubtitle.title}
-                      </Text>
-                      <Text className='exam-stack-subtitle-text exam-stack-subtitle-text-copy'>
-                        {examSummarySubtitle.title}
-                      </Text>
-                    </View>
-                  ) : (
-                    <Text className='exam-stack-subtitle-static'>
-                      {examSummarySubtitle.title}
-                    </Text>
-                  )}
-                </View>
+              <View className={`exam-stack-title${shouldShowExamSummarySubtitle ? '' : ' exam-stack-title-only'}`}>
+                {examSummaryTitle}
               </View>
+              {shouldShowExamSummarySubtitle && (
+                <View className='exam-stack-subtitle'>
+                  {examSummarySubtitle.prefix && (
+                    <Text className='exam-stack-subtitle-prefix'>{examSummarySubtitle.prefix}</Text>
+                  )}
+                  <View className='exam-stack-subtitle-name'>
+                    {examSummarySubtitleScrolls ? (
+                      <View className='exam-stack-subtitle-track exam-stack-subtitle-track-scroll'>
+                        <Text className='exam-stack-subtitle-text'>
+                          {examSummarySubtitle.title}
+                        </Text>
+                        <Text className='exam-stack-subtitle-text exam-stack-subtitle-text-copy'>
+                          {examSummarySubtitle.title}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text className='exam-stack-subtitle-static'>
+                        {examSummarySubtitle.title}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              )}
             </View>
             <View className='exam-stack-count'>{examCount}</View>
             <View className='exam-stack-toggle' />
           </View>
-        )}
-        {shouldShowCollapsedExamPlaceholder && (
-          <View className='soft-card exam-empty'>点击展开查看全部考试记录</View>
         )}
         {showAllExams && visibleExamItems.length > 0 && (
           <View className='exam-list'>

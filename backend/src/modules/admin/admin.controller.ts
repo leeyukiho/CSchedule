@@ -6,15 +6,29 @@ import {
   AdminService,
 } from './admin.service'
 import { AccountStatus, NotificationTargetType, SchoolStatus } from '@prisma/client'
+import { SettingsService } from '../settings/settings.service'
 
 @Controller('admin')
 @UseGuards(AdminGuard)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly settingsService: SettingsService,
+  ) {}
 
   @Get('stats')
   getStats() {
     return this.adminService.getStats()
+  }
+
+  @Get('settings/home-shortcuts')
+  getHomeShortcutSettings() {
+    return this.settingsService.getHomeShortcuts()
+  }
+
+  @Put('settings/home-shortcuts')
+  updateHomeShortcutSettings(@Body() input: Record<string, unknown>) {
+    return this.settingsService.updateHomeShortcuts(input)
   }
 
   @Get('schools')

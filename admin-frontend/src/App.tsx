@@ -46,7 +46,7 @@ const SCHOOL_STATUS_OPTIONS = [
 const SUBMISSION_EXTRA_VERIFICATION_OPTIONS = ['不需要', '需要验证码或短信', '需要扫码或校内验证', '不确定'] as const
 const SUBMISSION_ADAPTATION_HELP_OPTIONS = ['愿意沟通', '先了解，愿意等', '暂不方便'] as const
 
-type ViewKey = 'overview' | 'schools' | 'users' | 'submissions' | 'feedback' | 'notifications' | 'reminders'
+type ViewKey = 'overview' | 'schools' | 'users' | 'submissions' | 'feedback' | 'notifications' | 'reminders' | 'appSettings'
 type StatusType = 'success' | 'error'
 
 interface AdminStats {
@@ -221,6 +221,28 @@ interface ReminderRunResult {
   reason?: string
 }
 
+type HomeShortcutKey =
+  | 'query'
+  | 'schedule'
+  | 'grades'
+  | 'messages'
+  | 'feedback'
+  | 'submission'
+  | 'settings'
+  | 'about'
+
+interface HomeShortcutConfigItem {
+  key: HomeShortcutKey
+  label: string
+  enabled: boolean
+  order: number
+}
+
+interface HomeShortcutConfig {
+  items: HomeShortcutConfigItem[]
+  updatedAt?: string
+}
+
 interface SavedConfig {
   baseUrl?: string
   adminKey?: string
@@ -328,6 +350,30 @@ const SUBMISSION_STATUS_OPTIONS = [
   ['candidate', '已通过'],
 ] as const
 
+const HOME_SHORTCUT_OPTIONS: Array<{ key: HomeShortcutKey; name: string; description: string }> = [
+  { key: 'query', name: '证书查询', description: '四六级、计算机等级考试、普通话等查询入口页。' },
+  { key: 'schedule', name: '课表', description: '跳转到小程序课表 Tab。' },
+  { key: 'grades', name: '成绩', description: '跳转到小程序成绩 Tab。' },
+  { key: 'messages', name: '消息', description: '打开消息历史页面。' },
+  { key: 'feedback', name: '反馈', description: '打开用户反馈页面。' },
+  { key: 'submission', name: '接入申请', description: '打开学校接入申请页面。' },
+  { key: 'settings', name: '设置', description: '打开小程序设置页面。' },
+  { key: 'about', name: '关于', description: '打开关于页面。' },
+]
+
+const DEFAULT_HOME_SHORTCUT_CONFIG: HomeShortcutConfig = {
+  items: [
+    { key: 'query', label: '证书查询', enabled: true, order: 10 },
+    { key: 'schedule', label: '课表', enabled: true, order: 20 },
+    { key: 'grades', label: '成绩', enabled: true, order: 30 },
+    { key: 'messages', label: '消息', enabled: true, order: 40 },
+    { key: 'feedback', label: '反馈', enabled: false, order: 50 },
+    { key: 'submission', label: '接入申请', enabled: false, order: 60 },
+    { key: 'settings', label: '设置', enabled: false, order: 70 },
+    { key: 'about', label: '关于', enabled: false, order: 80 },
+  ],
+}
+
 const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   overview: {
     title: '总览',
@@ -356,6 +402,10 @@ const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   reminders: {
     title: '提醒设置',
     description: '调整每日课程和考试提醒的发送窗口、批量、并发与 dry-run 状态。',
+  },
+  appSettings: {
+    title: '首页菜单',
+    description: '调整小程序首页日期下方快捷入口的显示、排序和短标题。',
   },
 }
 
@@ -413,6 +463,48 @@ function displayUserContact(contact?: UserItem['contact']) {
 
 function displayCount(value: number | undefined) {
   return String(Math.min(Math.max(0, Math.floor(value ?? 0)), 99999))
+}
+
+function normalizeHomeShortcutConfig(value: unknown): HomeShortcutConfig {
+  const record = value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Partial<HomeShortcutConfig>)
+    : {}
+  const byKey = new Map<HomeShortcutKey, HomeShortcutConfigItem>()
+
+  if (Array.isArray(record.items)) {
+    record.items.forEach((item) => {
+      const source = item && typeof item === 'object' && !Array.isArray(item)
+        ? (item as Partial<HomeShortcutConfigItem>)
+        : {}
+      const key = source.key
+
+      if (!key || !HOME_SHORTCUT_OPTIONS.some((option) => option.key === key)) {
+        return
+      }
+
+      const defaults = DEFAULT_HOME_SHORTCUT_CONFIG.items.find((entry) => entry.key === key)
+      const catalog = HOME_SHORTCUT_OPTIONS.find((option) => option.key === key)
+      const order = Number(source.order)
+
+      byKey.set(key, {
+        key,
+        label: source.label?.trim().slice(0, 8) || defaults?.label || catalog?.name || key,
+        enabled: source.enabled !== false,
+        order: Number.isFinite(order) ? order : defaults?.order || 0,
+      })
+    })
+  }
+
+  DEFAULT_HOME_SHORTCUT_CONFIG.items.forEach((item) => {
+    if (!byKey.has(item.key)) {
+      byKey.set(item.key, item)
+    }
+  })
+
+  return {
+    items: [...byKey.values()].sort((left, right) => left.order - right.order),
+    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : undefined,
+  }
 }
 
 function getSortValue(sortBy: string, sortOrder: string) {
@@ -586,6 +678,7 @@ export function App() {
   const [notifications, setNotifications] = useState<PageResult<NotificationItem>>({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
   const [reminderConfig, setReminderConfig] = useState<ReminderConfig | null>(null)
   const [reminderRun, setReminderRun] = useState<ReminderRunResult | null>(null)
+  const [homeShortcutConfig, setHomeShortcutConfig] = useState<HomeShortcutConfig | null>(null)
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null)
   const [schoolFilters, setSchoolFilters] = useState<SchoolFilters>({ keyword: '', status: '', enabled: '', sortBy: '', sortOrder: 'desc', offset: 0 })
   const [userFilters, setUserFilters] = useState<UserFilters>({ keyword: '', schoolId: '', schoolKeyword: '', status: '', offset: 0 })
@@ -830,6 +923,10 @@ export function App() {
     if (view === 'reminders') {
       setReminderConfig(await load<ReminderConfig>('/admin/reminders/config'))
     }
+
+    if (view === 'appSettings') {
+      setHomeShortcutConfig(normalizeHomeShortcutConfig(await load<HomeShortcutConfig>('/admin/settings/home-shortcuts')))
+    }
   }
 
   async function refreshCurrentView(successMessage = '数据已刷新。') {
@@ -1012,6 +1109,7 @@ export function App() {
     setSubmissions({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
     setFeedback({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
     setNotifications({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
+    setHomeShortcutConfig(null)
     setSelectedFeedback(null)
   }
 
@@ -1187,6 +1285,22 @@ export function App() {
     }
   }
 
+  async function saveHomeShortcutConfig(config: HomeShortcutConfig) {
+    try {
+      setLoading(true)
+      const nextConfig = await requestApi<HomeShortcutConfig>('/admin/settings/home-shortcuts', {
+        method: 'PUT',
+        bodyData: normalizeHomeShortcutConfig(config),
+      })
+      setHomeShortcutConfig(normalizeHomeShortcutConfig(nextConfig))
+      showStatus('首页菜单已保存，用户下次打开小程序后生效。')
+    } catch (error) {
+      showStatus(describeFetchError(error, baseUrl), 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function runReminderDryRun() {
     try {
       setLoading(true)
@@ -1260,6 +1374,7 @@ export function App() {
           <NavButton active={activeView === 'feedback'} icon={<MessageSquareWarning size={18} />} label="用户反馈" onClick={() => void switchView('feedback')} />
           <NavButton active={activeView === 'reminders'} icon={<BellRing size={18} />} label="提醒设置" onClick={() => void switchView('reminders')} />
           <NavButton active={activeView === 'notifications'} icon={<Bell size={18} />} label="通知管理" onClick={() => void switchView('notifications')} />
+          <NavButton active={activeView === 'appSettings'} icon={<Settings2 size={18} />} label="首页菜单" onClick={() => void switchView('appSettings')} />
         </nav>
         <div className="sidebar-footer">管理端仅面向网站浏览器使用。请在可信设备保存密钥，离开时退出登录。</div>
       </aside>
@@ -1399,6 +1514,12 @@ export function App() {
               runResult={reminderRun}
               onSave={(config) => void saveReminderConfig(config)}
               onDryRun={() => void runReminderDryRun()}
+            />
+          )}
+          {!loading && activeView === 'appSettings' && (
+            <HomeShortcutSettingsView
+              config={homeShortcutConfig}
+              onSave={(config) => void saveHomeShortcutConfig(config)}
             />
           )}
         </section>
@@ -3010,6 +3131,98 @@ function RemindersView(props: {
           <DetailItem label="吞吐估算" value={`约 ${draft.ratePerSecond * 60} 条/分钟，单轮最多处理 ${draft.batchSize} 条`} />
           <DetailItem label="最近 dry-run" value={props.runResult ? JSON.stringify(props.runResult) : '尚未运行'} />
         </div>
+      </div>
+    </Panel>
+  )
+}
+
+function HomeShortcutSettingsView(props: {
+  config: HomeShortcutConfig | null
+  onSave: (config: HomeShortcutConfig) => void
+}) {
+  const [draft, setDraft] = useState<HomeShortcutConfig>(() => normalizeHomeShortcutConfig(props.config))
+
+  useEffect(() => {
+    setDraft(normalizeHomeShortcutConfig(props.config))
+  }, [props.config])
+
+  const enabledCount = draft.items.filter((item) => item.enabled).length
+  const layoutText = enabledCount <= 1
+    ? '1 个入口左对齐'
+    : enabledCount <= 5
+      ? `${enabledCount} 个入口均匀分布`
+      : `${enabledCount} 个入口横向滚动，首屏显示 4 个`
+
+  const updateItem = (key: HomeShortcutKey, patch: Partial<HomeShortcutConfigItem>) => {
+    setDraft((current) => normalizeHomeShortcutConfig({
+      ...current,
+      items: current.items.map((item) => item.key === key ? { ...item, ...patch } : item),
+    }))
+  }
+
+  const resetDefault = () => {
+    setDraft(normalizeHomeShortcutConfig(DEFAULT_HOME_SHORTCUT_CONFIG))
+  }
+
+  return (
+    <Panel>
+      <PanelHeader
+        title="首页菜单"
+        description={viewMeta.appSettings.description}
+        actions={
+          <>
+            <button className="button secondary" type="button" onClick={resetDefault}><RefreshCw size={16} />恢复默认</button>
+            <button className="button primary" type="button" onClick={() => props.onSave(draft)}><Save size={16} />保存</button>
+          </>
+        }
+      />
+      <div className="shortcut-settings-summary">
+        <div>
+          <div className="cell-title">当前显示 {enabledCount} 个入口</div>
+          <div className="cell-meta">{layoutText}。用户打开小程序时轻量拉取一次，随后使用本地缓存。</div>
+        </div>
+        <Badge tone={enabledCount ? 'green' : 'amber'}>{enabledCount ? '已配置' : '全部隐藏'}</Badge>
+      </div>
+      <div className="shortcut-settings-list">
+        {HOME_SHORTCUT_OPTIONS.map((option) => {
+          const item = draft.items.find((entry) => entry.key === option.key) ||
+            DEFAULT_HOME_SHORTCUT_CONFIG.items.find((entry) => entry.key === option.key)
+
+          if (!item) return null
+
+          return (
+            <section className={'shortcut-settings-row' + (item.enabled ? ' is-enabled' : '')} key={option.key}>
+              <label className="check-field shortcut-toggle">
+                <input
+                  type="checkbox"
+                  checked={item.enabled}
+                  onChange={(event) => updateItem(item.key, { enabled: event.target.checked })}
+                />
+                <span>显示</span>
+              </label>
+              <div className="shortcut-settings-info">
+                <div className="cell-title">{option.name}</div>
+                <div className="cell-meta">{option.description}</div>
+              </div>
+              <label className="field shortcut-label-field">
+                <span>显示名称</span>
+                <input
+                  maxLength={8}
+                  value={item.label}
+                  onChange={(event) => updateItem(item.key, { label: event.target.value })}
+                />
+              </label>
+              <label className="field shortcut-order-field">
+                <span>排序</span>
+                <input
+                  type="number"
+                  value={item.order}
+                  onChange={(event) => updateItem(item.key, { order: Number(event.target.value) || 0 })}
+                />
+              </label>
+            </section>
+          )
+        })}
       </div>
     </Panel>
   )

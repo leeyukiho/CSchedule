@@ -13,6 +13,7 @@ import { ProvidersModule } from './modules/providers/providers.module'
 import { RawDataModule } from './modules/raw-data/raw-data.module'
 import { RemindersModule } from './modules/reminders/reminders.module'
 import { SchoolsModule } from './modules/schools/schools.module'
+import { SettingsModule } from './modules/settings/settings.module'
 import { SubmissionsModule } from './modules/submissions/submissions.module'
 import { SyncModule } from './modules/sync/sync.module'
 import { TimetableModule } from './modules/timetable/timetable.module'
@@ -27,6 +28,7 @@ import { TimetableModule } from './modules/timetable/timetable.module'
     HealthModule,
     ProvidersModule,
     SchoolsModule,
+    SettingsModule,
     AuthModule,
     AccountsModule,
     TimetableModule,

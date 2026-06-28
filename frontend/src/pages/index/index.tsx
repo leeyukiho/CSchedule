@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { Text, View } from '@tarojs/components'
+import { ScrollView, Text, View } from '@tarojs/components'
 
 import { getExams } from '../../shared/api/features'
 import {
@@ -22,6 +22,12 @@ import {
   getWeekday,
 } from '../../shared/format'
 import { PageShell } from '../../shared/layout'
+import {
+  buildHomeShortcutRuntimeItems,
+  getStoredHomeShortcutConfig,
+  HOME_SHORTCUT_CONFIG_UPDATED_EVENT,
+  HomeShortcutRuntimeItem,
+} from '../../shared/home-shortcuts'
 import { useDefaultShare } from '../../shared/share'
 import { getStoredAccountSummary, getStoredAuthState, getStoredTermStarts } from '../../shared/storage'
 import { buildTermOptions, courseRunsInWeek, getTeachingWeekForDate } from '../../shared/term'
@@ -37,6 +43,7 @@ const REMINDER_STATE_RETRY_MS = 2 * 60 * 1000
 const REMINDER_STATE_FAST_RETRY_WINDOW_MS = 30 * 60 * 1000
 const REMINDER_STATE_STALE_RETRY_MS = 30 * 60 * 1000
 const WEATHER_STORAGE_CACHE_PREFIX = 'cschedule.weather.'
+const HOME_SHORTCUT_SCROLL_EDGE_TOLERANCE = 24
 
 type SchoolWeatherLocation = {
   id: string
@@ -68,6 +75,7 @@ type HomeExamItem = {
 }
 
 type ArrangementStatus = 'current' | 'next' | 'pending' | 'ended'
+type HomeShortcutScrollPosition = 'start' | 'middle' | 'end'
 
 const EMPTY_SCHOOL_IDENTITY: SchoolWeatherIdentity = {
   schoolId: '',
@@ -519,6 +527,10 @@ export default function HomePage() {
   const [homeWeatherText, setHomeWeatherText] = useState('')
   const [showAllCourses, setShowAllCourses] = useState(false)
   const [showAllExams, setShowAllExams] = useState(false)
+  const [homeShortcuts, setHomeShortcuts] = useState(() => buildHomeShortcutRuntimeItems(getStoredHomeShortcutConfig()))
+  const [homeShortcutScrollPosition, setHomeShortcutScrollPosition] = useState<HomeShortcutScrollPosition>('start')
+  const homeShortcutScrollMetricsRef = useRef({ clientWidth: 0, scrollWidth: 0 })
+  const homeShortcutScrollPositionRef = useRef<HomeShortcutScrollPosition>('start')
   const currentDateKey = getLocalDateKey(new Date(nowMs))
 
   useEffect(() => {
@@ -538,9 +550,31 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
+    const updateHomeShortcuts = (config?: unknown) => {
+      setHomeShortcuts(buildHomeShortcutRuntimeItems(config || getStoredHomeShortcutConfig()))
+    }
+
+    Taro.eventCenter.on(HOME_SHORTCUT_CONFIG_UPDATED_EVENT, updateHomeShortcuts)
+
+    return () => {
+      Taro.eventCenter.off(HOME_SHORTCUT_CONFIG_UPDATED_EVENT, updateHomeShortcuts)
+    }
+  }, [])
+
+  useEffect(() => {
     setShowAllCourses(false)
     setShowAllExams(false)
   }, [accountId, currentDateKey])
+
+  useEffect(() => {
+    if (homeShortcuts.length < 6) {
+      return
+    }
+
+    homeShortcutScrollPositionRef.current = 'start'
+    setHomeShortcutScrollPosition('start')
+    measureHomeShortcutScroll()
+  }, [homeShortcuts.length])
 
   useEffect(() => {
     if (!accountId) {
@@ -748,6 +782,60 @@ export default function HomePage() {
 
   function openProfileTab() {
     Taro.switchTab({ url: '/pages/profile/index' })
+  }
+
+  function openHomeShortcut(shortcut: HomeShortcutRuntimeItem) {
+    if (shortcut.tab) {
+      Taro.switchTab({ url: shortcut.url })
+      return
+    }
+
+    Taro.navigateTo({ url: shortcut.url })
+  }
+
+  function handleHomeShortcutScroll(event: { detail?: { scrollLeft?: number; scrollWidth?: number } }) {
+    const detail = event.detail || {}
+    const scrollLeft = Number(detail.scrollLeft || 0)
+    const scrollWidth = Number(detail.scrollWidth || 0)
+    const metrics = homeShortcutScrollMetricsRef.current
+
+    if (scrollWidth > 0) {
+      metrics.scrollWidth = scrollWidth
+    }
+
+    const maxLeft = Math.max(0, metrics.scrollWidth - metrics.clientWidth)
+    const isAtStart = scrollLeft <= HOME_SHORTCUT_SCROLL_EDGE_TOLERANCE
+    const isAtEnd = maxLeft > 0 && scrollLeft >= maxLeft - HOME_SHORTCUT_SCROLL_EDGE_TOLERANCE
+    const nextPosition: HomeShortcutScrollPosition = isAtStart
+      ? 'start'
+      : isAtEnd
+        ? 'end'
+        : 'middle'
+
+    if (homeShortcutScrollPositionRef.current !== nextPosition) {
+      homeShortcutScrollPositionRef.current = nextPosition
+      setHomeShortcutScrollPosition(nextPosition)
+    }
+  }
+
+  function measureHomeShortcutScroll() {
+    Taro.nextTick(() => {
+      const query = Taro.createSelectorQuery()
+
+      query.select('.home-shortcuts').boundingClientRect()
+      query.select('.home-shortcut-track').boundingClientRect()
+      query.exec((rects) => {
+        const viewport = Array.isArray(rects) ? rects[0] : null
+        const track = Array.isArray(rects) ? rects[1] : null
+        const viewportWidth = Number(viewport?.width || 0)
+        const trackWidth = Number(track?.width || 0)
+
+        homeShortcutScrollMetricsRef.current = {
+          clientWidth: viewportWidth || homeShortcutScrollMetricsRef.current.clientWidth,
+          scrollWidth: trackWidth || homeShortcutScrollMetricsRef.current.scrollWidth,
+        }
+      })
+    })
   }
 
   function expandTodayCourses() {
@@ -1086,6 +1174,17 @@ export default function HomePage() {
   const isTodayCompleteExpanded = isTodayComplete && (showAllCourses || showAllExams)
   const showTodayRestText = Boolean(accountId && timetable && !loading && !errorText && todayItemCount === 0)
   const weatherDisplayText = homeWeatherText || (weatherLocation ? `${weatherLocation.displayName} · 天气加载中` : '')
+  const homeShortcutCount = homeShortcuts.length
+  const homeShortcutLayoutClass = homeShortcutCount <= 1
+    ? 'home-shortcuts-left'
+    : homeShortcutCount <= 5
+      ? 'home-shortcuts-even'
+      : 'home-shortcuts-scroll'
+  const shouldUseShortcutScrollAffordance = homeShortcutCount >= 6
+  const shouldShowShortcutLeftArrow = shouldUseShortcutScrollAffordance &&
+    homeShortcutScrollPosition !== 'start'
+  const shouldShowShortcutRightArrow = shouldUseShortcutScrollAffordance &&
+    homeShortcutScrollPosition !== 'end'
 
   function toggleTodayCompleteArrangements() {
     if (!isTodayComplete) {
@@ -1120,6 +1219,37 @@ export default function HomePage() {
           <View className='calendar-mini' />
         </View>
       </View>
+
+      {homeShortcutCount > 0 && (
+        <View className={`home-shortcut-shell ${shouldUseShortcutScrollAffordance ? 'home-shortcut-shell-scroll' : ''}`}>
+          <ScrollView
+            className={`home-shortcuts ${homeShortcutLayoutClass}`}
+            scrollX={homeShortcutCount >= 6}
+            enhanced={homeShortcutCount >= 6}
+            showScrollbar={false}
+            onScroll={handleHomeShortcutScroll}
+          >
+            <View className='home-shortcut-track'>
+              {homeShortcuts.map((shortcut) => (
+                <View
+                  className='home-shortcut-item'
+                  key={shortcut.key}
+                  onClick={() => openHomeShortcut(shortcut)}
+                >
+                  <View className={`home-shortcut-icon ${shortcut.iconClass}`} />
+                  <Text>{shortcut.label}</Text>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+          {shouldUseShortcutScrollAffordance && (
+            <>
+              <View className={`home-shortcut-edge home-shortcut-edge-left${shouldShowShortcutLeftArrow ? ' home-shortcut-edge-visible' : ''}`} />
+              <View className={`home-shortcut-edge home-shortcut-edge-right${shouldShowShortcutRightArrow ? ' home-shortcut-edge-visible' : ''}`} />
+            </>
+          )}
+        </View>
+      )}
 
       {errorText && <View className='status status-error'>{errorText}</View>}
 
