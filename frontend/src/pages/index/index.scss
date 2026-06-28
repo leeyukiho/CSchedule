@@ -356,7 +356,7 @@
   gap: 8rpx;
   color: #98a2b3;
   font-size: 21rpx;
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1;
 }
 
@@ -390,6 +390,10 @@
   border-color: #d1fadf;
   background: #f0fdf4;
   box-shadow: 0 12rpx 28rpx rgba(16, 185, 129, 0.07);
+}
+
+.home-content .today-complete-card-clickable {
+  cursor: pointer;
 }
 
 .home-content .today-complete-card-compact {
@@ -451,6 +455,23 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.home-content .today-complete-expand-icon {
+  flex: 0 0 18rpx;
+  width: 18rpx;
+  height: 18rpx;
+  margin-right: 4rpx;
+  border-right: 4rpx solid #16a34a;
+  border-bottom: 4rpx solid #16a34a;
+  opacity: 0.72;
+  transform: rotate(45deg);
+  transition: transform 0.18s ease, margin-top 0.18s ease;
+}
+
+.home-content .today-complete-card-open .today-complete-expand-icon {
+  margin-top: 8rpx;
+  transform: rotate(225deg);
 }
 
 .home-content .course-card {

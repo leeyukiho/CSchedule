@@ -475,10 +475,10 @@ function getAdminNotificationTargetDetail(item: NotificationItem) {
   if (item.targetType === 'user') {
     return item.targetAccount
       ? joinFilled([
-          item.targetAccount.student?.name || item.targetAccount.displayName,
-          item.targetAccount.school?.shortName || item.targetAccount.schoolId,
-          item.targetAccount.id,
-        ])
+        item.targetAccount.student?.name || item.targetAccount.displayName,
+        item.targetAccount.school?.shortName || item.targetAccount.schoolId,
+        item.targetAccount.id,
+      ])
       : item.targetAccountId || '--'
   }
 
@@ -1758,11 +1758,11 @@ function createSectionTimeRows(sectionTimes: unknown): SectionTimeRow[] {
   return rows.length
     ? rows
     : Array.from({ length: 12 }, (_, index) => ({
-        id: `section-empty-${index + 1}`,
-        section: String(index + 1),
-        start: '',
-        end: '',
-      }))
+      id: `section-empty-${index + 1}`,
+      section: String(index + 1),
+      start: '',
+      end: '',
+    }))
 }
 
 function sectionRowsToItems(rows: SectionTimeRow[]) {
@@ -2195,7 +2195,7 @@ function SchoolsView(props: {
             </thead>
             <tbody>
               {sortedSchools.map((school) => (
-                  <tr key={school.id}>
+                <tr key={school.id}>
                   <td>
                     <div className="cell-title">{school.name}</div>
                     <div className="cell-meta">{joinFilled([school.id, school.shortName, school.province, school.city])}</div>
@@ -2228,7 +2228,7 @@ function SchoolsView(props: {
                       <button className="button secondary" type="button" onClick={() => props.onNotify(school)}><Bell size={16} />通知</button>
                     </div>
                   </td>
-                  </tr>
+                </tr>
               ))}
             </tbody>
           </table>
@@ -3209,41 +3209,41 @@ function TermStartForm(props: { value: unknown; school?: SchoolItem; onCancel: (
           </button>
         </header>
         <div className="term-row-list">
-        {rows.map((row) => (
-          <div className="term-row" key={row.id}>
-            {row.locked ? (
-              <div className="term-display">
-                <span className="term-label">{row.label || row.termId}</span>
-              </div>
-            ) : (
+          {rows.map((row) => (
+            <div className="term-row" key={row.id}>
+              {row.locked ? (
+                <div className="term-display">
+                  <span className="term-label">{row.label || row.termId}</span>
+                </div>
+              ) : (
+                <label className="field">
+                  <span>学期 ID</span>
+                  <input
+                    value={row.termId}
+                    placeholder="2025-2026-2"
+                    onChange={(event) => updateRow(row.id, { termId: event.target.value })}
+                  />
+                </label>
+              )}
               <label className="field">
-                <span>学期 ID</span>
+                <span>首周周一</span>
                 <input
-                  value={row.termId}
-                  placeholder="2025-2026-2"
-                  onChange={(event) => updateRow(row.id, { termId: event.target.value })}
+                  type="date"
+                  value={row.startDate}
+                  onChange={(event) => updateRow(row.id, { startDate: event.target.value })}
                 />
               </label>
-            )}
-            <label className="field">
-              <span>首周周一</span>
-              <input
-                type="date"
-                value={row.startDate}
-                onChange={(event) => updateRow(row.id, { startDate: event.target.value })}
-              />
-            </label>
-            <div className="term-row-action">
-              {row.locked ? (
-                <span className="cell-meta">清空日期可移除配置</span>
-              ) : (
-                <button className="button ghost icon-button" type="button" aria-label="删除首周" onClick={() => removeRow(row.id)}>
-                  <Trash2 size={16} />
-                </button>
-              )}
+              <div className="term-row-action">
+                {row.locked ? (
+                  <span className="cell-meta">清空日期可移除配置</span>
+                ) : (
+                  <button className="button ghost icon-button" type="button" aria-label="删除首周" onClick={() => removeRow(row.id)}>
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
         </div>
       </section>
       <div className="modal-footer inline-footer">
@@ -3399,9 +3399,9 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
   const updateProfileSectionRow = (profileId: string, rowId: string, patch: Partial<SectionTimeRow>) => {
     setProfileRows((current) => current.map((profile) => profile.id === profileId
       ? {
-          ...profile,
-          sectionRows: profile.sectionRows.map((row) => row.id === rowId ? { ...row, ...patch } : row),
-        }
+        ...profile,
+        sectionRows: profile.sectionRows.map((row) => row.id === rowId ? { ...row, ...patch } : row),
+      }
       : profile,
     ))
   }
@@ -3464,10 +3464,10 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
       const longitude = Number(weatherDraft.longitude)
       const weatherLocation = weatherEnabled && Number.isFinite(latitude) && Number.isFinite(longitude)
         ? {
-            displayName: weatherDraft.displayName.trim() || undefined,
-            latitude,
-            longitude,
-          }
+          displayName: weatherDraft.displayName.trim() || undefined,
+          latitude,
+          longitude,
+        }
         : null
       props.onSubmit({
         ...draft,

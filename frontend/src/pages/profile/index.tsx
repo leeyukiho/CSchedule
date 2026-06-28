@@ -70,6 +70,12 @@ function getText(value: unknown, fallback = '暂无') {
   return fallback
 }
 
+function isFemaleGender(value: unknown) {
+  const gender = typeof value === 'string' ? value.trim() : ''
+
+  return gender === '女' || gender.toLowerCase() === 'female'
+}
+
 function getEditableFields(): EditField[] {
   return EDIT_FIELDS
 }
@@ -344,22 +350,16 @@ export default function ProfilePage() {
       name: getText(profileSource.name || profileSource.displayName, '课表用户'),
       number: getText(profileSource.studentId || profileSource.maskedStudentId, '暂无学号'),
       major: getText(profileSource.major, '暂无专业信息'),
-      className: getText(profileSource.className, ''),
-      grade: getText(profileSource.grade, ''),
-      level: getText(profileSource.level, '暂无层次信息'),
+      education: [getText(profileSource.grade, ''), getText(profileSource.level, '')].filter(Boolean).join(' '),
+      schoolName: getText(profileSource.schoolName),
       avatarUrl: getText(profileSource.avatarUrl, ''),
     }),
     [profileSource],
   )
 
-  const baseInfo = useMemo(() => {
-    return EDIT_FIELDS.map((field) => ({
-      label: field.label,
-      value: field.getValue
-        ? field.getValue(profileSource)
-        : getText(profileSource[field.key]),
-    }))
-  }, [profileSource])
+  const profileCardClassName = isFemaleGender(profileSource.gender)
+    ? 'profile-card profile-card-female'
+    : 'profile-card'
 
   async function loadAccount(accountId: string, forceRefresh = false) {
     setErrorText('')
@@ -516,7 +516,7 @@ export default function ProfilePage() {
       {message && <View className='status'>{message}</View>}
       {errorText && <View className='status status-error'>{errorText}</View>}
 
-      <View className='profile-card' onClick={openProfileEditor}>
+      <View className={profileCardClassName} onClick={openProfileEditor}>
         <View className='avatar-button'>
           {student.avatarUrl ? (
             <Image className='avatar-image' src={student.avatarUrl} mode='aspectFill' />
@@ -528,23 +528,12 @@ export default function ProfilePage() {
           <View className='profile-name'>{student.name}</View>
           <View className='profile-line'>学号：{student.number}</View>
           <View className='profile-meta-row'>
+            {student.education && <Text className='profile-education'>{student.education}</Text>}
             <Text className='profile-meta'>{student.major}</Text>
-            {student.className && <Text className='profile-meta'>{student.className}</Text>}
           </View>
-          <View className='profile-line'>{[student.grade, student.level].filter(Boolean).join(' ')}</View>
+          <View className='profile-line profile-school-line'>{student.schoolName}</View>
         </View>
         <View className='profile-arrow' />
-      </View>
-      <View className='edit-hint'>点击卡片补充或修改个人信息</View>
-
-      <View className='soft-card info-panel'>
-        <View className='panel-title'>基本信息</View>
-        {baseInfo.map((item) => (
-          <View className='info-row' key={item.label}>
-            <Text>{item.label}</Text>
-            <Text className='info-value'>{item.value}</Text>
-          </View>
-        ))}
       </View>
 
       <View className='soft-card action-panel'>

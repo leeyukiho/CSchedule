@@ -1083,8 +1083,20 @@ export default function HomePage() {
     todayCourses.length ? `${todayCourses.length} 节课程` : '',
     todayExamItems.length ? `${todayExamItems.length} 场考试` : '',
   ].filter(Boolean).join('，')
+  const isTodayCompleteExpanded = isTodayComplete && (showAllCourses || showAllExams)
   const showTodayRestText = Boolean(accountId && timetable && !loading && !errorText && todayItemCount === 0)
   const weatherDisplayText = homeWeatherText || (weatherLocation ? `${weatherLocation.displayName} · 天气加载中` : '')
+
+  function toggleTodayCompleteArrangements() {
+    if (!isTodayComplete) {
+      return
+    }
+
+    const nextExpanded = !isTodayCompleteExpanded
+
+    setShowAllCourses(nextExpanded && todayCourses.length > 0)
+    setShowAllExams(nextExpanded && todayExamItems.length > 0)
+  }
 
   return (
     <PageShell title='首 页' activeTab='home' contentClassName='home-content' customNav>
@@ -1132,7 +1144,10 @@ export default function HomePage() {
       {showTodayRestText && <View className='today-empty-text'>今天没有安排</View>}
 
       {isTodayComplete && (
-        <View className='soft-card today-complete-card'>
+        <View
+          className={`soft-card today-complete-card today-complete-card-clickable${isTodayCompleteExpanded ? ' today-complete-card-open' : ''}`}
+          onClick={toggleTodayCompleteArrangements}
+        >
           <View className='today-complete-icon' />
           <View className='today-complete-main'>
             <View className='today-complete-title'>今日安排已完成</View>
@@ -1140,13 +1155,9 @@ export default function HomePage() {
               {todayCompleteSummary ? `已结束 ${todayCompleteSummary}` : '今天的安排都已结束'}
             </View>
           </View>
+          <View className='today-complete-expand-icon' />
         </View>
       )}
-
-      {isTodayComplete && !showAllCourses &&
-        renderArrangementFoldHint('课程', showAllCourses, foldedTodayCourseCount, remainingTodayCourseCount, toggleTodayCourses)}
-      {isTodayComplete && !showAllExams &&
-        renderArrangementFoldHint('考试', showAllExams, foldedTodayExamCount, remainingTodayExamCount, toggleTodayExams)}
 
       {!isTodayComplete && isCourseComplete && (
         <View className='soft-card today-complete-card today-complete-card-compact'>
@@ -1204,7 +1215,8 @@ export default function HomePage() {
               ))}
             </View>
           )}
-          {renderArrangementFoldHint('课程', showAllCourses, foldedTodayCourseCount, remainingTodayCourseCount, toggleTodayCourses)}
+          {!isTodayComplete &&
+            renderArrangementFoldHint('课程', showAllCourses, foldedTodayCourseCount, remainingTodayCourseCount, toggleTodayCourses)}
         </View>
       )}
 
@@ -1261,7 +1273,8 @@ export default function HomePage() {
               ))}
             </View>
           )}
-          {renderArrangementFoldHint('考试', showAllExams, foldedTodayExamCount, remainingTodayExamCount, toggleTodayExams)}
+          {!isTodayComplete &&
+            renderArrangementFoldHint('考试', showAllExams, foldedTodayExamCount, remainingTodayExamCount, toggleTodayExams)}
         </View>
       )}
 

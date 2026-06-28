@@ -499,27 +499,88 @@ function getExamStatusText(status: ExamDisplayStatus) {
   return EXAM_SECTION_TITLES[status]
 }
 
-function getCollapsedExamSummary(item: ExamSummaryItem | undefined, examCount: number, now = Date.now()) {
+function getCollapsedExamTimeText(item: ExamSummaryItem | undefined) {
   if (!item) {
-    return examCount ? '点击展开查看全部考试记录' : '请同步后查看最新考试信息'
+    return ''
   }
 
-  const { exam, isToday, status } = item
-  const startTime = getExamStartTime(exam)
-  const endTime = getExamEndTime(exam)
-  let label = '下一场考试'
-
-  if (status === 'unscheduled') {
-    label = '待安排考试'
-  } else if (status === 'finished') {
-    label = isToday ? '今日已结束' : '已结束考试'
-  } else if (startTime && startTime <= now && (!endTime || endTime >= now)) {
-    label = '正在考试'
-  } else if (isToday) {
-    label = '今日考试'
+  const timeParts = getExamTimeParts(item.exam)
+  if (timeParts.date === '待定') {
+    return '待安排'
   }
 
-  return `${label}：${exam.courseName || '未命名考试'}`
+  const timeText = timeParts.start === '时间' && timeParts.end === '待定'
+    ? '时间待定'
+    : `${timeParts.start}-${timeParts.end}`
+
+  return `${timeParts.date} ${timeText}`
+}
+
+function getCollapsedExamTitle(item: ExamSummaryItem | undefined, examCount: number) {
+  if (!item) {
+    return examCount ? '暂无下场考试' : '暂无考试安排'
+  }
+
+  return `下一场考试 ${getCollapsedExamTimeText(item)}`
+}
+
+function getCollapsedExamSummary(
+  currentItem: ExamSummaryItem | undefined,
+  nextItem: ExamSummaryItem | undefined,
+  examCount: number,
+) {
+  if (currentItem) {
+    return {
+      prefix: '正在考试：',
+      title: currentItem.exam.courseName || '未命名考试',
+    }
+  }
+
+  if (nextItem) {
+    return {
+      prefix: '',
+      title: nextItem.exam.courseName || '未命名考试',
+    }
+  }
+
+  if (!examCount) {
+    return {
+      prefix: '',
+      title: '请同步后查看最新考试信息',
+    }
+  }
+
+  return {
+    prefix: '',
+    title: '点击展开查看全部考试记录',
+  }
+}
+
+function isCurrentExamItem(item: ExamSummaryItem, now = Date.now()) {
+  const startTime = getExamStartTime(item.exam)
+  const endTime = getExamEndTime(item.exam)
+
+  return item.status === 'upcoming' && startTime > 0 && startTime <= now && (!endTime || endTime >= now)
+}
+
+function isNextScheduledExamItem(item: ExamSummaryItem, now = Date.now()) {
+  const startTime = getExamStartTime(item.exam)
+
+  return item.status === 'upcoming' && (!startTime || startTime > now)
+}
+
+function getNextCollapsedExamItem(items: ExamSummaryItem[], now = Date.now()) {
+  const nextScheduledItem = items.find((item) => isNextScheduledExamItem(item, now))
+
+  if (nextScheduledItem) {
+    return nextScheduledItem
+  }
+
+  return items.find((item) => item.status === 'unscheduled')
+}
+
+function shouldScrollCollapsedExamSummary(text: string, prefix = '') {
+  return Boolean(prefix) && text.length > 18
 }
 
 function getExamArrangementStatus(item: ExamSummaryItem, now = Date.now()): ExamArrangementStatus {
@@ -722,7 +783,7 @@ export default function GradesPage() {
       showsTodayStatus: section.key === 'upcoming' && isExamToday(exam, todayKey),
     })),
   )
-  const visibleCollapsedExamItems = examItems.filter((item) => item.status === 'upcoming' || item.isToday)
+  const visibleCollapsedExamItems = examItems.filter((item) => item.status === 'upcoming' || item.status === 'unscheduled')
   const visibleExamItems = showAllExams ? examItems : visibleCollapsedExamItems
   const nextExamStartTime = Math.min(
     ...visibleExamItems
@@ -732,10 +793,14 @@ export default function GradesPage() {
   )
   const examCount = examSections.reduce((count, section) => count + section.items.length, 0)
   const shouldShowCollapsedExamPlaceholder = !showAllExams && examCount > 0 && visibleCollapsedExamItems.length === 0
-  const examSummaryTitle = examCount
-    ? `共 ${examCount} 场考试`
-    : '暂无考试安排'
-  const examSummarySubtitle = getCollapsedExamSummary(visibleCollapsedExamItems[0], examCount, nowMs)
+  const currentExamItem = examItems.find((item) => isCurrentExamItem(item, nowMs))
+  const nextCollapsedExamItem = getNextCollapsedExamItem(examItems, nowMs)
+  const examSummaryTitle = getCollapsedExamTitle(nextCollapsedExamItem, examCount)
+  const examSummarySubtitle = getCollapsedExamSummary(currentExamItem, nextCollapsedExamItem, examCount)
+  const examSummarySubtitleScrolls = shouldScrollCollapsedExamSummary(
+    examSummarySubtitle.title,
+    examSummarySubtitle.prefix,
+  )
   const toggleSemester = (id: string) => {
     setCollapsedSemesters((current) => ({ ...current, [id]: !(current[id] ?? true) }))
   }
@@ -775,7 +840,27 @@ export default function GradesPage() {
           >
             <View className='exam-stack-main'>
               <View className='exam-stack-title'>{examSummaryTitle}</View>
-              <View className='exam-stack-subtitle'>{examSummarySubtitle}</View>
+              <View className='exam-stack-subtitle'>
+                {examSummarySubtitle.prefix && (
+                  <Text className='exam-stack-subtitle-prefix'>{examSummarySubtitle.prefix}</Text>
+                )}
+                <View className='exam-stack-subtitle-name'>
+                  {examSummarySubtitleScrolls ? (
+                    <View className='exam-stack-subtitle-track exam-stack-subtitle-track-scroll'>
+                      <Text className='exam-stack-subtitle-text'>
+                        {examSummarySubtitle.title}
+                      </Text>
+                      <Text className='exam-stack-subtitle-text exam-stack-subtitle-text-copy'>
+                        {examSummarySubtitle.title}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text className='exam-stack-subtitle-static'>
+                      {examSummarySubtitle.title}
+                    </Text>
+                  )}
+                </View>
+              </View>
             </View>
             <View className='exam-stack-count'>{examCount}</View>
             <View className='exam-stack-toggle' />
