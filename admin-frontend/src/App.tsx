@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Bell,
+  CloudSun,
   Eye,
   ExternalLink,
   FileJson,
@@ -225,6 +226,7 @@ type HomeShortcutKey =
   | 'query'
   | 'schedule'
   | 'grades'
+  | 'buddySpace'
   | 'messages'
   | 'feedback'
   | 'submission'
@@ -257,7 +259,7 @@ interface StatusMessage {
 interface ModalState {
   title: string
   description?: string
-  mode: 'json' | 'submission' | 'term' | 'provider'
+  mode: 'json' | 'submission' | 'term' | 'provider' | 'weather'
   value: unknown
   school?: SchoolItem
 }
@@ -317,13 +319,20 @@ interface ProviderDraft {
   sectionTimeProfiles?: SectionTimeProfile[]
 }
 
+interface WeatherDraft {
+  providerId: string
+  loginMode: string
+  weatherLocation?: WeatherLocationDraft
+  providerConfig?: Record<string, unknown>
+}
+
 interface WeatherLocationDraft {
   displayName?: string
   latitude: number
   longitude: number
 }
 
-type ProviderConfigTab = 'basic' | 'sectionTimes' | 'buildingTimes'
+type ProviderConfigTab = 'sectionTimes' | 'buildingTimes'
 
 interface ConfirmState {
   school: SchoolItem
@@ -354,6 +363,7 @@ const HOME_SHORTCUT_OPTIONS: Array<{ key: HomeShortcutKey; name: string; descrip
   { key: 'query', name: '证书查询', description: '四六级、计算机等级考试、普通话等查询入口页。' },
   { key: 'schedule', name: '课表', description: '跳转到小程序课表 Tab。' },
   { key: 'grades', name: '成绩', description: '跳转到小程序成绩 Tab。' },
+  { key: 'buddySpace', name: '搭子空间', description: '邀请好友绑定课表并查看公共空闲时间。' },
   { key: 'messages', name: '消息', description: '打开消息历史页面。' },
   { key: 'feedback', name: '反馈', description: '打开用户反馈页面。' },
   { key: 'submission', name: '接入申请', description: '打开学校接入申请页面。' },
@@ -366,11 +376,12 @@ const DEFAULT_HOME_SHORTCUT_CONFIG: HomeShortcutConfig = {
     { key: 'query', label: '证书查询', enabled: true, order: 10 },
     { key: 'schedule', label: '课表', enabled: true, order: 20 },
     { key: 'grades', label: '成绩', enabled: true, order: 30 },
-    { key: 'messages', label: '消息', enabled: true, order: 40 },
-    { key: 'feedback', label: '反馈', enabled: false, order: 50 },
-    { key: 'submission', label: '接入申请', enabled: false, order: 60 },
-    { key: 'settings', label: '设置', enabled: false, order: 70 },
-    { key: 'about', label: '关于', enabled: false, order: 80 },
+    { key: 'buddySpace', label: '搭子空间', enabled: false, order: 40 },
+    { key: 'messages', label: '消息', enabled: true, order: 50 },
+    { key: 'feedback', label: '反馈', enabled: false, order: 60 },
+    { key: 'submission', label: '接入申请', enabled: false, order: 70 },
+    { key: 'settings', label: '设置', enabled: false, order: 80 },
+    { key: 'about', label: '关于', enabled: false, order: 90 },
   ],
 }
 
@@ -381,7 +392,7 @@ const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   },
   schools: {
     title: '学校管理',
-    description: '筛选学校、启停学校、配置学期首周和 Provider 参数。',
+    description: '筛选学校、启停学校、配置学期首周、上课时间和天气位置。',
   },
   users: {
     title: '用户管理',
@@ -1263,7 +1274,11 @@ export function App() {
         bodyData,
       })
       setModal(null)
-      await refreshCurrentView(modal.mode === 'term' ? '默认首周已保存。' : 'Provider 配置已保存。')
+      await refreshCurrentView(modal.mode === 'term'
+        ? '默认首周已保存。'
+        : modal.mode === 'weather'
+          ? '天气配置已保存。'
+          : '上课时间配置已保存。')
     } catch (error) {
       showStatus(describeFetchError(error, baseUrl), 'error')
     }
@@ -1437,10 +1452,17 @@ export function App() {
                 school,
               })}
               onOpenProvider={(school) => setModal({
-                title: '配置 Provider',
+                title: '配置上课时间',
                 description: `${school.name} / ${school.id}`,
                 mode: 'provider',
                 value: getProviderDraft(school),
+                school,
+              })}
+              onOpenWeather={(school) => setModal({
+                title: '配置天气',
+                description: `${school.name} / ${school.id}`,
+                mode: 'weather',
+                value: getWeatherDraft(school),
                 school,
               })}
               onOpenFeedback={openSchoolFeedback}
@@ -1557,6 +1579,14 @@ function getProviderDraft(school: SchoolItem) {
     weatherLocation: school.weatherLocation,
     sectionTimes: school.sectionTimes || [],
     sectionTimeProfiles: school.sectionTimeProfiles || [],
+  }
+}
+
+function getWeatherDraft(school: SchoolItem): WeatherDraft {
+  return {
+    providerId: school.providerId || school.id,
+    loginMode: school.loginMode || 'direct_password',
+    weatherLocation: school.weatherLocation,
   }
 }
 
@@ -2235,6 +2265,7 @@ function SchoolsView(props: {
   onToggle: (school: SchoolItem) => void
   onOpenTerm: (school: SchoolItem) => void
   onOpenProvider: (school: SchoolItem) => void
+  onOpenWeather: (school: SchoolItem) => void
   onOpenFeedback: (school: SchoolItem) => void
   onOpenUsers: (school: SchoolItem) => void
   onNotify: (school: SchoolItem) => void
@@ -2309,48 +2340,60 @@ function SchoolsView(props: {
                 <th>学校</th>
                 <th>状态</th>
                 <th>用户</th>
-                <th>Provider</th>
+                <th>上课时间</th>
+                <th>天气</th>
                 <th>默认首周</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody>
-              {sortedSchools.map((school) => (
-                <tr key={school.id}>
-                  <td>
-                    <div className="cell-title">{school.name}</div>
-                    <div className="cell-meta">{joinFilled([school.id, school.shortName, school.province, school.city])}</div>
-                  </td>
-                  <td>
-                    <Badge tone={school.enabled ? 'green' : 'red'}>{school.enabled ? '已启用' : '未启用'}</Badge>
-                    <div className="cell-meta">{school.status}</div>
-                  </td>
-                  <td>
-                    <button className="count-link" type="button" title={`${school.userCount ?? 0}`} onClick={() => props.onOpenUsers(school)}>
-                      {displayCount(school.userCount)}
-                    </button>
-                  </td>
-                  <td>
-                    <div className="cell-title">{display(school.providerId || school.id)}</div>
-                    <div className="cell-meta">{display(school.loginMode, '未设置登录方式')}</div>
-                  </td>
-                  <td>
-                    <SchoolTermStartCell school={school} />
-                  </td>
-                  <td>
-                    <div className="row-actions">
-                      <button className={'button ' + (school.enabled ? 'danger' : 'secondary')} type="button" onClick={() => props.onToggle(school)}>
-                        {school.enabled ? <PowerOff size={16} /> : <Power size={16} />}
-                        {school.enabled ? '停用' : '启用'}
+              {sortedSchools.map((school) => {
+                const sectionCount = school.sectionTimes?.length || 0
+                const profileCount = school.sectionTimeProfiles?.length || 0
+                const hasSectionTimeConfig = sectionCount > 0 || profileCount > 0
+
+                return (
+                  <tr key={school.id}>
+                    <td>
+                      <div className="cell-title">{school.name}</div>
+                      <div className="cell-meta">{joinFilled([school.id, school.shortName, school.province, school.city])}</div>
+                    </td>
+                    <td>
+                      <Badge tone={school.enabled ? 'green' : 'red'}>{school.enabled ? '已启用' : '未启用'}</Badge>
+                      <div className="cell-meta">{school.status}</div>
+                    </td>
+                    <td>
+                      <button className="count-link" type="button" title={`${school.userCount ?? 0}`} onClick={() => props.onOpenUsers(school)}>
+                        {displayCount(school.userCount)}
                       </button>
-                      <button className="button secondary" type="button" onClick={() => props.onOpenTerm(school)}><CalendarDays size={16} />首周</button>
-                      <button className="button secondary" type="button" onClick={() => props.onOpenProvider(school)}><Settings2 size={16} />Provider</button>
-                      <button className="button secondary" type="button" onClick={() => props.onOpenFeedback(school)}><MessageSquareWarning size={16} />反馈</button>
-                      <button className="button secondary" type="button" onClick={() => props.onNotify(school)}><Bell size={16} />通知</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>
+                      <Badge tone={hasSectionTimeConfig ? 'green' : 'amber'}>{hasSectionTimeConfig ? '已配置' : '未配置'}</Badge>
+                      <div className="cell-meta">{sectionCount ? `默认 ${sectionCount} 节` : '默认未配置'}{profileCount ? ` / 楼栋 ${profileCount} 组` : ''}</div>
+                    </td>
+                    <td>
+                      <Badge tone={school.weatherLocation ? 'green' : 'amber'}>{school.weatherLocation ? '已启用' : '未启用'}</Badge>
+                      <div className="cell-meta">{school.weatherLocation?.displayName || '未配置坐标'}</div>
+                    </td>
+                    <td>
+                      <SchoolTermStartCell school={school} />
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        <button className={'button ' + (school.enabled ? 'danger' : 'secondary')} type="button" onClick={() => props.onToggle(school)}>
+                          {school.enabled ? <PowerOff size={16} /> : <Power size={16} />}
+                          {school.enabled ? '停用' : '启用'}
+                        </button>
+                        <button className="button secondary" type="button" onClick={() => props.onOpenTerm(school)}><CalendarDays size={16} />首周</button>
+                        <button className="button secondary" type="button" onClick={() => props.onOpenProvider(school)}><Settings2 size={16} />上课时间</button>
+                        <button className="button secondary" type="button" onClick={() => props.onOpenWeather(school)}><CloudSun size={16} />天气</button>
+                        <button className="button secondary" type="button" onClick={() => props.onOpenFeedback(school)}><MessageSquareWarning size={16} />反馈</button>
+                        <button className="button secondary" type="button" onClick={() => props.onNotify(school)}><Bell size={16} />通知</button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -2452,7 +2495,7 @@ function UsersView(props: {
                 <th>学校</th>
                 <th>专业</th>
                 <th>状态</th>
-                <th>Provider</th>
+                <th>来源</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -3267,7 +3310,7 @@ function ConfigModal({ modal, onClose, onSubmit }: { modal: ModalState; onClose:
     <div className="modal-backdrop visible" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose()
     }}>
-      <section className={'modal ' + (modal.mode === 'provider' ? 'provider-modal' : modal.mode === 'term' ? 'term-modal' : '')}>
+      <section className={'modal ' + (modal.mode === 'provider' ? 'provider-modal' : modal.mode === 'term' || modal.mode === 'weather' ? 'term-modal' : '')}>
         <header className="modal-header">
           <div>
             <h2 id="modal-title">{modal.title}</h2>
@@ -3280,6 +3323,14 @@ function ConfigModal({ modal, onClose, onSubmit }: { modal: ModalState; onClose:
           {modal.mode === 'submission' && <SubmissionDetail item={modal.value as SubmissionItem} />}
           {modal.mode === 'term' && (
             <TermStartForm
+              value={modal.value}
+              school={modal.school}
+              onCancel={onClose}
+              onSubmit={onSubmit}
+            />
+          )}
+          {modal.mode === 'weather' && (
+            <WeatherForm
               value={modal.value}
               school={modal.school}
               onCancel={onClose}
@@ -3470,6 +3521,88 @@ function TermStartForm(props: { value: unknown; school?: SchoolItem; onCancel: (
   )
 }
 
+function WeatherForm(props: { value: unknown; school?: SchoolItem; onCancel: () => void; onSubmit: (value: WeatherDraft) => void }) {
+  const initial = props.value && typeof props.value === 'object' && !Array.isArray(props.value)
+    ? props.value as WeatherDraft
+    : {
+      providerId: props.school?.providerId || props.school?.id || '',
+      loginMode: props.school?.loginMode || 'direct_password',
+      weatherLocation: props.school?.weatherLocation,
+    }
+  const [enabled, setEnabled] = useState(() => Boolean(initial.weatherLocation))
+  const [draft, setDraft] = useState(() => ({
+    displayName: initial.weatherLocation?.displayName || '',
+    latitude: initial.weatherLocation ? String(initial.weatherLocation.latitude) : '',
+    longitude: initial.weatherLocation ? String(initial.weatherLocation.longitude) : '',
+  }))
+
+  const setWeatherValue = (key: keyof typeof draft, value: string) => {
+    setDraft((current) => ({ ...current, [key]: value }))
+  }
+
+  return (
+    <form className="config-form" onSubmit={(event) => {
+      event.preventDefault()
+      const latitude = Number(draft.latitude)
+      const longitude = Number(draft.longitude)
+      const weatherLocation = enabled && Number.isFinite(latitude) && Number.isFinite(longitude)
+        ? {
+          displayName: draft.displayName.trim() || undefined,
+          latitude,
+          longitude,
+        }
+        : null
+
+      props.onSubmit({
+        providerId: initial.providerId,
+        loginMode: initial.loginMode,
+        providerConfig: {
+          weatherLocation,
+        },
+      } as WeatherDraft)
+    }}>
+      <section className="form-section weather-section">
+        <header className="form-section-header">
+          <div>
+            <h3>天气位置</h3>
+            <p>启用后前台会按这里的经纬度请求学校天气。</p>
+          </div>
+          <label className="switch-row">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(event) => setEnabled(event.target.checked)}
+            />
+            <span>启用</span>
+          </label>
+        </header>
+        {enabled ? (
+          <div className="form-grid provider-simple-grid weather-location-grid">
+            <label className="field">
+              <span>显示名称</span>
+              <input value={draft.displayName} placeholder={props.school?.shortName || props.school?.name || '学校简称'} onChange={(event) => setWeatherValue('displayName', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>纬度</span>
+              <input type="number" step="any" required value={draft.latitude} placeholder="30.4611" onChange={(event) => setWeatherValue('latitude', event.target.value.trim())} />
+            </label>
+            <label className="field">
+              <span>经度</span>
+              <input type="number" step="any" required value={draft.longitude} placeholder="114.279297" onChange={(event) => setWeatherValue('longitude', event.target.value.trim())} />
+            </label>
+          </div>
+        ) : (
+          <div className="provider-muted-note weather-muted-note">天气未启用，保存后会清除天气位置。</div>
+        )}
+      </section>
+      <div className="modal-footer inline-footer">
+        <button className="button secondary" type="button" onClick={props.onCancel}><X size={16} />关闭</button>
+        <button className="button primary" type="submit"><Save size={16} />保存</button>
+      </div>
+    </form>
+  )
+}
+
 function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: () => void; onSubmit: (value: ProviderDraft) => void }) {
   const initial = props.value && typeof props.value === 'object' && !Array.isArray(props.value)
     ? props.value as ProviderDraft
@@ -3477,15 +3610,9 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
   const schoolProviderCode = getSchoolProviderCode(props.school)
   const courseBuildings = props.school?.courseBuildings || []
   const [draft, setDraft] = useState<ProviderDraft>(initial)
-  const [weatherEnabled, setWeatherEnabled] = useState(() => Boolean(initial.weatherLocation))
-  const [weatherDraft, setWeatherDraft] = useState(() => ({
-    displayName: initial.weatherLocation?.displayName || '',
-    latitude: initial.weatherLocation ? String(initial.weatherLocation.latitude) : '',
-    longitude: initial.weatherLocation ? String(initial.weatherLocation.longitude) : '',
-  }))
   const [sectionRows, setSectionRows] = useState<SectionTimeRow[]>(() => createSectionTimeRows(initial.sectionTimes))
   const [profileRows, setProfileRows] = useState<SectionTimeProfileRow[]>(() => createSingleBuildingProfileRows(initial.sectionTimeProfiles, courseBuildings))
-  const [activeTab, setActiveTab] = useState<ProviderConfigTab>('basic')
+  const [activeTab, setActiveTab] = useState<ProviderConfigTab>('sectionTimes')
   const [activeProfileId, setActiveProfileId] = useState('')
   const [sectionImportText, setSectionImportText] = useState('')
   const [sectionImportError, setSectionImportError] = useState('')
@@ -3512,7 +3639,6 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
   const activeProfileIndex = activeProfileMatchIndex >= 0 ? activeProfileMatchIndex : 0
   const activeProfile = profileRows[activeProfileIndex]
   const providerTabs: Array<{ id: ProviderConfigTab; label: string; detail: string }> = [
-    { id: 'basic', label: '基础配置', detail: '天气位置' },
     { id: 'sectionTimes', label: '默认上课时间', detail: `${sectionRowsToItems(sectionRows).length || 0} 节` },
     { id: 'buildingTimes', label: '楼栋上课时间', detail: buildingOptions.length ? `${profileRows.length}/${buildingOptions.length} 栋` : `${profileRows.length} 栋` },
   ]
@@ -3524,9 +3650,6 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
     })
   }, [profileRows])
 
-  const setWeatherValue = (key: keyof typeof weatherDraft, value: string) => {
-    setWeatherDraft((current) => ({ ...current, [key]: value }))
-  }
   const updateSectionRow = (id: string, patch: Partial<SectionTimeRow>) => {
     setSectionRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row))
   }
@@ -3673,25 +3796,13 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
       const sectionTimeProfiles = profileRowsToItems(profileRows)
       const shouldSubmitSectionTimes = Boolean(initial.sectionTimes?.length) || sectionTimes.length > 0
       const shouldSubmitSectionTimeProfiles = Boolean(initial.sectionTimeProfiles?.length) || sectionTimeProfiles.length > 0
-      const latitude = Number(weatherDraft.latitude)
-      const longitude = Number(weatherDraft.longitude)
-      const weatherLocation = weatherEnabled && Number.isFinite(latitude) && Number.isFinite(longitude)
-        ? {
-          displayName: weatherDraft.displayName.trim() || undefined,
-          latitude,
-          longitude,
-        }
-        : null
       props.onSubmit({
         ...draft,
-        providerConfig: {
-          weatherLocation,
-        },
         ...(shouldSubmitSectionTimes ? { sectionTimes } : {}),
         ...(shouldSubmitSectionTimeProfiles ? { sectionTimeProfiles } : {}),
       })
     }}>
-      <div className="provider-tabs" role="tablist" aria-label="Provider 配置">
+      <div className="provider-tabs" role="tablist" aria-label="上课时间配置">
         {providerTabs.map((tab) => (
           <button
             className={`provider-tab-button ${activeTab === tab.id ? 'is-active' : ''}`}
@@ -3707,52 +3818,6 @@ function ProviderForm(props: { value: unknown; school?: SchoolItem; onCancel: ()
         ))}
       </div>
       <div className="provider-tab-panel">
-        {activeTab === 'basic' && (
-          <section className="form-section provider-tab-section">
-            <header className="form-section-header">
-              <div>
-                <h3>基础配置</h3>
-                <p>Provider 适配器和登录方式由代码配置，后台只维护安全的展示选项。</p>
-              </div>
-            </header>
-            <div className="provider-basic-layout">
-              <div className="provider-form-block">
-                <div className="provider-block-head with-action">
-                  <div>
-                    <h4>天气位置</h4>
-                    <p>只在启用并填写经纬度后请求天气 API。</p>
-                  </div>
-                  <label className="switch-row">
-                    <input
-                      type="checkbox"
-                      checked={weatherEnabled}
-                      onChange={(event) => setWeatherEnabled(event.target.checked)}
-                    />
-                    <span>启用</span>
-                  </label>
-                </div>
-                {weatherEnabled ? (
-                  <div className="form-grid provider-simple-grid">
-                    <label className="field">
-                      <span>显示名称</span>
-                      <input value={weatherDraft.displayName} placeholder={props.school?.shortName || props.school?.name || '学校简称'} onChange={(event) => setWeatherValue('displayName', event.target.value)} />
-                    </label>
-                    <label className="field">
-                      <span>纬度</span>
-                      <input type="number" step="any" required value={weatherDraft.latitude} placeholder="30.4611" onChange={(event) => setWeatherValue('latitude', event.target.value.trim())} />
-                    </label>
-                    <label className="field">
-                      <span>经度</span>
-                      <input type="number" step="any" required value={weatherDraft.longitude} placeholder="114.279297" onChange={(event) => setWeatherValue('longitude', event.target.value.trim())} />
-                    </label>
-                  </div>
-                ) : (
-                  <div className="provider-muted-note">天气未启用，保存后不会写入天气位置。</div>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
         {activeTab === 'sectionTimes' && (
           <section className="form-section provider-tab-section">
             <header className="form-section-header">

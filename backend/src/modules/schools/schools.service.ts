@@ -24,7 +24,7 @@ import {
   createFrontendCloudImportToken,
 } from '../sync/frontend-cloud-import-proof'
 
-const WEATHER_CACHE_TTL_MS = 4 * 60 * 60 * 1000
+const WEATHER_CACHE_TTL_MS = 3 * 60 * 60 * 1000
 const WEATHER_API_URL = 'https://api.open-meteo.com/v1/forecast'
 const AIR_QUALITY_API_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality'
 
@@ -197,7 +197,54 @@ export class SchoolsService {
       throw new NotFoundException('School weather is not configured')
     }
 
-    const cacheKey = this.getWeatherCacheKey(school.id, location)
+    return this.getCachedSchoolWeather({
+      id: school.id,
+      name: school.name,
+      shortName: school.shortName,
+      location,
+    })
+  }
+
+  async refreshSchoolWeather(schoolId: string): Promise<SchoolWeatherResponse> {
+    const school = await this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: {
+        id: true,
+        name: true,
+        shortName: true,
+        config: true,
+        enabled: true,
+        status: true,
+      },
+    })
+
+    if (!school) {
+      throw new NotFoundException('School not found')
+    }
+
+    this.assertSchoolAvailable(school)
+
+    const location = this.getWeatherLocation(school.config)
+
+    if (!location) {
+      throw new NotFoundException('School weather is not configured')
+    }
+
+    return this.fetchAndCacheSchoolWeather({
+      id: school.id,
+      name: school.name,
+      shortName: school.shortName,
+      location,
+    })
+  }
+
+  private async getCachedSchoolWeather(input: {
+    id: string
+    name: string
+    shortName?: string | null
+    location: SchoolWeatherLocation
+  }) {
+    const cacheKey = this.getWeatherCacheKey(input.id, input.location)
     const cached = this.weatherCache.get(cacheKey)
 
     if (cached && cached.expiresAtMs > Date.now()) {
@@ -205,20 +252,30 @@ export class SchoolsService {
       return response
     }
 
+    return this.fetchAndCacheSchoolWeather(input)
+  }
+
+  private async fetchAndCacheSchoolWeather(input: {
+    id: string
+    name: string
+    shortName?: string | null
+    location: SchoolWeatherLocation
+  }) {
+    const displayName = input.location.displayName || input.shortName || input.name
     const text = await this.fetchSchoolWeatherText({
-      ...location,
-      displayName: location.displayName || school.shortName || school.name,
+      ...input.location,
+      displayName,
     })
     const cachedAtMs = Date.now()
     const response: SchoolWeatherResponse = {
-      schoolId: school.id,
-      displayName: location.displayName || school.shortName || school.name,
+      schoolId: input.id,
+      displayName,
       text,
       cachedAt: new Date(cachedAtMs).toISOString(),
       expiresAt: new Date(cachedAtMs + WEATHER_CACHE_TTL_MS).toISOString(),
     }
 
-    this.weatherCache.set(cacheKey, {
+    this.weatherCache.set(this.getWeatherCacheKey(input.id, input.location), {
       ...response,
       expiresAtMs: cachedAtMs + WEATHER_CACHE_TTL_MS,
     })

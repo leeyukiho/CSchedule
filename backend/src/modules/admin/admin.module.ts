@@ -6,9 +6,10 @@ import { AdminService } from './admin.service'
 import { NotificationsModule } from '../notifications/notifications.module'
 import { PrismaModule } from '../../common/prisma/prisma.module'
 import { SettingsModule } from '../settings/settings.module'
+import { SchoolsModule } from '../schools/schools.module'
 
 @Module({
-  imports: [PrismaModule, ConfigModule, NotificationsModule, SettingsModule],
+  imports: [PrismaModule, ConfigModule, NotificationsModule, SettingsModule, SchoolsModule],
   controllers: [AdminController],
   providers: [AdminService, AdminGuard],
 })

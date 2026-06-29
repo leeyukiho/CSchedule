@@ -5,6 +5,7 @@ export default defineAppConfig({
     'pages/schedule/index',
     'pages/grades/index',
     'pages/profile/index',
+    'pages/buddy-space/index',
     'pages/bind/index',
     'pages/query/index',
     'pages/query-webview/index',

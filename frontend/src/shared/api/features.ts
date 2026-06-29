@@ -1,6 +1,7 @@
 import { requestApi } from './client'
 import { DataTarget, FeatureCacheResponse, ProfileData } from './types'
 import {
+  clearStoredDataCacheTerms,
   getStoredAccountSummary,
   getStoredDataCache,
   setStoredDataCache,
@@ -96,6 +97,11 @@ async function getFeatureWithCache<TData = unknown>(
           sourceHash: cached.sourceHash,
           syncedAt: cached.syncedAt,
         })
+
+        if (!termId) {
+          clearStoredDataCacheTerms(accountId, target)
+        }
+
         return cached.data
       }
 
@@ -107,6 +113,7 @@ async function getFeatureWithCache<TData = unknown>(
       })
 
       if (!termId && feature.termId) {
+        clearStoredDataCacheTerms(accountId, target)
         setStoredDataCache(accountId, target, feature, {
           termId: feature.termId,
           sourceHash: feature.sourceHash,

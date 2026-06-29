@@ -8,6 +8,7 @@ import {
   NotificationsService,
   UpdateNotificationInput,
 } from '../notifications/notifications.service'
+import { WeatherScheduler } from '../schools/weather.scheduler'
 
 type AdminSchoolTermMap = Map<string, { id: string; label: string }> & {
   courseBuildings?: Map<string, number>
@@ -82,6 +83,7 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly weatherScheduler: WeatherScheduler,
   ) {}
 
   async listAllSchools(params: {
@@ -403,6 +405,8 @@ export class AdminService {
       data: data as any,
     })
 
+    this.weatherScheduler.notifySchoolsChanged()
+
     return school
   }
 
@@ -436,7 +440,7 @@ export class AdminService {
     const status = input.status ?? school.status
     const verifiedAt = input.verifiedAt ? new Date(input.verifiedAt) : undefined
 
-    return this.prisma.school.update({
+    const updatedSchool = await this.prisma.school.update({
       where: { id: schoolId },
       data: {
         providerId: input.providerId,
@@ -461,6 +465,10 @@ export class AdminService {
           : {}),
       },
     })
+  
+    this.weatherScheduler.notifySchoolsChanged()
+
+    return updatedSchool
   }
 
   async listSubmissions(params: {

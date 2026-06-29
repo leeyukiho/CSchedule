@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config'
 
 import { PrismaModule } from './common/prisma/prisma.module'
 import { AuthModule } from './modules/auth/auth.module'
+import { BuddiesModule } from './modules/buddies/buddies.module'
 import { AdminModule } from './modules/admin/admin.module'
 import { AccountsModule } from './modules/accounts/accounts.module'
 import { FeaturesModule } from './modules/features/features.module'
@@ -30,6 +31,7 @@ import { TimetableModule } from './modules/timetable/timetable.module'
     SchoolsModule,
     SettingsModule,
     AuthModule,
+    BuddiesModule,
     AccountsModule,
     TimetableModule,
     FeaturesModule,

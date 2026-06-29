@@ -7,6 +7,7 @@ type HomeShortcutKey =
   | 'query'
   | 'schedule'
   | 'grades'
+  | 'buddySpace'
   | 'messages'
   | 'feedback'
   | 'submission'
@@ -31,6 +32,7 @@ const HOME_SHORTCUT_CATALOG: Record<HomeShortcutKey, { label: string }> = {
   query: { label: '证书查询' },
   schedule: { label: '课表' },
   grades: { label: '成绩' },
+  buddySpace: { label: '搭子空间' },
   messages: { label: '消息' },
   feedback: { label: '反馈' },
   submission: { label: '接入申请' },
@@ -43,11 +45,12 @@ const DEFAULT_HOME_SHORTCUT_CONFIG: HomeShortcutConfig = {
     { key: 'query', label: '证书查询', enabled: true, order: 10 },
     { key: 'schedule', label: '课表', enabled: true, order: 20 },
     { key: 'grades', label: '成绩', enabled: true, order: 30 },
-    { key: 'messages', label: '消息', enabled: true, order: 40 },
-    { key: 'feedback', label: '反馈', enabled: false, order: 50 },
-    { key: 'submission', label: '接入申请', enabled: false, order: 60 },
-    { key: 'settings', label: '设置', enabled: false, order: 70 },
-    { key: 'about', label: '关于', enabled: false, order: 80 },
+    { key: 'buddySpace', label: '搭子空间', enabled: false, order: 40 },
+    { key: 'messages', label: '消息', enabled: true, order: 50 },
+    { key: 'feedback', label: '反馈', enabled: false, order: 60 },
+    { key: 'submission', label: '接入申请', enabled: false, order: 70 },
+    { key: 'settings', label: '设置', enabled: false, order: 80 },
+    { key: 'about', label: '关于', enabled: false, order: 90 },
   ],
 }
 

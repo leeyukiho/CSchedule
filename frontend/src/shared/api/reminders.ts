@@ -58,15 +58,27 @@ function normalizeReminderPreferences(value: unknown): ReminderPreferencesRespon
 }
 
 function readCachedReminderPreferences(accountId: string) {
-  const cached = Taro.getStorageSync(getReminderPreferencesCacheKey(accountId))
+  const key = getReminderPreferencesCacheKey(accountId)
+  const cached = Taro.getStorageSync(key)
   const cache = cached && typeof cached === 'object' && !Array.isArray(cached)
     ? (cached as Partial<CachedReminderPreferences>)
     : {}
   const value = normalizeReminderPreferences(cache.value)
 
-  return value && typeof cache.expiresAt === 'number'
-    ? { value, expiresAt: cache.expiresAt }
-    : null
+  if (!value || typeof cache.expiresAt !== 'number') {
+    if (cached) {
+      Taro.removeStorageSync(key)
+    }
+
+    return null
+  }
+
+  if (cache.expiresAt <= Date.now()) {
+    Taro.removeStorageSync(key)
+    return null
+  }
+
+  return { value, expiresAt: cache.expiresAt }
 }
 
 function getCachedReminderPreferences(accountId: string) {
@@ -81,8 +93,6 @@ function getCachedReminderPreferences(accountId: string) {
   if (!value || typeof expiresAt !== 'number') {
     return null
   }
-
-  if (expiresAt <= Date.now()) return null
 
   return value
 }

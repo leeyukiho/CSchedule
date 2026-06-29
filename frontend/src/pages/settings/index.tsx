@@ -16,6 +16,23 @@ import {
 } from '../../shared/storage'
 import { TermOption, buildTermOptions } from '../../shared/term'
 
+const RUNTIME_CACHE_PREFIXES = [
+  'cschedule.weather.',
+  'cschedule.reminderPreferences.',
+  'cschedule.reminderStateRefreshAt.',
+  'cschedule.reminderStateExpireAt.',
+]
+
+function clearStoredRuntimeCaches() {
+  const info = Taro.getStorageInfoSync()
+
+  for (const key of info.keys || []) {
+    if (RUNTIME_CACHE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      Taro.removeStorageSync(key)
+    }
+  }
+}
+
 export default function SettingsPage() {
   useDefaultShare()
   const [terms, setTerms] = useState<TermOption[]>([])
@@ -79,6 +96,7 @@ export default function SettingsPage() {
     clearStoredAccountSummary(currentAccountId || undefined)
     clearStoredDataCaches(currentAccountId || undefined)
     clearStoredTermStarts(currentAccountId)
+    clearStoredRuntimeCaches()
     Taro.showToast({ title: '已退出登录', icon: 'success' })
     Taro.switchTab({ url: '/pages/profile/index' })
   }

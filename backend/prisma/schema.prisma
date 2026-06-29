@@ -89,6 +89,13 @@ enum NotificationTargetType {
   user
 }
 
+enum BuddyInviteStatus {
+  pending
+  accepted
+  expired
+  cancelled
+}
+
 model School {
   id            String       @id
   name          String
@@ -147,11 +154,50 @@ model StudentAccount {
   reminderSubscriptions ReminderSubscription[]
   reminderDeliveries    ReminderDelivery[]
   notificationReceipts  NotificationReceipt[]
+  buddyInvitesCreated   BuddyInvite[]        @relation("BuddyInviteCreator")
+  buddyInvitesAccepted  BuddyInvite[]        @relation("BuddyInviteAcceptor")
+  buddyLinksOwned       BuddyLink[]          @relation("BuddyLinkOwner")
+  buddyLinksPartnered   BuddyLink[]          @relation("BuddyLinkPartner")
 
   @@unique([schoolId, studentNoHash])
   @@index([schoolId])
   @@index([providerId])
   @@index([wechatOpenid])
+}
+
+model BuddyInvite {
+  id                String            @id @default(cuid())
+  code              String            @unique
+  inviterAccountId  String
+  inviteeAccountId  String?
+  status            BuddyInviteStatus @default(pending)
+  acceptedAt        DateTime?
+  expiresAt         DateTime
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  inviter           StudentAccount    @relation("BuddyInviteCreator", fields: [inviterAccountId], references: [id], onDelete: Cascade)
+  invitee           StudentAccount?   @relation("BuddyInviteAcceptor", fields: [inviteeAccountId], references: [id], onDelete: SetNull)
+
+  @@index([inviterAccountId])
+  @@index([inviteeAccountId])
+  @@index([status, expiresAt])
+}
+
+model BuddyLink {
+  id               String         @id @default(cuid())
+  ownerAccountId   String
+  partnerAccountId String
+  inviteId         String?
+  active           Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  owner            StudentAccount @relation("BuddyLinkOwner", fields: [ownerAccountId], references: [id], onDelete: Cascade)
+  partner          StudentAccount @relation("BuddyLinkPartner", fields: [partnerAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerAccountId, partnerAccountId])
+  @@index([ownerAccountId, active])
+  @@index([partnerAccountId])
+  @@index([inviteId])
 }
 
 model AccountAccessToken {

@@ -8,6 +8,7 @@ const SCHOOL_TERM_STARTS_PREFIX = 'cschedule.schoolTermStarts.'
 const ACCOUNT_TERM_STARTS_PREFIX = 'cschedule.accountTermStarts.'
 const DATA_CACHE_PREFIX = 'cschedule.dataCache.'
 const ACCOUNT_SUMMARY_PREFIX = 'cschedule.accountSummary.'
+const PENDING_BUDDY_INVITE_KEY = 'cschedule.pendingBuddyInvite'
 
 export type DataCacheTarget = 'timetable' | 'score' | 'exam' | 'profile'
 
@@ -24,6 +25,12 @@ export interface StoredAuthState {
   accountAccessToken?: string
   accountAccessTokenExpiresAt?: string
   updatedAt: string
+}
+
+export interface PendingBuddyInvite {
+  code: string
+  inviterName?: string
+  acceptedAt?: string
 }
 
 function normalizeAuthState(value: unknown): StoredAuthState {
@@ -499,4 +506,36 @@ export function clearStoredDataCaches(accountId?: string) {
       Taro.removeStorageSync(key)
     }
   }
+}
+
+function normalizePendingBuddyInvite(value: unknown): PendingBuddyInvite | null {
+  const invite = value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Partial<PendingBuddyInvite>)
+    : {}
+
+  if (typeof invite.code !== 'string' || !invite.code.trim()) {
+    return null
+  }
+
+  return {
+    code: invite.code.trim(),
+    inviterName: typeof invite.inviterName === 'string' ? invite.inviterName : undefined,
+    acceptedAt: typeof invite.acceptedAt === 'string' ? invite.acceptedAt : undefined,
+  }
+}
+
+export function getPendingBuddyInvite() {
+  return normalizePendingBuddyInvite(Taro.getStorageSync(PENDING_BUDDY_INVITE_KEY))
+}
+
+export function setPendingBuddyInvite(invite: PendingBuddyInvite) {
+  if (!invite.code) {
+    return
+  }
+
+  Taro.setStorageSync(PENDING_BUDDY_INVITE_KEY, invite)
+}
+
+export function clearPendingBuddyInvite() {
+  Taro.removeStorageSync(PENDING_BUDDY_INVITE_KEY)
 }

@@ -9,7 +9,6 @@ import {
   getReminderPreferences,
   ReminderPreferencesResponse,
   resolveReminderOpenid,
-  setLocalReminderPreferenceState,
   updateReminderPreference,
 } from '../../shared/api/reminders'
 import { getSchoolWeather } from '../../shared/api/schools'
@@ -35,13 +34,14 @@ import { buildTermOptions, courseRunsInWeek, getTeachingWeekForDate } from '../.
 import './index.scss'
 
 const STATUS_CLEAR_DELAY_MS = 3000
-const WEATHER_CACHE_TTL_MS = 10 * 60 * 1000
+const WEATHER_CACHE_TTL_MS = 3 * 60 * 60 * 1000
 const REMINDER_STATE_REFRESH_PREFIX = 'cschedule.reminderStateRefreshAt.'
 const REMINDER_STATE_EXPIRE_PREFIX = 'cschedule.reminderStateExpireAt.'
 const REMINDER_STATE_REFRESH_GRACE_MS = 2 * 60 * 1000
 const REMINDER_STATE_RETRY_MS = 2 * 60 * 1000
 const REMINDER_STATE_FAST_RETRY_WINDOW_MS = 30 * 60 * 1000
 const REMINDER_STATE_STALE_RETRY_MS = 30 * 60 * 1000
+const REMINDER_STATE_KEEP_DAYS = 2
 const WEATHER_STORAGE_CACHE_PREFIX = 'cschedule.weather.'
 const HOME_SHORTCUT_SCROLL_EDGE_TOLERANCE = 24
 
@@ -183,7 +183,16 @@ function normalizeWeatherCacheEntry(value: unknown): WeatherCacheEntry | null {
 }
 
 function getStoredWeatherCache(locationId: string) {
-  return normalizeWeatherCacheEntry(Taro.getStorageSync(getWeatherStorageCacheKey(locationId)))
+  const key = getWeatherStorageCacheKey(locationId)
+  const entry = normalizeWeatherCacheEntry(Taro.getStorageSync(key))
+
+  if (entry && Date.now() - entry.cachedAt >= WEATHER_CACHE_TTL_MS) {
+    Taro.removeStorageSync(key)
+    schoolWeatherCache.delete(locationId)
+    return null
+  }
+
+  return entry
 }
 
 function setStoredWeatherCache(locationId: string, entry: WeatherCacheEntry) {
@@ -206,13 +215,37 @@ function getReminderExpireKey(accountId: string, date = new Date()) {
   return `${REMINDER_STATE_EXPIRE_PREFIX}${accountId}.${getLocalDateKey(date)}`
 }
 
+function cleanupReminderStateStorage(accountId: string, now = new Date()) {
+  if (!accountId) {
+    return
+  }
+
+  const keepDateKeys = new Set<string>()
+
+  for (let offset = 0; offset < REMINDER_STATE_KEEP_DAYS; offset += 1) {
+    const date = new Date(now)
+    date.setDate(now.getDate() - offset)
+    keepDateKeys.add(getLocalDateKey(date))
+  }
+
+  const prefixes = [
+    `${REMINDER_STATE_REFRESH_PREFIX}${accountId}.`,
+    `${REMINDER_STATE_EXPIRE_PREFIX}${accountId}.`,
+  ]
+  const info = Taro.getStorageInfoSync()
+
+  for (const key of info.keys || []) {
+    const prefix = prefixes.find((item) => key.startsWith(item))
+
+    if (prefix && !keepDateKeys.has(key.slice(prefix.length))) {
+      Taro.removeStorageSync(key)
+    }
+  }
+}
+
 function getReminderRefreshAt(accountId: string) {
   const value = Number(Taro.getStorageSync(getReminderRefreshKey(accountId)))
   return Number.isFinite(value) ? value : 0
-}
-
-function hasReminderExpired(accountId: string) {
-  return Boolean(Taro.getStorageSync(getReminderExpireKey(accountId)))
 }
 
 function markReminderRefresh(accountId: string) {
@@ -268,7 +301,7 @@ function getReminderStateRefreshAction(
         return msSinceRefresh >= REMINDER_STATE_RETRY_MS ? 'refresh' : 'none'
       }
 
-      return hasReminderExpired(accountId) ? 'none' : 'expire'
+      return msSinceRefresh >= REMINDER_STATE_STALE_RETRY_MS ? 'refresh' : 'none'
     }
   }
 
@@ -453,16 +486,32 @@ function getArrangementStatus(startAt: number, endAt: number, now: number, finis
   return 'next'
 }
 
-function getCourseStatusLabel(status: ArrangementStatus) {
+function getMinuteDistanceLabel(targetAt: number, now: number, prefix = '', suffix = '') {
+  if (!targetAt) {
+    return ''
+  }
+
+  const minutes = Math.max(0, Math.ceil((targetAt - now) / (60 * 1000)))
+
+  if (minutes > 60) {
+    return ''
+  }
+
+  return `${prefix}${minutes}分钟${suffix}`
+}
+
+function getCourseStatusLabel(status: ArrangementStatus, startAt = 0, endAt = 0, now = Date.now()) {
   if (status === 'current') {
-    return '当前'
+    return getMinuteDistanceLabel(endAt, now, '剩余') || '当前'
   }
 
   if (status === 'ended') {
     return '结束'
   }
 
-  return status === 'next' ? '下一节' : '待上课'
+  return status === 'next'
+    ? getMinuteDistanceLabel(startAt, now, '', '后') || '下一节'
+    : '待上课'
 }
 
 function getExamStatusLabel(status: ArrangementStatus) {
@@ -493,22 +542,66 @@ function compareArrangementDisplayItems<T extends HomeArrangementDisplayItem>(le
 }
 
 function sortArrangementDisplayItems<T extends HomeArrangementDisplayItem>(items: T[]) {
-  const activeItems = items
-    .filter((item) => item.status !== 'ended')
-    .sort(compareArrangementDisplayItems)
-  const endedItems = items
-    .filter((item) => item.status === 'ended')
-    .sort(compareArrangementDisplayItems)
-
-  return [...activeItems, ...endedItems]
+  return [...items].sort(compareArrangementDisplayItems)
 }
 
-function getCollapsedCourseDisplayItems<T extends HomeArrangementDisplayItem>(items: T[]) {
-  const sortedItems = sortArrangementDisplayItems(items)
-  const nextItems = sortedItems.filter((item) => item.status === 'next')
+function doArrangementTimesOverlap(left: HomeArrangementDisplayItem, right: HomeArrangementDisplayItem) {
+  if (!left.startAt || !right.startAt) {
+    return false
+  }
 
-  return (nextItems.length ? nextItems : sortedItems.filter((item) => item.status !== 'ended'))
-    .slice(0, 1)
+  const leftEndAt = left.endAt || left.startAt
+  const rightEndAt = right.endAt || right.startAt
+
+  return Math.max(left.startAt, right.startAt) < Math.min(leftEndAt, rightEndAt)
+}
+
+function getOverlappingArrangementGroup<T extends HomeArrangementDisplayItem>(items: T[], firstItem?: T) {
+  if (!firstItem) {
+    return []
+  }
+
+  const group: T[] = [firstItem]
+
+  for (const item of items) {
+    if (item === firstItem || item.status === 'ended') {
+      continue
+    }
+
+    if (group.some((groupItem) => doArrangementTimesOverlap(groupItem, item))) {
+      group.push(item)
+    }
+  }
+
+  return sortArrangementDisplayItems(group)
+}
+
+function getCollapsedArrangementDisplay<T extends HomeArrangementDisplayItem>(items: T[]) {
+  const sortedItems = sortArrangementDisplayItems(items)
+  const currentItems = sortedItems
+    .filter((item) => item.status === 'current')
+    .sort((left, right) => getArrangementSortValue(right) - getArrangementSortValue(left) || right.order - left.order)
+  const nextItems = sortedItems.filter((item) => item.status === 'next')
+  const futureItems = sortedItems.filter((item) => item.status === 'next' || item.status === 'pending')
+  const fallbackItems = sortedItems.filter((item) => item.status !== 'ended')
+  const currentItem = currentItems[0]
+
+  if (currentItem) {
+    const mainItem = nextItems.find((item) => item !== currentItem)
+    const mainItems = getOverlappingArrangementGroup(futureItems, mainItem)
+
+    return {
+      mainItems: mainItems.length ? mainItems : [currentItem],
+      stackedItems: mainItem ? [currentItem] : [],
+    }
+  }
+
+  const mainItems = getOverlappingArrangementGroup(futureItems, nextItems[0])
+
+  return {
+    mainItems: mainItems.length ? mainItems : fallbackItems.slice(0, 1),
+    stackedItems: [],
+  }
 }
 
 export default function HomePage() {
@@ -525,8 +618,8 @@ export default function HomePage() {
   const [schoolIdentity, setSchoolIdentity] = useState<SchoolWeatherIdentity>(EMPTY_SCHOOL_IDENTITY)
   const [accountSummary, setAccountSummary] = useState<ReturnType<typeof getStoredAccountSummary>>(null)
   const [homeWeatherText, setHomeWeatherText] = useState('')
-  const [showAllCourses, setShowAllCourses] = useState(false)
-  const [showAllExams, setShowAllExams] = useState(false)
+  const [showAllTodayArrangements, setShowAllTodayArrangements] = useState(false)
+  const [activeOverlapHintKey, setActiveOverlapHintKey] = useState('')
   const [homeShortcuts, setHomeShortcuts] = useState(() => buildHomeShortcutRuntimeItems(getStoredHomeShortcutConfig()))
   const [homeShortcutScrollPosition, setHomeShortcutScrollPosition] = useState<HomeShortcutScrollPosition>('start')
   const homeShortcutScrollMetricsRef = useRef({ clientWidth: 0, scrollWidth: 0 })
@@ -551,7 +644,11 @@ export default function HomePage() {
 
   useEffect(() => {
     const updateHomeShortcuts = (config?: unknown) => {
-      setHomeShortcuts(buildHomeShortcutRuntimeItems(config || getStoredHomeShortcutConfig()))
+      setHomeShortcuts(buildHomeShortcutRuntimeItems(
+        config && typeof config === 'object' && 'items' in config
+          ? config as ReturnType<typeof getStoredHomeShortcutConfig>
+          : getStoredHomeShortcutConfig(),
+      ))
     }
 
     Taro.eventCenter.on(HOME_SHORTCUT_CONFIG_UPDATED_EVENT, updateHomeShortcuts)
@@ -562,8 +659,7 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
-    setShowAllCourses(false)
-    setShowAllExams(false)
+    setShowAllTodayArrangements(false)
   }, [accountId, currentDateKey])
 
   useEffect(() => {
@@ -672,16 +768,15 @@ export default function HomePage() {
     const id = authState.accountId
     const nextAccountSummary = getStoredAccountSummary(id)
 
-    setShowAllCourses(false)
-    setShowAllExams(false)
+    setShowAllTodayArrangements(false)
     setAccountId(id)
     setAccountSummary(nextAccountSummary)
     setSchoolIdentity(id
       ? {
-          schoolId: authState.schoolId || nextAccountSummary?.schoolId || '',
-          providerId: nextAccountSummary?.providerId || '',
-          schoolName: nextAccountSummary?.school?.name || '',
-        }
+        schoolId: authState.schoolId || nextAccountSummary?.schoolId || '',
+        providerId: nextAccountSummary?.providerId || '',
+        schoolName: nextAccountSummary?.school?.name || '',
+      }
       : EMPTY_SCHOOL_IDENTITY)
     setTermStarts(getStoredTermStarts())
 
@@ -722,6 +817,7 @@ export default function HomePage() {
   }
 
   async function loadReminderState(id: string) {
+    cleanupReminderStateStorage(id, new Date(nowMs))
     const cachedPreference = getCachedReminderPreferenceState(id)
     const freshPreference = await getReminderPreferences(id, { cacheOnly: true })
     const preference = freshPreference || cachedPreference
@@ -740,42 +836,12 @@ export default function HomePage() {
         return
       }
 
-      if (refreshAction === 'expire' && nextPreference.enabled) {
-        const expiredPreference = {
-          ...nextPreference,
-          enabled: false,
-          dailyCourseEnabled: false,
-          examEnabled: false,
-        }
-        markReminderExpired(id)
-        setLocalReminderPreferenceState(id, expiredPreference)
-        setReminderSubscribed(false)
-        await updateReminderPreference(id, {
-          enabled: false,
-          preferredTime: nextPreference.preferredTime,
-          openid: nextPreference.openid,
-        })
-        return
-      }
-
-      if (refreshAction === 'expire') {
+      if (!nextPreference.enabled) {
         markReminderExpired(id)
       }
 
       setReminderSubscribed(Boolean(nextPreference.enabled))
     } catch {
-      if (refreshAction === 'expire' && preference?.enabled) {
-        markReminderExpired(id)
-        setLocalReminderPreferenceState(id, {
-          ...preference,
-          enabled: false,
-          dailyCourseEnabled: false,
-          examEnabled: false,
-        })
-        setReminderSubscribed(false)
-        return
-      }
-
       markReminderRefresh(id)
     }
   }
@@ -838,40 +904,39 @@ export default function HomePage() {
     })
   }
 
-  function expandTodayCourses() {
-    if (foldedTodayCourseCount <= 0 || showAllCourses) {
+  function expandTodayArrangements() {
+    if (foldedTodayArrangementCount <= 0 || showAllTodayArrangements) {
+      setActiveOverlapHintKey('')
       return
     }
 
-    setShowAllCourses(true)
+    setActiveOverlapHintKey('')
+    setShowAllTodayArrangements(true)
   }
 
-  function toggleTodayCourses() {
-    if (foldedTodayCourseCount <= 0 && !showAllCourses) {
+  function toggleTodayArrangements() {
+    if (foldedTodayArrangementCount <= 0 && !showAllTodayArrangements) {
       return
     }
 
-    setShowAllCourses((value) => !value)
+    setActiveOverlapHintKey('')
+    setShowAllTodayArrangements((value) => !value)
   }
 
-  function expandTodayExams() {
-    if (foldedTodayExamCount <= 0 || showAllExams) {
-      return
-    }
-
-    setShowAllExams(true)
+  function toggleTodayOverlapHint(event: { stopPropagation: () => void }, key: string) {
+    event.stopPropagation()
+    setActiveOverlapHintKey((value) => value === key ? '' : key)
   }
 
-  function toggleTodayExams() {
-    if (foldedTodayExamCount <= 0 && !showAllExams) {
+  function dismissTodayOverlapHint() {
+    if (!activeOverlapHintKey) {
       return
     }
 
-    setShowAllExams((value) => !value)
+    setActiveOverlapHintKey('')
   }
 
   function renderArrangementFoldHint(
-    kind: string,
     expanded: boolean,
     hiddenCount: number,
     remainingCount: number,
@@ -891,10 +956,8 @@ export default function HomePage() {
       >
         <Text>
           {expanded
-            ? `收起${kind}`
-            : remainingCount > 0
-              ? `剩余 ${remainingCount} 项${kind}`
-              : `查看已结束${kind}`}
+            ? '收起'
+            : `剩余${remainingCount}项`}
         </Text>
         <View className='home-fold-hint-icon' />
       </View>
@@ -1053,7 +1116,7 @@ export default function HomePage() {
       return {
         ...item,
         status,
-        statusLabel: getCourseStatusLabel(status),
+        statusLabel: getCourseStatusLabel(status, item.startAt, item.endAt, nowMs),
       }
     })
   }, [
@@ -1063,37 +1126,6 @@ export default function HomePage() {
     timetable?.sectionTimes,
     todayCourses,
   ])
-  const sortedTodayCourseItems = sortArrangementDisplayItems(
-    todayCourseItems.map((item) => ({ ...item, order: item.index })),
-  )
-  const activeTodayCourseItems = sortedTodayCourseItems.filter((item) => item.status !== 'ended')
-  const collapsedTodayCourseItems = getCollapsedCourseDisplayItems(sortedTodayCourseItems)
-  const foldedTodayCourseCount = todayCourseItems.length - collapsedTodayCourseItems.length
-  const visibleTodayCourseItems = showAllCourses
-    ? sortedTodayCourseItems
-    : collapsedTodayCourseItems
-  const stackedCurrentCourseItem = !showAllCourses
-    ? activeTodayCourseItems.find((item) => item.status === 'current')
-    : undefined
-  const shouldShowStackedCurrentCourse = Boolean(
-    stackedCurrentCourseItem && visibleTodayCourseItems.some((item) => item.status === 'next'),
-  )
-  const visibleTodayCourseIds = new Set(
-    visibleTodayCourseItems.map((item) => item.course.id || `${item.course.name}-${item.index}`),
-  )
-  const hiddenTodayCourseLayerCount = !showAllCourses
-    ? activeTodayCourseItems.filter((item) => {
-      const itemId = item.course.id || `${item.course.name}-${item.index}`
-
-      if (visibleTodayCourseIds.has(itemId)) {
-        return false
-      }
-
-      return !shouldShowStackedCurrentCourse || item !== stackedCurrentCourseItem
-    }).length
-    : 0
-  const remainingTodayCourseCount = hiddenTodayCourseLayerCount
-  const courseUnderlayCount = Math.min(hiddenTodayCourseLayerCount, 2)
   const todayExamItems = useMemo(() => buildTodayExamItems(exams?.data, nowMs), [exams, nowMs])
   const todayExamCards = todayExamItems.map((exam, index) => {
     const startAt = getExamStartTime(exam)
@@ -1109,69 +1141,87 @@ export default function HomePage() {
       statusLabel: getExamStatusLabel(status),
     }
   })
-  const sortedTodayExamItems = sortArrangementDisplayItems(todayExamCards)
-  const nextExamStartAt = Math.min(
-    ...sortedTodayExamItems
+  const sortedTodayArrangementItems = sortArrangementDisplayItems([
+    ...todayCourseItems.map((item) => ({
+      ...item,
+      key: `course-${item.course.id || `${item.course.name}-${item.index}`}`,
+      order: item.index,
+      type: 'course' as const,
+    })),
+    ...todayExamCards.map((item) => ({
+      ...item,
+      key: `exam-${item.exam.id || `${item.exam.courseName}-${item.order}`}`,
+      order: todayCourseItems.length + item.order,
+      type: 'exam' as const,
+    })),
+  ])
+  const nextArrangementStartAt = Math.min(
+    ...sortedTodayArrangementItems
       .filter((item) => item.status === 'next' && item.startAt)
       .map((item) => item.startAt),
   )
-  let nextExamWithoutTimeUsed = false
-  const normalizedTodayExamItems = sortedTodayExamItems.map((item) => {
+  let nextArrangementWithoutTimeUsed = false
+  const normalizedTodayArrangementItems = sortedTodayArrangementItems.map((item) => {
     let status = item.status
 
     if (item.status === 'next') {
-      const isNextExam = Number.isFinite(nextExamStartAt)
-        ? item.startAt === nextExamStartAt
-        : !nextExamWithoutTimeUsed
+      const isNextArrangement = Number.isFinite(nextArrangementStartAt)
+        ? item.startAt === nextArrangementStartAt
+        : !nextArrangementWithoutTimeUsed
 
-      status = isNextExam ? 'next' : 'pending'
-      nextExamWithoutTimeUsed = nextExamWithoutTimeUsed || isNextExam
+      status = isNextArrangement ? 'next' : 'pending'
+      nextArrangementWithoutTimeUsed = nextArrangementWithoutTimeUsed || isNextArrangement
     }
 
     return {
       ...item,
       status,
-      statusLabel: getExamStatusLabel(status),
+      statusLabel: item.type === 'exam'
+        ? getExamStatusLabel(status)
+        : getCourseStatusLabel(status, item.startAt, item.endAt, nowMs),
     }
   })
-  const activeTodayExamItems = normalizedTodayExamItems.filter((item) => item.status !== 'ended')
-  const collapsedTodayExamItems = getCollapsedCourseDisplayItems(normalizedTodayExamItems)
-  const foldedTodayExamCount = todayExamCards.length - collapsedTodayExamItems.length
-  const visibleTodayExamItems = showAllExams
-    ? normalizedTodayExamItems
-    : collapsedTodayExamItems
-  const stackedCurrentExamItem = !showAllExams
-    ? activeTodayExamItems.find((item) => item.status === 'current')
-    : undefined
-  const shouldShowStackedCurrentExam = Boolean(
-    stackedCurrentExamItem && visibleTodayExamItems.some((item) => item.status === 'next'),
+  const activeTodayArrangementItems = normalizedTodayArrangementItems.filter((item) => item.status !== 'ended')
+  const collapsedTodayArrangementDisplay = !showAllTodayArrangements
+    ? getCollapsedArrangementDisplay(activeTodayArrangementItems)
+    : { mainItems: [], stackedItems: [] }
+  const mainTodayArrangementItems = collapsedTodayArrangementDisplay.mainItems
+  const stackedTodayArrangementItems = collapsedTodayArrangementDisplay.stackedItems
+  const visibleTodayArrangementItems = showAllTodayArrangements
+    ? normalizedTodayArrangementItems
+    : mainTodayArrangementItems
+  const overlappingTodayArrangementKeys = new Set(
+    activeTodayArrangementItems
+      .filter((item) => activeTodayArrangementItems.some((otherItem) => item !== otherItem && doArrangementTimesOverlap(item, otherItem)))
+      .map((item) => item.key),
   )
-  const visibleTodayExamIds = new Set(
-    visibleTodayExamItems.map((item) => item.exam.id || `${item.exam.courseName}-${item.order}`),
+  const foldedTodayArrangementCount = Math.max(
+    0,
+    normalizedTodayArrangementItems.length - visibleTodayArrangementItems.length - stackedTodayArrangementItems.length,
   )
-  const hiddenTodayExamLayerCount = !showAllExams
-    ? activeTodayExamItems.filter((item) => {
-      const itemId = item.exam.id || `${item.exam.courseName}-${item.order}`
-
-      if (visibleTodayExamIds.has(itemId)) {
+  const visibleTodayArrangementKeys = new Set([
+    ...visibleTodayArrangementItems.map((item) => item.key),
+    ...stackedTodayArrangementItems.map((item) => item.key),
+  ])
+  const hiddenTodayArrangementLayerCount = !showAllTodayArrangements
+    ? activeTodayArrangementItems.filter((item) => {
+      if (visibleTodayArrangementKeys.has(item.key)) {
         return false
       }
 
-      return !shouldShowStackedCurrentExam || item !== stackedCurrentExamItem
+      return true
     }).length
     : 0
-  const remainingTodayExamCount = hiddenTodayExamLayerCount
-  const examUnderlayCount = Math.min(hiddenTodayExamLayerCount, 2)
+  const remainingTodayArrangementCount = hiddenTodayArrangementLayerCount
+  const todayUnderlayCount = Math.min(hiddenTodayArrangementLayerCount, 2)
   const todayItemCount = todayCourses.length + todayExamItems.length
-  const activeTodayItemCount = activeTodayCourseItems.length + activeTodayExamItems.length
-  const isCourseComplete = todayCourses.length > 0 && activeTodayCourseItems.length === 0
-  const isExamComplete = todayExamItems.length > 0 && activeTodayExamItems.length === 0
+  const activeTodayItemCount = activeTodayArrangementItems.length
   const isTodayComplete = todayItemCount > 0 && activeTodayItemCount === 0
   const todayCompleteSummary = [
     todayCourses.length ? `${todayCourses.length} 节课程` : '',
     todayExamItems.length ? `${todayExamItems.length} 场考试` : '',
   ].filter(Boolean).join('，')
-  const isTodayCompleteExpanded = isTodayComplete && (showAllCourses || showAllExams)
+  const isTodayCompleteExpanded = isTodayComplete && showAllTodayArrangements
   const showTodayRestText = Boolean(accountId && timetable && !loading && !errorText && todayItemCount === 0)
   const weatherDisplayText = homeWeatherText || (weatherLocation ? `${weatherLocation.displayName} · 天气加载中` : '')
   const homeShortcutCount = homeShortcuts.length
@@ -1193,227 +1243,218 @@ export default function HomePage() {
 
     const nextExpanded = !isTodayCompleteExpanded
 
-    setShowAllCourses(nextExpanded && todayCourses.length > 0)
-    setShowAllExams(nextExpanded && todayExamItems.length > 0)
+    setShowAllTodayArrangements(nextExpanded)
   }
 
   return (
     <PageShell title='首 页' activeTab='home' contentClassName='home-content' customNav>
-      <View className='date-row'>
-        <View className='date-main'>
-          <View className='date-title'>
-            <Text>{formatDateText()}</Text>
-            {loading && <Text className='date-updated'>同步中</Text>}
+      <View className='home-overlap-dismiss-layer' onClick={dismissTodayOverlapHint}>
+        <View className='date-row'>
+          <View className='date-main'>
+            <View className='date-title'>
+              <Text>{formatDateText()}</Text>
+              {loading && <Text className='date-updated'>同步中</Text>}
+            </View>
+            {weatherDisplayText && <View className='date-weather'>{weatherDisplayText}</View>}
           </View>
-          {weatherDisplayText && <View className='date-weather'>{weatherDisplayText}</View>}
+          <View className='date-actions'>
+            {accountId && (
+              <View
+                className={`home-reminder-button${subscribingReminder || reminderSubscribed ? ' home-reminder-button-disabled' : ''}`}
+                onClick={reminderSubscribed ? undefined : subscribeOneTimeReminder}
+              >
+                {reminderSubscribed ? '已订阅' : (subscribingReminder ? '订阅中' : '订阅提醒')}
+              </View>
+            )}
+            <View className='calendar-mini' />
+          </View>
         </View>
-        <View className='date-actions'>
-          {accountId && (
-            <View
-              className={`home-reminder-button${subscribingReminder || reminderSubscribed ? ' home-reminder-button-disabled' : ''}`}
-              onClick={reminderSubscribed ? undefined : subscribeOneTimeReminder}
+
+        {homeShortcutCount > 0 && (
+          <View className={`home-shortcut-shell ${shouldUseShortcutScrollAffordance ? 'home-shortcut-shell-scroll' : ''}`}>
+            <ScrollView
+              className={`home-shortcuts ${homeShortcutLayoutClass}`}
+              scrollX={homeShortcutCount >= 6}
+              enhanced={homeShortcutCount >= 6}
+              showScrollbar={false}
+              onScroll={handleHomeShortcutScroll}
             >
-              {reminderSubscribed ? '已订阅' : (subscribingReminder ? '订阅中' : '订阅提醒')}
-            </View>
-          )}
-          <View className='calendar-mini' />
-        </View>
-      </View>
+              <View className='home-shortcut-track'>
+                {homeShortcuts.map((shortcut) => (
+                  <View
+                    className='home-shortcut-item'
+                    key={shortcut.key}
+                    onClick={() => openHomeShortcut(shortcut)}
+                  >
+                    <View className={`home-shortcut-icon ${shortcut.iconClass}`} />
+                    <Text>{shortcut.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+            {shouldUseShortcutScrollAffordance && (
+              <>
+                <View className={`home-shortcut-edge home-shortcut-edge-left${shouldShowShortcutLeftArrow ? ' home-shortcut-edge-visible' : ''}`} />
+                <View className={`home-shortcut-edge home-shortcut-edge-right${shouldShowShortcutRightArrow ? ' home-shortcut-edge-visible' : ''}`} />
+              </>
+            )}
+          </View>
+        )}
 
-      {homeShortcutCount > 0 && (
-        <View className={`home-shortcut-shell ${shouldUseShortcutScrollAffordance ? 'home-shortcut-shell-scroll' : ''}`}>
-          <ScrollView
-            className={`home-shortcuts ${homeShortcutLayoutClass}`}
-            scrollX={homeShortcutCount >= 6}
-            enhanced={homeShortcutCount >= 6}
-            showScrollbar={false}
-            onScroll={handleHomeShortcutScroll}
+        {errorText && <View className='status status-error'>{errorText}</View>}
+
+        {loading && <View className='soft-card state-card'>正在读取数据</View>}
+
+        <View className='section-head'>
+          <View className='section-title'>
+            <Text>今日安排</Text>
+            <Text className='section-count'>共 {todayItemCount} 项</Text>
+          </View>
+          <View className='section-head-actions' />
+        </View>
+
+        {showGuestEmpty && (
+          <View className='soft-card home-empty-card'>
+            <View className='home-empty-title'>今天没有安排</View>
+            <View className='home-empty-desc'>绑定账号后显示今日课程。</View>
+            <View className='home-empty-button' onClick={openProfileTab}>去选择学校</View>
+          </View>
+        )}
+
+        {showTodayRestText && <View className='today-empty-text'>今天没有安排</View>}
+
+        {isTodayComplete && (
+          <View
+            className={`soft-card today-complete-card today-complete-card-clickable${isTodayCompleteExpanded ? ' today-complete-card-open' : ''}`}
+            onClick={toggleTodayCompleteArrangements}
           >
-            <View className='home-shortcut-track'>
-              {homeShortcuts.map((shortcut) => (
+            <View className='today-complete-icon' />
+            <View className='today-complete-main'>
+              <View className='today-complete-title'>今日安排已完成</View>
+              <View className='today-complete-desc'>
+                {todayCompleteSummary ? `已结束 ${todayCompleteSummary}` : '今天的安排都已结束'}
+              </View>
+            </View>
+            <View className='today-complete-expand-icon' />
+          </View>
+        )}
+
+        {(showAllTodayArrangements || !isTodayComplete) && visibleTodayArrangementItems.length > 0 && (
+          <View
+            className={`home-arrangement-group home-arrangement-group-animated${showAllTodayArrangements ? ' home-arrangement-group-open' : ' home-arrangement-group-collapsed'}`}
+            onClick={expandTodayArrangements}
+          >
+            {stackedTodayArrangementItems.map((item) => (
+              <View
+                className={`home-current-course-stack${item.type === 'exam' ? ' home-current-exam-stack' : ''}`}
+                key={`stack-${item.key}`}
+              >
+                {item.type === 'exam' && <View className='home-current-exam-stack-watermark'>考试</View>}
+                <Text className={`home-current-course-name${item.type === 'exam' ? ' home-current-exam-name' : ''}`}>
+                  {item.type === 'exam'
+                    ? item.exam.courseName || '未命名考试'
+                    : item.course.name || '未命名课程'}
+                </Text>
+                <Text className={`home-current-course-status${item.type === 'exam' ? ' home-current-exam-status' : ''}`}>
+                  {item.statusLabel}
+                </Text>
+              </View>
+            ))}
+            {visibleTodayArrangementItems.map((item) => {
+              const shouldMarkItemOverlap = item.status !== 'ended' && overlappingTodayArrangementKeys.has(item.key)
+
+              if (item.type === 'exam') {
+                const { exam, status, statusLabel } = item
+
+                return (
+                  <View
+                    className={`soft-card course-card exam-card home-exam-card home-arrangement-card home-arrangement-card-full home-arrangement-card-${status} exam-card-${status === 'ended' ? 'finished' : 'today'}${shouldMarkItemOverlap ? ' home-arrangement-card-overlap' : ''}`}
+                    key={item.key}
+                  >
+                    {shouldMarkItemOverlap && (
+                      <View
+                        className={`home-overlap-chip${activeOverlapHintKey === item.key ? ' home-overlap-chip-active' : ''}`}
+                        onClick={(event) => toggleTodayOverlapHint(event, item.key)}
+                      >
+                        <Text className='home-overlap-chip-mark'>!</Text>
+                      </View>
+                    )}
+                    {shouldMarkItemOverlap && activeOverlapHintKey === item.key && (
+                      <View className='home-overlap-tip'>
+                        <Text className='home-overlap-tip-text'>该时间段有多项安排</Text>
+                      </View>
+                    )}
+                    <View className='course-main home-card-main'>
+                      <View className='home-card-head'>
+                        <Text className='home-primary-value'>{exam.courseName}</Text>
+                      </View>
+                      <Text className='home-time-value'>{getExamTimeText(exam)}</Text>
+                      <Text className='home-info-value home-info-secondary'>{exam.location || '地点待安排'}</Text>
+                      <Text className='home-info-value home-info-secondary'>座位：{exam.seatNo || '待安排'}</Text>
+                    </View>
+                    <View className='home-card-icon-side'>
+                      <Text className={`home-status-badge home-status-badge-${status}`}>{statusLabel}</Text>
+                    </View>
+                  </View>
+                )
+              }
+
+              const { course, index, location, sectionText, status, statusLabel, teacher, timeText } = item
+
+              return (
                 <View
-                  className='home-shortcut-item'
-                  key={shortcut.key}
-                  onClick={() => openHomeShortcut(shortcut)}
+                  className={`soft-card course-card home-arrangement-card home-arrangement-card-${status}${shouldMarkItemOverlap ? ' home-arrangement-card-overlap' : ''}`}
+                  key={item.key || course.id || `${course.name}-${index}`}
                 >
-                  <View className={`home-shortcut-icon ${shortcut.iconClass}`} />
-                  <Text>{shortcut.label}</Text>
+                  {shouldMarkItemOverlap && (
+                    <View
+                      className={`home-overlap-chip${activeOverlapHintKey === item.key ? ' home-overlap-chip-active' : ''}`}
+                      onClick={(event) => toggleTodayOverlapHint(event, item.key)}
+                    >
+                      <Text className='home-overlap-chip-mark'>!</Text>
+                    </View>
+                  )}
+                  {shouldMarkItemOverlap && activeOverlapHintKey === item.key && (
+                    <View className='home-overlap-tip'>
+                      <Text className='home-overlap-tip-text'>该时间段有多项安排</Text>
+                    </View>
+                  )}
+                  <View className='course-main home-card-main'>
+                    <View className={`home-card-head ${teacher ? 'home-card-head-with-teacher' : ''}`}>
+                      <Text className='home-primary-value'>{course.name || '未命名课程'}</Text>
+                      {teacher && <Text className='home-side-meta home-side-meta-teacher'>{teacher}</Text>}
+                    </View>
+                    <View className='home-time-row'>
+                      <Text className='home-time-value'>{timeText}</Text>
+                      {sectionText && <Text className='home-section-chip'>{sectionText}</Text>}
+                    </View>
+                    <Text className='home-info-value home-info-secondary'>{location}</Text>
+                  </View>
+                  <View className='home-card-icon-side'>
+                    <Text className={`home-status-badge home-status-badge-${status}`}>{statusLabel}</Text>
+                  </View>
                 </View>
-              ))}
-            </View>
-          </ScrollView>
-          {shouldUseShortcutScrollAffordance && (
-            <>
-              <View className={`home-shortcut-edge home-shortcut-edge-left${shouldShowShortcutLeftArrow ? ' home-shortcut-edge-visible' : ''}`} />
-              <View className={`home-shortcut-edge home-shortcut-edge-right${shouldShowShortcutRightArrow ? ' home-shortcut-edge-visible' : ''}`} />
-            </>
-          )}
-        </View>
-      )}
+              )
+            })}
+            {todayUnderlayCount > 0 && (
+              <View className='home-course-underlay-stack'>
+                {Array.from({ length: todayUnderlayCount }).map((_, index) => (
+                  <View className={`home-course-underlay home-course-underlay-${index + 1}`} key={`today-underlay-${index}`} />
+                ))}
+              </View>
+            )}
+          {!isTodayComplete &&
+            renderArrangementFoldHint(showAllTodayArrangements, foldedTodayArrangementCount, remainingTodayArrangementCount, toggleTodayArrangements)}
+          </View>
+        )}
 
-      {errorText && <View className='status status-error'>{errorText}</View>}
-
-      {loading && <View className='soft-card state-card'>正在读取数据</View>}
-
-      <View className='section-head'>
-        <View className='section-title'>
-          <Text>今日安排</Text>
-          <Text className='section-count'>共 {todayItemCount} 项</Text>
-        </View>
-        <View className='section-head-actions' />
+        {!loading && todayItemCount === 0 && !showGuestEmpty && !showTodayRestText && (
+          <View className='soft-card empty-card'>
+            <View className='empty-icon' />
+            <Text>今日暂无安排</Text>
+          </View>
+        )}
       </View>
-
-      {showGuestEmpty && (
-        <View className='soft-card home-empty-card'>
-          <View className='home-empty-title'>今天没有安排</View>
-          <View className='home-empty-desc'>绑定账号后显示今日课程。</View>
-          <View className='home-empty-button' onClick={openProfileTab}>去选择学校</View>
-        </View>
-      )}
-
-      {showTodayRestText && <View className='today-empty-text'>今天没有安排</View>}
-
-      {isTodayComplete && (
-        <View
-          className={`soft-card today-complete-card today-complete-card-clickable${isTodayCompleteExpanded ? ' today-complete-card-open' : ''}`}
-          onClick={toggleTodayCompleteArrangements}
-        >
-          <View className='today-complete-icon' />
-          <View className='today-complete-main'>
-            <View className='today-complete-title'>今日安排已完成</View>
-            <View className='today-complete-desc'>
-              {todayCompleteSummary ? `已结束 ${todayCompleteSummary}` : '今天的安排都已结束'}
-            </View>
-          </View>
-          <View className='today-complete-expand-icon' />
-        </View>
-      )}
-
-      {!isTodayComplete && isCourseComplete && (
-        <View className='soft-card today-complete-card today-complete-card-compact'>
-          <View className='today-complete-icon' />
-          <View className='today-complete-main'>
-            <View className='today-complete-title'>今日课程已完成</View>
-            <View className='today-complete-desc'>已结束 {todayCourses.length} 节课程</View>
-          </View>
-        </View>
-      )}
-
-      {!isTodayComplete && isCourseComplete && !showAllCourses &&
-        renderArrangementFoldHint('课程', showAllCourses, foldedTodayCourseCount, remainingTodayCourseCount, toggleTodayCourses)}
-
-      {(showAllCourses || !isTodayComplete) && visibleTodayCourseItems.length > 0 && (
-        <View
-          className={`home-arrangement-group home-arrangement-group-animated${showAllCourses ? ' home-arrangement-group-open' : ' home-arrangement-group-collapsed'}`}
-          onClick={expandTodayCourses}
-        >
-          {shouldShowStackedCurrentCourse && stackedCurrentCourseItem && (
-            <View className='home-current-course-stack'>
-              <Text className='home-current-course-name'>
-                {stackedCurrentCourseItem.course.name || '未命名课程'}
-              </Text>
-              <Text className='home-current-course-status'>{stackedCurrentCourseItem.statusLabel}</Text>
-            </View>
-          )}
-          {visibleTodayCourseItems.map(({ course, index, location, sectionText, status, statusLabel, teacher, timeText }) => {
-            return (
-              <View
-                className={`soft-card course-card home-arrangement-card home-arrangement-card-${status}`}
-                key={course.id || `${course.name}-${index}`}
-              >
-                <View className='course-main home-card-main'>
-                  <View className={`home-card-head ${teacher ? 'home-card-head-with-teacher' : ''}`}>
-                    <Text className='home-primary-value'>{course.name || '未命名课程'}</Text>
-                    {teacher && <Text className='home-side-meta home-side-meta-teacher'>{teacher}</Text>}
-                  </View>
-                  <View className='home-time-row'>
-                    <Text className='home-time-value'>{timeText}</Text>
-                    {sectionText && <Text className='home-section-chip'>{sectionText}</Text>}
-                  </View>
-                  <Text className='home-info-value home-info-secondary'>{location}</Text>
-                </View>
-                <View className='home-card-icon-side'>
-                  <Text className={`home-status-badge home-status-badge-${status}`}>{statusLabel}</Text>
-                </View>
-              </View>
-            )
-          })}
-          {courseUnderlayCount > 0 && (
-            <View className='home-course-underlay-stack'>
-              {Array.from({ length: courseUnderlayCount }).map((_, index) => (
-                <View className={`home-course-underlay home-course-underlay-${index + 1}`} key={`course-underlay-${index}`} />
-              ))}
-            </View>
-          )}
-          {!isTodayComplete &&
-            renderArrangementFoldHint('课程', showAllCourses, foldedTodayCourseCount, remainingTodayCourseCount, toggleTodayCourses)}
-        </View>
-      )}
-
-      {!isTodayComplete && isExamComplete && (
-        <View className='soft-card today-complete-card today-complete-card-compact today-complete-card-exam'>
-          <View className='today-complete-icon today-complete-icon-exam' />
-          <View className='today-complete-main'>
-            <View className='today-complete-title'>今日考试已完成</View>
-            <View className='today-complete-desc'>已结束 {todayExamItems.length} 场考试</View>
-          </View>
-        </View>
-      )}
-
-      {!isTodayComplete && isExamComplete && !showAllExams &&
-        renderArrangementFoldHint('考试', showAllExams, foldedTodayExamCount, remainingTodayExamCount, toggleTodayExams)}
-
-      {(showAllExams || !isTodayComplete) && visibleTodayExamItems.length > 0 && (
-        <View
-          className={`home-arrangement-group home-arrangement-group-animated${showAllExams ? ' home-arrangement-group-open' : ' home-arrangement-group-collapsed'}`}
-          onClick={expandTodayExams}
-        >
-          {shouldShowStackedCurrentExam && stackedCurrentExamItem && (
-            <View className='home-current-course-stack home-current-exam-stack'>
-              <Text className='home-current-course-name home-current-exam-name'>
-                {stackedCurrentExamItem.exam.courseName || '未命名考试'}
-              </Text>
-              <Text className='home-current-course-status home-current-exam-status'>{stackedCurrentExamItem.statusLabel}</Text>
-            </View>
-          )}
-          {visibleTodayExamItems.map(({ exam, status, statusLabel }, index) => {
-            return (
-              <View
-                className={`soft-card course-card exam-card home-exam-card home-arrangement-card home-arrangement-card-full home-arrangement-card-${status} exam-card-${status === 'ended' ? 'finished' : 'today'}`}
-                key={`exam-${exam.id}-${index}`}
-              >
-                <View className='course-main home-card-main'>
-                  <View className='home-card-head'>
-                    <Text className='home-primary-value'>{exam.courseName}</Text>
-                  </View>
-                  <Text className='home-time-value'>{getExamTimeText(exam)}</Text>
-                  <Text className='home-info-value home-info-secondary'>{exam.location || '地点待安排'}</Text>
-                  <Text className='home-info-value home-info-secondary'>座位：{exam.seatNo || '待安排'}</Text>
-                </View>
-                <View className='home-card-icon-side'>
-                  <Text className={`home-status-badge home-status-badge-${status}`}>{statusLabel}</Text>
-                </View>
-              </View>
-            )
-          })}
-          {examUnderlayCount > 0 && (
-            <View className='home-course-underlay-stack home-exam-underlay-stack'>
-              {Array.from({ length: examUnderlayCount }).map((_, index) => (
-                <View className={`home-course-underlay home-exam-underlay home-course-underlay-${index + 1}`} key={`exam-underlay-${index}`} />
-              ))}
-            </View>
-          )}
-          {!isTodayComplete &&
-            renderArrangementFoldHint('考试', showAllExams, foldedTodayExamCount, remainingTodayExamCount, toggleTodayExams)}
-        </View>
-      )}
-
-      {!loading && todayItemCount === 0 && !showGuestEmpty && !showTodayRestText && (
-        <View className='soft-card empty-card'>
-          <View className='empty-icon' />
-          <Text>今日暂无安排</Text>
-        </View>
-      )}
     </PageShell>
   )
 }

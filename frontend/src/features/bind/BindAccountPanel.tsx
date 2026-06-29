@@ -3,6 +3,7 @@ import Taro, { useDidShow } from '@tarojs/taro'
 import { Button, Checkbox, Input, ScrollView, Text, View } from '@tarojs/components'
 
 import { submitLogin } from '../../shared/api/auth'
+import { completePendingBuddyInvite } from '../../shared/buddy-invite'
 import {
   hasCloudCredentialSync,
   runCredentialSyncWithCloud,
@@ -111,6 +112,11 @@ function getInitialSchoolFromRoute(): SchoolListItem | null {
 function getInitialAccountIdFromRoute() {
   const params = Taro.getCurrentInstance().router?.params || {}
   return decodeRouteParam(params.accountId)
+}
+
+function getRedirectAfterBindFromRoute() {
+  const params = Taro.getCurrentInstance().router?.params || {}
+  return decodeRouteParam(params.redirectAfterBind)
 }
 
 function getSchoolBindUrl(school: SchoolListItem) {
@@ -366,6 +372,7 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
   const initialSchoolApplied = useRef(false)
   const initialSchool = useRef<SchoolListItem | null>(getInitialSchoolFromRoute())
   const initialAccountId = useRef(getInitialAccountIdFromRoute())
+  const redirectAfterBind = useRef(getRedirectAfterBindFromRoute())
 
   const visibleFields = useMemo(() => getVisibleFields(loginContext), [loginContext])
   const loginMode = loginContext?.mode || selectedSchool?.loginMode
@@ -658,8 +665,7 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
             profileCacheData: savedProfileCache,
           }),
         )
-        setMessage('登录成功')
-        Taro.switchTab({ url: '/pages/index/index' })
+        await finishBindSuccess()
         return
       }
 
@@ -703,8 +709,7 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
             profileCacheData: savedProfileCache,
           }),
         )
-        setMessage('登录成功')
-        Taro.switchTab({ url: '/pages/index/index' })
+        await finishBindSuccess()
         return
       }
 
@@ -754,15 +759,34 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
         return
       } else {
         await refreshSchoolTermStarts(selectedSchool.id).catch(() => null)
-        setMessage('登录成功')
+        await finishBindSuccess()
+        return
       }
-
-      Taro.switchTab({ url: '/pages/index/index' })
     } catch (error) {
       setErrorText(getBindErrorMessage(error))
     } finally {
       setLoading(false)
     }
+  }
+
+  async function finishBindSuccess() {
+    setMessage('登录成功')
+
+    try {
+      const completedBuddyInvite = await completePendingBuddyInvite()
+
+      if (completedBuddyInvite || redirectAfterBind.current === 'buddy-space') {
+        Taro.navigateTo({ url: '/pages/buddy-space/index' })
+        return
+      }
+    } catch (error) {
+      Taro.showToast({
+        title: error instanceof Error ? error.message : '搭子绑定失败',
+        icon: 'none',
+      })
+    }
+
+    Taro.switchTab({ url: '/pages/index/index' })
   }
 
   return (

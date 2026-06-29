@@ -576,7 +576,6 @@ export class RemindersService {
   ) {
     const sentAt = status === 'sent' ? new Date() : undefined
     const shouldDisable = status === 'sent' ||
-      status === 'skipped' ||
       (status === 'failed' && this.isPermanentDeliveryError(errorCode))
 
     await this.prisma.reminderDelivery.upsert({
@@ -616,19 +615,21 @@ export class RemindersService {
     await this.prisma.reminderSubscription.update({
       where: { id: subscription.id },
       data: {
-        ...(shouldDisable
-          ? {
-            status: 'disabled',
-            ...(status === 'failed'
-              ? { lastErrorCode: errorCode, lastErrorMessage: errorMessage }
-              : {
-                lastSentDate: dateKey,
-                lastSentAt: new Date(),
-                lastErrorCode: null,
-                lastErrorMessage: null,
-              }),
-          }
-          : { lastErrorCode: errorCode, lastErrorMessage: errorMessage }),
+        ...(status === 'skipped'
+          ? { lastSentDate: dateKey, lastSentAt: null, lastErrorCode: null, lastErrorMessage: null }
+          : shouldDisable
+            ? {
+              status: 'disabled',
+              ...(status === 'failed'
+                ? { lastErrorCode: errorCode, lastErrorMessage: errorMessage }
+                : {
+                  lastSentDate: dateKey,
+                  lastSentAt: new Date(),
+                  lastErrorCode: null,
+                  lastErrorMessage: null,
+                }),
+            }
+            : { lastErrorCode: errorCode, lastErrorMessage: errorMessage }),
       },
     })
   }

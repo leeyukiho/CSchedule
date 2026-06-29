@@ -3,6 +3,7 @@ import Taro, { useRouter } from '@tarojs/taro'
 import { Button, Text, View, WebView } from '@tarojs/components'
 
 import { completeWebviewSync, uploadRawData } from '../../shared/api/raw-data'
+import { completePendingBuddyInvite } from '../../shared/buddy-invite'
 import { refreshSchoolTermStarts } from '../../shared/api/schools'
 import {
   DataTarget,
@@ -36,6 +37,24 @@ const DATA_TARGETS: DataTarget[] = ['course', 'score', 'exam', 'profile']
 const BACKEND_JSON_TARGETS = new Set<DataTarget>(DATA_TARGETS)
 const INITIAL_MESSAGE = '请完成学校登录'
 const STATUS_CLEAR_DELAY_MS = 3000
+
+async function openAfterSyncSuccess() {
+  try {
+    const completedBuddyInvite = await completePendingBuddyInvite()
+
+    if (completedBuddyInvite) {
+      Taro.navigateTo({ url: '/pages/buddy-space/index' })
+      return
+    }
+  } catch (error) {
+    Taro.showToast({
+      title: error instanceof Error ? error.message : '搭子绑定失败',
+      icon: 'none',
+    })
+  }
+
+  Taro.switchTab({ url: '/pages/index/index' })
+}
 
 function parseTargets(value?: string) {
   const targets = String(value || '')
@@ -522,7 +541,7 @@ export default function WebviewSyncPage() {
         await termStartsRequestRef.current
         closingRef.current = true
         setMessage('同步完成')
-        Taro.switchTab({ url: '/pages/index/index' })
+        await openAfterSyncSuccess()
       } else {
         setMessage(
           `已同步 ${nextTargets.length} 项`,
@@ -552,7 +571,7 @@ export default function WebviewSyncPage() {
           closingRef.current = true
           setStoredAccountId(activeAccountId, schoolId)
           void Promise.resolve(termStartsRequestRef.current).then(() => {
-            Taro.switchTab({ url: '/pages/index/index' })
+            void openAfterSyncSuccess()
           })
         } else {
           setErrorText(
