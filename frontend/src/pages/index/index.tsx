@@ -11,7 +11,6 @@ import {
   resolveReminderOpenid,
   updateReminderPreference,
 } from '../../shared/api/reminders'
-import { getSchoolWeather } from '../../shared/api/schools'
 import { getTimetable } from '../../shared/api/timetable'
 import { CourseItem, FeatureCacheResponse, TimetableCacheResponse } from '../../shared/api/types'
 import {
@@ -28,13 +27,12 @@ import {
   HomeShortcutRuntimeItem,
 } from '../../shared/home-shortcuts'
 import { useDefaultShare } from '../../shared/share'
-import { getStoredAccountSummary, getStoredAuthState, getStoredTermStarts } from '../../shared/storage'
+import { getStoredAuthState, getStoredTermStarts } from '../../shared/storage'
 import { buildTermOptions, courseRunsInWeek, getTeachingWeekForDate } from '../../shared/term'
 
 import './index.scss'
 
 const STATUS_CLEAR_DELAY_MS = 3000
-const WEATHER_CACHE_TTL_MS = 3 * 60 * 60 * 1000
 const REMINDER_STATE_REFRESH_PREFIX = 'cschedule.reminderStateRefreshAt.'
 const REMINDER_STATE_EXPIRE_PREFIX = 'cschedule.reminderStateExpireAt.'
 const REMINDER_STATE_REFRESH_GRACE_MS = 2 * 60 * 1000
@@ -42,25 +40,7 @@ const REMINDER_STATE_RETRY_MS = 2 * 60 * 1000
 const REMINDER_STATE_FAST_RETRY_WINDOW_MS = 30 * 60 * 1000
 const REMINDER_STATE_STALE_RETRY_MS = 30 * 60 * 1000
 const REMINDER_STATE_KEEP_DAYS = 2
-const WEATHER_STORAGE_CACHE_PREFIX = 'cschedule.weather.'
 const HOME_SHORTCUT_SCROLL_EDGE_TOLERANCE = 24
-
-type SchoolWeatherLocation = {
-  id: string
-  displayName: string
-}
-
-type SchoolWeatherIdentity = {
-  schoolId: string
-  providerId: string
-  schoolName: string
-}
-
-type WeatherCacheEntry = {
-  text: string
-  cachedAt: number
-  unavailable?: boolean
-}
 
 type HomeExamItem = {
   id: string
@@ -76,14 +56,6 @@ type HomeExamItem = {
 
 type ArrangementStatus = 'current' | 'next' | 'pending' | 'ended'
 type HomeShortcutScrollPosition = 'start' | 'middle' | 'end'
-
-const EMPTY_SCHOOL_IDENTITY: SchoolWeatherIdentity = {
-  schoolId: '',
-  providerId: '',
-  schoolName: '',
-}
-
-const schoolWeatherCache = new Map<string, WeatherCacheEntry>()
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -109,94 +81,6 @@ function getTextValue(source: Record<string, unknown>, keys: string[]) {
   }
 
   return ''
-}
-
-function resolveSchoolWeatherLocation(
-  identity: SchoolWeatherIdentity,
-  accountSummary: ReturnType<typeof getStoredAccountSummary>,
-) {
-  const schoolId = identity.schoolId || accountSummary?.schoolId || accountSummary?.school?.id || ''
-
-  if (!schoolId) {
-    return null
-  }
-
-  return {
-    id: schoolId,
-    displayName: accountSummary?.school?.weatherLocation?.displayName ||
-      accountSummary?.school?.shortName ||
-      identity.schoolName ||
-      '天气',
-  }
-}
-
-async function fetchSchoolWeatherText(location: SchoolWeatherLocation) {
-  const cached = schoolWeatherCache.get(location.id)
-
-  if (cached && !cached.unavailable && Date.now() - cached.cachedAt < WEATHER_CACHE_TTL_MS) {
-    return cached.text
-  }
-
-  const stored = getStoredWeatherCache(location.id)
-
-  if (stored && !stored.unavailable && Date.now() - stored.cachedAt < WEATHER_CACHE_TTL_MS) {
-    schoolWeatherCache.set(location.id, stored)
-    return stored.text
-  }
-
-  let response
-
-  response = await getSchoolWeather(location.id)
-
-  if (!response.text) {
-    throw new Error('天气读取失败')
-  }
-
-  const text = response.text
-  schoolWeatherCache.set(location.id, {
-    text,
-    cachedAt: Date.now(),
-  })
-  setStoredWeatherCache(location.id, {
-    text,
-    cachedAt: Date.now(),
-  })
-
-  return text
-}
-
-function getWeatherStorageCacheKey(locationId: string) {
-  return `${WEATHER_STORAGE_CACHE_PREFIX}${locationId}`
-}
-
-function normalizeWeatherCacheEntry(value: unknown): WeatherCacheEntry | null {
-  const record = asRecord(value)
-  const text = typeof record.text === 'string' ? record.text : ''
-  const unavailable = record.unavailable === true
-  const cachedAt = typeof record.cachedAt === 'number'
-    ? record.cachedAt
-    : typeof record.cachedAt === 'string'
-      ? Number(record.cachedAt)
-      : 0
-
-  return (text || unavailable) && cachedAt > 0 ? { text, cachedAt, unavailable } : null
-}
-
-function getStoredWeatherCache(locationId: string) {
-  const key = getWeatherStorageCacheKey(locationId)
-  const entry = normalizeWeatherCacheEntry(Taro.getStorageSync(key))
-
-  if (entry && Date.now() - entry.cachedAt >= WEATHER_CACHE_TTL_MS) {
-    Taro.removeStorageSync(key)
-    schoolWeatherCache.delete(locationId)
-    return null
-  }
-
-  return entry
-}
-
-function setStoredWeatherCache(locationId: string, entry: WeatherCacheEntry) {
-  Taro.setStorageSync(getWeatherStorageCacheKey(locationId), entry)
 }
 
 function getLocalDateKey(date = new Date()) {
@@ -615,9 +499,6 @@ export default function HomePage() {
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [subscribingReminder, setSubscribingReminder] = useState(false)
   const [reminderSubscribed, setReminderSubscribed] = useState(false)
-  const [schoolIdentity, setSchoolIdentity] = useState<SchoolWeatherIdentity>(EMPTY_SCHOOL_IDENTITY)
-  const [accountSummary, setAccountSummary] = useState<ReturnType<typeof getStoredAccountSummary>>(null)
-  const [homeWeatherText, setHomeWeatherText] = useState('')
   const [showAllTodayArrangements, setShowAllTodayArrangements] = useState(false)
   const [activeOverlapHintKey, setActiveOverlapHintKey] = useState('')
   const [homeShortcuts, setHomeShortcuts] = useState(() => buildHomeShortcutRuntimeItems(getStoredHomeShortcutConfig()))
@@ -680,51 +561,6 @@ export default function HomePage() {
     void loadReminderState(accountId)
   }, [accountId, nowMs])
 
-  const weatherLocation = useMemo(
-    () => resolveSchoolWeatherLocation(
-      {
-        schoolId: timetable?.schoolId || schoolIdentity.schoolId,
-        providerId: timetable?.providerId || schoolIdentity.providerId,
-        schoolName: schoolIdentity.schoolName,
-      },
-      accountSummary,
-    ),
-    [
-      accountSummary,
-      schoolIdentity.providerId,
-      schoolIdentity.schoolId,
-      schoolIdentity.schoolName,
-      timetable?.providerId,
-      timetable?.schoolId,
-    ],
-  )
-
-  useEffect(() => {
-    if (!weatherLocation) {
-      setHomeWeatherText('')
-      return undefined
-    }
-
-    let cancelled = false
-
-    setHomeWeatherText(`${weatherLocation.displayName} · 天气加载中`)
-    void fetchSchoolWeatherText(weatherLocation)
-      .then((text) => {
-        if (!cancelled) {
-          setHomeWeatherText(text)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setHomeWeatherText(`${weatherLocation.displayName} · 天气暂不可用`)
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [weatherLocation])
-
   const todayCourses = useMemo(() => {
     const weekday = getWeekday()
     const termOptions = buildTermOptions(timetable)
@@ -766,18 +602,9 @@ export default function HomePage() {
   useDidShow(() => {
     const authState = getStoredAuthState()
     const id = authState.accountId
-    const nextAccountSummary = getStoredAccountSummary(id)
 
     setShowAllTodayArrangements(false)
     setAccountId(id)
-    setAccountSummary(nextAccountSummary)
-    setSchoolIdentity(id
-      ? {
-        schoolId: authState.schoolId || nextAccountSummary?.schoolId || '',
-        providerId: nextAccountSummary?.providerId || '',
-        schoolName: nextAccountSummary?.school?.name || '',
-      }
-      : EMPTY_SCHOOL_IDENTITY)
     setTermStarts(getStoredTermStarts())
 
     if (!id) {
@@ -786,8 +613,6 @@ export default function HomePage() {
       setLoading(false)
       setErrorText('')
       setReminderSubscribed(false)
-      setAccountSummary(null)
-      setHomeWeatherText('')
       return
     }
 
@@ -1223,7 +1048,6 @@ export default function HomePage() {
   ].filter(Boolean).join('，')
   const isTodayCompleteExpanded = isTodayComplete && showAllTodayArrangements
   const showTodayRestText = Boolean(accountId && timetable && !loading && !errorText && todayItemCount === 0)
-  const weatherDisplayText = homeWeatherText || (weatherLocation ? `${weatherLocation.displayName} · 天气加载中` : '')
   const homeShortcutCount = homeShortcuts.length
   const homeShortcutLayoutClass = homeShortcutCount <= 1
     ? 'home-shortcuts-left'
@@ -1255,7 +1079,6 @@ export default function HomePage() {
               <Text>{formatDateText()}</Text>
               {loading && <Text className='date-updated'>同步中</Text>}
             </View>
-            {weatherDisplayText && <View className='date-weather'>{weatherDisplayText}</View>}
           </View>
           <View className='date-actions'>
             {accountId && (

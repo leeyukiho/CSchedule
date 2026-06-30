@@ -1,8 +1,18 @@
 import { ReactNode, useEffect, useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { View } from '@tarojs/components'
+import { Image, Text, View } from '@tarojs/components'
 
 import { createNotificationPopup, subscribeNotificationPopup } from './notification-popup'
+import cloudIcon from '../assets/weather/cloud.svg'
+import cloudDrizzleIcon from '../assets/weather/cloud-drizzle.svg'
+import cloudFogIcon from '../assets/weather/cloud-fog.svg'
+import cloudHailIcon from '../assets/weather/cloud-hail.svg'
+import cloudLightningIcon from '../assets/weather/cloud-lightning.svg'
+import cloudRainIcon from '../assets/weather/cloud-rain.svg'
+import cloudSnowIcon from '../assets/weather/cloud-snow.svg'
+import cloudSunIcon from '../assets/weather/cloud-sun.svg'
+import sunIcon from '../assets/weather/sun.svg'
+import { fetchSharedWeather, resolveStoredWeatherLocation, SharedWeatherDisplay, WeatherIconKind } from './weather'
 import './pages.scss'
 
 type TabKey = 'home' | 'schedule' | 'grades' | 'profile'
@@ -12,6 +22,19 @@ const TAB_INDEX: Record<TabKey, number> = {
   schedule: 1,
   grades: 2,
   profile: 3,
+}
+
+const WEATHER_ICON_SRC: Record<WeatherIconKind, string> = {
+  sunny: sunIcon,
+  'partly-cloudy': cloudSunIcon,
+  cloudy: cloudIcon,
+  fog: cloudFogIcon,
+  drizzle: cloudDrizzleIcon,
+  rain: cloudRainIcon,
+  snow: cloudSnowIcon,
+  storm: cloudLightningIcon,
+  hail: cloudHailIcon,
+  default: cloudIcon,
 }
 
 interface CustomTabBarInstance {
@@ -91,6 +114,7 @@ export function PageShell({
   const pageClass = `mini-page ${subPage ? 'sub-page' : ''}`.trim()
   const contentClass = `content ${contentClassName}`.trim()
   const [navigationMetrics, setNavigationMetrics] = useState<NavigationMetrics>(DEFAULT_NAVIGATION_METRICS)
+  const [weather, setWeather] = useState<SharedWeatherDisplay | null>(null)
   const [, setPopupVersion] = useState(0)
 
   useEffect(() => {
@@ -109,6 +133,34 @@ export function PageShell({
     const page = Taro.getCurrentInstance().page as TabPageInstance | undefined
     const tabBar = page?.getTabBar?.()
     tabBar?.setData?.({ selected: TAB_INDEX[activeTab] })
+
+    const weatherLocation = resolveStoredWeatherLocation()
+
+    if (!weatherLocation) {
+      setWeather(null)
+      return
+    }
+
+    setWeather((current) => (
+      current && current.location === weatherLocation.displayName
+        ? current
+        : {
+            location: weatherLocation.displayName,
+            temperature: '',
+            condition: '\u5929\u6c14',
+            icon: 'default',
+          }
+    ))
+    void fetchSharedWeather(weatherLocation)
+      .then((display) => setWeather(display))
+      .catch(() => {
+        setWeather({
+          location: weatherLocation.displayName,
+          temperature: '',
+          condition: '\u5929\u6c14',
+          icon: 'default',
+        })
+      })
   })
 
   return (
@@ -116,6 +168,14 @@ export function PageShell({
       {customNav && (
         <>
           <View className='custom-nav' style={navigationMetrics.navStyle}>
+            {activeTab && weather && (
+              <View className='custom-nav-weather' style={navigationMetrics.actionStyle}>
+                <Text className='custom-nav-weather-location'>{weather.location}</Text>
+                {weather.temperature && <Text className='custom-nav-weather-dot'>·</Text>}
+                {weather.temperature && <Text className='custom-nav-weather-temp'>{weather.temperature}</Text>}
+                <Image className='custom-weather-icon' src={WEATHER_ICON_SRC[weather.icon]} mode='aspectFit' />
+              </View>
+            )}
             {back && (
               <View
                 className='custom-nav-back'

@@ -197,14 +197,32 @@ export class AuthService {
     }
 
     if (shouldRunBackendImport) {
-      const cloudResult = await this.cloudSync.syncByCredentials({
-        schoolId,
-        providerId,
-        targets: backendImportTargets,
-        username: input.username || "",
-        password: input.password || "",
-        config: existingSchool.config,
-      });
+      let cloudResult;
+
+      try {
+        cloudResult = await this.cloudSync.syncByCredentials({
+          schoolId,
+          providerId,
+          targets: backendImportTargets,
+          username: input.username || "",
+          password: input.password || "",
+          config: existingSchool.config,
+        });
+      } catch (error) {
+        if (this.isSchoolSystemError(error)) {
+          await this.disableSchoolAfterImportFailure({
+            school: existingSchool,
+            providerId,
+            contextId: input.contextId,
+            error,
+          });
+          throw new BadRequestException(
+            "SCHOOL_DISABLED: 学校教务系统暂时异常，已暂停该学校导入，请稍后再试",
+          );
+        }
+
+        throw error;
+      }
       const verifiedIdentity = this.getVerifiedIdentityFromCacheResults(
         cloudResult.cacheResults,
         input.username,
@@ -558,6 +576,70 @@ export class AuthService {
     return Array.isArray(access)
       ? access.filter((item): item is string => typeof item === "string")
       : [];
+  }
+
+  private isSchoolSystemError(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error || "");
+    const upper = message.toUpperCase();
+    const lower = message.toLowerCase();
+    const userErrorCodes = [
+      "INVALID_CREDENTIAL",
+      "SAVED_CREDENTIAL_REQUIRED",
+      "SESSION_EXPIRED",
+      "CREDENTIAL_SAVE_UNSUPPORTED",
+    ];
+
+    if (userErrorCodes.some((code) => upper.includes(code))) {
+      return false;
+    }
+
+    return (
+      upper.includes("CLOUD_SYNC_FAILED") ||
+      upper.includes("CLOUD_SYNC_EMPTY_RESULT") ||
+      upper.includes("SYNC_TASK_TIMEOUT") ||
+      upper.includes("PARSER_FAILED") ||
+      lower.includes("request:fail") ||
+      lower.includes("timeout") ||
+      lower.includes("timed out") ||
+      lower.includes("parser")
+    );
+  }
+
+  private async disableSchoolAfterImportFailure(input: {
+    school: {
+      id: string;
+      name: string;
+      shortName: string | null;
+      providerId: string | null;
+    };
+    providerId: string;
+    contextId: string;
+    error: unknown;
+  }) {
+    const errorMessage = input.error instanceof Error ? input.error.message : String(input.error || "");
+
+    await this.prisma.$transaction([
+      this.prisma.school.update({
+        where: { id: input.school.id },
+        data: { enabled: false, status: "disabled" },
+      }),
+      this.prisma.feedbackItem.create({
+        data: {
+          schoolId: input.school.id,
+          type: "school_import_alert",
+          content: [
+            "Auto disabled: yes",
+            "学校导入/同步异常，请管理员优先处理。",
+            `学校：${input.school.name}${input.school.shortName ? `（${input.school.shortName}）` : ""}`,
+            `学校 ID：${input.school.id}`,
+            `Provider：${input.providerId || input.school.providerId || "--"}`,
+            "阶段：backend_first_import",
+            `错误信息：${errorMessage}`,
+            `Context：${input.contextId}`,
+          ].join("\n"),
+        },
+      }),
+    ]);
   }
 
   private async getIssuedAccessTokenPayload(accountId: string) {

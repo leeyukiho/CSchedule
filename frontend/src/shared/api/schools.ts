@@ -82,6 +82,11 @@ export async function listSchools(options: ListSchoolsOptions = {}) {
   return request
 }
 
+export function clearSchoolListCache() {
+  schoolListCache.clear()
+  schoolListRequests.clear()
+}
+
 export function createLoginContext(schoolId: string) {
   return requestApi<LoginContextResponse>({
     method: 'POST',

@@ -19,7 +19,7 @@ export interface ApiRequestOptions<TBody = unknown> {
 
 function getRequestErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) {
-    return error.message;
+    return normalizeApiErrorMessage(error.message);
   }
 
   if (error && typeof error === "object") {
@@ -27,12 +27,81 @@ function getRequestErrorMessage(error: unknown) {
     for (const key of ["errMsg", "message", "errorMessage"]) {
       const value = record[key];
       if (typeof value === "string" && value.trim()) {
-        return value.trim();
+        return normalizeApiErrorMessage(value.trim());
       }
     }
   }
 
-  return String(error || "API request failed");
+  return normalizeApiErrorMessage(String(error || "请求失败"));
+}
+
+function normalizeApiErrorMessage(message: string) {
+  const text = String(message || '').trim()
+
+  if (!text) {
+    return '请求失败，请稍后再试'
+  }
+
+  const lower = text.toLowerCase()
+
+  if (text.includes('SCHOOL_DISABLED') || text.includes('School not available')) {
+    return '学校暂不可用，请稍后再试或联系管理员'
+  }
+
+  if (text.includes('School not found')) {
+    return '学校不存在或已下线'
+  }
+
+  if (text.includes('Student account not found')) {
+    return '账号不存在，请重新绑定'
+  }
+
+  if (text.includes('CACHE_NOT_READY')) {
+    return '数据还在准备中，请稍后刷新'
+  }
+
+  if (text.includes('ACCOUNT_TOKEN_REQUIRED') || text.includes('ACCOUNT_TOKEN_INVALID')) {
+    return '登录状态已失效，请重新绑定账号'
+  }
+
+  if (
+    text.includes('INVALID_CREDENTIAL') ||
+    text.includes('WTBU_INVALID_CREDENTIALS') ||
+    text.includes('WHHXIT_INVALID_CREDENTIALS') ||
+    lower.includes('invalid credential')
+  ) {
+    return '账号或密码错误，请检查后重试'
+  }
+
+  if (text.includes('SAVED_CREDENTIAL_REQUIRED') || text.includes('SESSION_EXPIRED')) {
+    return '登录信息已失效，请重新登录教务系统'
+  }
+
+  if (text.includes('CLOUD_IMPORT_PROOF_REQUIRED') || text.includes('CLOUD_IMPORT_PROOF_INVALID')) {
+    return '导入校验失败，请重新尝试'
+  }
+
+  if (text.includes('CLOUD_IMPORT_PROOF_EXPIRED')) {
+    return '导入校验已过期，请重新尝试'
+  }
+
+  if (text.includes('CLOUD_SYNC_FAILED') || text.includes('CLOUD_SYNC_EMPTY_RESULT')) {
+    return '教务系统暂时无法访问，请稍后再试'
+  }
+
+  if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('request:fail')) {
+    return '网络或教务系统响应超时，请稍后再试'
+  }
+
+  if (text.startsWith('API request failed') || /^HTTP\s+\d+$/i.test(text)) {
+    return '服务器请求失败，请稍后再试'
+  }
+
+  if (text.includes('TARO_APP_API_BASE_URL is not configured')) {
+    return '接口地址未配置，请联系管理员'
+  }
+
+  return text
 }
 
 function getAccountIdFromPath(path: string) {
@@ -122,7 +191,7 @@ export async function requestApi<TResponse, TBody = unknown>(
           ? responseError
           : `API request failed: ${response.statusCode}`;
 
-    throw new Error(message);
+    throw new Error(normalizeApiErrorMessage(message));
   }
 
   return response.data as TResponse;

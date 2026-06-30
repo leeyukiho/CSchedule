@@ -126,6 +126,7 @@ export class AdminController {
   @Get('feedback')
   listFeedback(
     @Query('status') status?: string,
+    @Query('type') type?: string,
     @Query('schoolId') schoolId?: string,
     @Query('schoolKeyword') schoolKeyword?: string,
     @Query('limit') limit?: string,
@@ -133,11 +134,25 @@ export class AdminController {
   ) {
     return this.adminService.listFeedback({
       status,
+      type,
       schoolId,
       schoolKeyword,
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
     })
+  }
+
+  @Patch('feedback/:feedbackId')
+  updateFeedback(
+    @Param('feedbackId') feedbackId: string,
+    @Body() input: { status?: string },
+  ) {
+    return this.adminService.updateFeedback(feedbackId, input)
+  }
+
+  @Delete('feedback/:feedbackId')
+  deleteFeedback(@Param('feedbackId') feedbackId: string) {
+    return this.adminService.deleteFeedback(feedbackId)
   }
 
   @Get('notifications')

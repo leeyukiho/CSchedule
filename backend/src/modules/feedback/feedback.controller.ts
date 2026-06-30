@@ -7,7 +7,11 @@ import {
 } from '../accounts/account-access-token.service'
 import { getRequestClientIp } from '../../common/security/client-identity'
 import { OpenidAbuseTokenService } from '../../common/security/openid-abuse-token.service'
-import { FeedbackService, SubmitFeedbackRequest } from './feedback.service'
+import {
+  FeedbackService,
+  SubmitFeedbackRequest,
+  SubmitSchoolImportAlertRequest,
+} from './feedback.service'
 
 const CLIENT_ID_HEADER = 'x-cschedule-client-id'
 const OPENID_ABUSE_TOKEN_HEADER = 'x-cschedule-openid-token'
@@ -34,6 +38,11 @@ export class FeedbackController {
       input,
       this.getFeedbackClientKey(input, request),
     )
+  }
+
+  @Post('school-import-alert')
+  submitSchoolImportAlert(@Body() input: SubmitSchoolImportAlertRequest) {
+    return this.feedbackService.submitSchoolImportAlert(input)
   }
 
   private getFeedbackClientKey(input: SubmitFeedbackRequest, request: Request) {

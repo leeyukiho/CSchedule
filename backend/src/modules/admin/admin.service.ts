@@ -147,7 +147,7 @@ export class AdminService {
       return {
         items: schools.map((school) => ({
           ...school,
-          weatherLocation: this.getWeatherLocation(school.config),
+          weatherLocation: this.getWeatherLocation(school.config, school.city),
           termStarts: this.getTermStarts(school.config),
           terms: this.getSchoolTerms(
             termMap.get(school.id),
@@ -189,7 +189,7 @@ export class AdminService {
     return {
       items: schools.map((school) => ({
         ...school,
-        weatherLocation: this.getWeatherLocation(school.config),
+        weatherLocation: this.getWeatherLocation(school.config, school.city),
         termStarts: this.getTermStarts(school.config),
         terms: this.getSchoolTerms(
           termMap.get(school.id),
@@ -605,14 +605,16 @@ export class AdminService {
 
   async listFeedback(params: {
     status?: string
+    type?: string
     schoolId?: string
     schoolKeyword?: string
     limit?: number
     offset?: number
   }) {
-    const { status, schoolId, schoolKeyword, limit = 50, offset = 0 } = params
+    const { status, type, schoolId, schoolKeyword, limit = 50, offset = 0 } = params
     const where: Record<string, unknown> = {}
     if (status) where.status = status
+    if (type) where.type = type
     if (schoolId) where.schoolId = schoolId
     if (schoolKeyword) {
       where.schoolId = {
@@ -620,15 +622,24 @@ export class AdminService {
       }
     }
 
-    const [items, total] = await this.prisma.$transaction([
+    const take = Math.min(limit, 200)
+    const [rawItems, total] = await this.prisma.$transaction([
       this.prisma.feedbackItem.findMany({
         where: where as any,
         orderBy: { createdAt: 'desc' },
-        take: Math.min(limit, 200),
+        take: take * 3,
         skip: offset,
       }),
       this.prisma.feedbackItem.count({ where: where as any }),
     ])
+    const items = rawItems
+      .sort((left, right) => {
+        const leftPriority = left.type === 'school_import_alert' ? 1 : 0
+        const rightPriority = right.type === 'school_import_alert' ? 1 : 0
+
+        return rightPriority - leftPriority || right.createdAt.getTime() - left.createdAt.getTime()
+      })
+      .slice(0, take)
     const accountIds = [...new Set(items.map((item) => item.accountId).filter(Boolean))]
     const accounts = accountIds.length
       ? await this.prisma.studentAccount.findMany({
@@ -718,8 +729,49 @@ export class AdminService {
     }
   }
 
+  async updateFeedback(feedbackId: string, input: { status?: string }) {
+    const status = String(input.status || '').trim().slice(0, 40)
+
+    if (!status) {
+      throw new BadRequestException('请填写反馈状态')
+    }
+
+    try {
+      return await this.prisma.feedbackItem.update({
+        where: { id: feedbackId },
+        data: { status },
+      })
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException('反馈不存在')
+      }
+
+      throw error
+    }
+  }
+
+  async deleteFeedback(feedbackId: string) {
+    try {
+      return await this.prisma.feedbackItem.delete({
+        where: { id: feedbackId },
+      })
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException('反馈不存在')
+      }
+
+      throw error
+    }
+  }
+
   async getStats() {
-    const [schoolCount, enabledCount, accountCount, submissionCount, feedbackCount, activeNotificationCount] =
+    const [schoolCount, enabledCount, accountCount, submissionCount, feedbackCount, schoolAlertCount, activeNotificationCount] =
       await Promise.all([
         this.prisma.school.count(),
         this.prisma.school.count({
@@ -728,6 +780,9 @@ export class AdminService {
         this.prisma.studentAccount.count(),
         this.prisma.schoolAccessSubmission.count({ where: { status: 'submitted' } }),
         this.prisma.feedbackItem.count({ where: { status: 'pending' } }),
+        this.prisma.feedbackItem.count({
+          where: { status: 'pending', type: 'school_import_alert' },
+        }),
         this.notificationsService.countActive(),
       ])
 
@@ -736,6 +791,7 @@ export class AdminService {
       accounts: accountCount,
       pendingSubmissions: submissionCount,
       pendingFeedback: feedbackCount,
+      pendingSchoolAlerts: schoolAlertCount,
       activeNotifications: activeNotificationCount,
     }
   }
@@ -935,9 +991,11 @@ export class AdminService {
     return result
   }
 
-  private getWeatherLocation(config: unknown) {
-    const provider = this.asRecord(this.asRecord(config).provider)
-    const weatherLocation = this.asRecord(provider.weatherLocation)
+  private getWeatherLocation(config: unknown, city?: string | null) {
+    const root = this.asRecord(config)
+    const provider = this.asRecord(root.provider)
+    const providerConfig = this.asRecord(root.providerConfig)
+    const weatherLocation = this.asRecord(provider.weatherLocation || providerConfig.weatherLocation)
     const latitude = this.getFiniteNumber(weatherLocation.latitude)
     const longitude = this.getFiniteNumber(weatherLocation.longitude)
 
@@ -946,7 +1004,7 @@ export class AdminService {
     }
 
     return {
-      displayName: this.getOptionalText(weatherLocation.displayName),
+      displayName: this.getOptionalText(weatherLocation.displayName) || this.getOptionalText(city),
       latitude,
       longitude,
     }

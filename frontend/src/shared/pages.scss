@@ -44,6 +44,58 @@
   border-radius: 50%;
 }
 
+.custom-nav-weather {
+  position: absolute;
+  left: 24rpx;
+  max-width: 260rpx;
+  height: 64rpx;
+  padding: 0 14rpx 0 16rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  border: 1rpx solid #dbeafe;
+  border-radius: 999rpx;
+  background: #f8fbff;
+  color: #1d4ed8;
+  box-shadow: 0 8rpx 20rpx rgba(47, 123, 255, 0.08);
+}
+
+.custom-nav-weather-location {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 104rpx;
+  overflow: hidden;
+  color: #344054;
+  font-size: 22rpx;
+  font-weight: 800;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.custom-nav-weather-dot {
+  flex: 0 0 auto;
+  color: #98a2b3;
+  font-size: 22rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.custom-nav-weather-temp {
+  flex: 0 0 auto;
+  color: #101828;
+  font-size: 25rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.custom-weather-icon {
+  flex: 0 0 34rpx;
+  width: 34rpx;
+  height: 34rpx;
+}
+
 .custom-nav-back::before {
   content: "";
   position: absolute;
@@ -1828,7 +1880,7 @@
   margin-bottom: 16rpx;
   color: rgba(255, 255, 255, 0.92);
   font-size: 26rpx;
-  line-height: 1;
+  line-height: 1.22;
 }
 
 .profile-line:last-child {
@@ -1836,7 +1888,6 @@
 }
 
 .profile-school-line {
-  margin-bottom: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

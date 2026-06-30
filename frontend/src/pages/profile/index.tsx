@@ -127,6 +127,10 @@ function getSyncResultMessage(status: SyncJobResponse['status']) {
 }
 
 function getUserSyncResultMessage(status: SyncJobResponse['status'], errorCode?: string) {
+  if (errorCode === 'SCHOOL_DISABLED') {
+    return '该学校暂时暂停同步，请等待恢复或联系管理员'
+  }
+
   if (status === 'success') {
     return '同步完成'
   }
@@ -349,8 +353,7 @@ export default function ProfilePage() {
     () => ({
       name: getText(profileSource.name || profileSource.displayName, '课表用户'),
       number: getText(profileSource.studentId || profileSource.maskedStudentId, '暂无学号'),
-      major: getText(profileSource.major, '暂无专业信息'),
-      education: [getText(profileSource.grade, ''), getText(profileSource.level, '')].filter(Boolean).join(' '),
+      className: getText(profileSource.className, '暂无班级信息'),
       schoolName: getText(profileSource.schoolName),
       avatarUrl: getText(profileSource.avatarUrl, ''),
     }),
@@ -526,12 +529,9 @@ export default function ProfilePage() {
         </View>
         <View>
           <View className='profile-name'>{student.name}</View>
-          <View className='profile-line'>学号：{student.number}</View>
-          <View className='profile-meta-row'>
-            {student.education && <Text className='profile-education'>{student.education}</Text>}
-            <Text className='profile-meta'>{student.major}</Text>
-          </View>
           <View className='profile-line profile-school-line'>{student.schoolName}</View>
+          <View className='profile-line'>学号：{student.number}</View>
+          <View className='profile-line'>班级：{student.className}</View>
         </View>
         <View className='profile-arrow' />
       </View>

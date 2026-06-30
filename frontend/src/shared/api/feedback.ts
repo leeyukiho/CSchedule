@@ -13,6 +13,21 @@ export interface SubmitFeedbackInput {
   contact?: string
 }
 
+export interface SchoolImportAlertInput {
+  schoolId?: string
+  accountId?: string
+  providerId?: string
+  contextId?: string
+  stage?: string
+  errorCode?: string
+  errorMessage?: string
+}
+
+export interface SchoolImportAlertResponse extends SubmitFeedbackResponse {
+  schoolDisabled?: boolean
+  userMessage?: string
+}
+
 export function submitFeedback(data: SubmitFeedbackInput) {
   const fingerprintValues = [data.type, data.content, data.contact]
   assertClientCanSubmit('feedback', fingerprintValues)
@@ -25,5 +40,13 @@ export function submitFeedback(data: SubmitFeedbackInput) {
   }).then((response) => {
     markClientSubmitted('feedback', fingerprintValues)
     return response
+  })
+}
+
+export function submitSchoolImportAlert(data: SchoolImportAlertInput) {
+  return requestApi<SchoolImportAlertResponse, SchoolImportAlertInput>({
+    method: 'POST',
+    path: '/feedback/school-import-alert',
+    data,
   })
 }

@@ -32,6 +32,7 @@ export class StudentAccountsService {
             id: true,
             name: true,
             shortName: true,
+            city: true,
             dataAccess: true,
             capabilities: true,
             config: true,
@@ -64,6 +65,7 @@ export class StudentAccountsService {
             id: true,
             name: true,
             shortName: true,
+            city: true,
             dataAccess: true,
             capabilities: true,
             config: true,
@@ -121,6 +123,7 @@ export class StudentAccountsService {
       id: string
       name: string
       shortName: string | null
+      city: string | null
       dataAccess?: unknown
       capabilities?: unknown
       config?: unknown
@@ -144,16 +147,18 @@ export class StudentAccountsService {
             id: account.school.id,
             name: account.school.name,
             shortName: account.school.shortName ?? undefined,
-            ...this.getSchoolWeatherLocation(account.school.config),
+            city: account.school.city ?? undefined,
+            ...this.getSchoolWeatherLocation(account.school.config, account.school.city),
           }
         : undefined,
     }
   }
 
-  private getSchoolWeatherLocation(config: unknown) {
+  private getSchoolWeatherLocation(config: unknown, city?: string | null) {
     const root = this.asRecord(config)
     const provider = this.asRecord(root.provider)
-    const weatherLocation = this.asRecord(provider.weatherLocation)
+    const providerConfig = this.asRecord(root.providerConfig)
+    const weatherLocation = this.asRecord(provider.weatherLocation || providerConfig.weatherLocation)
     const latitude = this.getFiniteNumber(weatherLocation.latitude)
     const longitude = this.getFiniteNumber(weatherLocation.longitude)
 
@@ -163,7 +168,7 @@ export class StudentAccountsService {
 
     return {
       weatherLocation: {
-        displayName: this.getOptionalString(weatherLocation.displayName),
+        displayName: this.getOptionalString(weatherLocation.displayName) || this.getOptionalString(city),
         latitude,
         longitude,
       },

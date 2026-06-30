@@ -168,6 +168,9 @@ export interface SchoolWeatherResponse {
   schoolId: string
   displayName: string
   text: string
+  temperature?: number
+  weatherCode?: number
+  condition?: string
   cachedAt: string
   expiresAt: string
 }
@@ -302,6 +305,7 @@ export interface StudentAccountSummary {
     id: string
     name: string
     shortName?: string
+    city?: string
     weatherLocation?: {
       displayName?: string
       latitude: number

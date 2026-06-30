@@ -56,6 +56,9 @@ export interface SchoolWeatherResponse {
   schoolId: string
   displayName: string
   text: string
+  temperature?: number
+  weatherCode?: number
+  condition?: string
   cachedAt: string
   expiresAt: string
 }

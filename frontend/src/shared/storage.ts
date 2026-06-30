@@ -159,6 +159,7 @@ function normalizeAccountSummary(value: unknown): StudentAccountSummary | null {
           id: String(school.id || account.schoolId),
           name: String(school.name || ''),
           shortName: typeof school.shortName === 'string' ? school.shortName : undefined,
+          city: typeof school.city === 'string' ? school.city : undefined,
           ...(latitude !== undefined && longitude !== undefined
             ? {
                 weatherLocation: {

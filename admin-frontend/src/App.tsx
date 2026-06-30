@@ -55,6 +55,7 @@ interface AdminStats {
   accounts: number
   pendingSubmissions: number
   pendingFeedback: number
+  pendingSchoolAlerts?: number
   activeNotifications?: number
 }
 
@@ -348,9 +349,17 @@ interface SubmissionConfirmState {
 type SchoolFilters = { keyword: string; status: string; enabled: string; sortBy: string; sortOrder: string; offset: number }
 type UserFilters = { keyword: string; schoolId: string; schoolKeyword: string; status: string; offset: number }
 type SubmissionFilters = { keyword: string; status: string; extraVerification: string; adaptationHelp: string; sortBy: string; sortOrder: string; offset: number }
-type FeedbackFilters = { status: string; schoolKeyword: string; offset: number }
+type FeedbackFilters = { status: string; type: string; schoolKeyword: string; offset: number }
 type NotificationFilters = { keyword: string; targetType: string; active: string; offset: number }
 type SubmissionStatus = 'submitted' | 'candidate' | 'disabled'
+
+const FEEDBACK_STATUS_OPTIONS = [
+  ['', '全部'],
+  ['pending', '待处理'],
+  ['processed', '已处理'],
+  ['ignored', '已忽略'],
+  ['archived', '已归档'],
+] as const
 
 const SUBMISSION_STATUS_OPTIONS = [
   ['', '全部'],
@@ -387,36 +396,36 @@ const DEFAULT_HOME_SHORTCUT_CONFIG: HomeShortcutConfig = {
 
 const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   overview: {
-    title: '总览',
-    description: '查看接入规模、待办数量和最近需要处理的事项。',
+    title: '运营总览',
+    description: '先看今天有哪些事要处理，再进入对应页面处理申请、反馈和学校异常。',
   },
   schools: {
     title: '学校管理',
-    description: '筛选学校、启停学校、配置学期首周、上课时间和天气位置。',
+    description: '管理学校是否开放给学生使用，并维护首周、上课时间和天气位置。',
   },
   users: {
     title: '用户管理',
-    description: '查看用户联系方式、学校、专业和账号状态，并按学校实时筛选。',
+    description: '查找学生账号，查看学校、专业、联系方式和账号是否还能正常使用。',
   },
   submissions: {
     title: '接入申请',
-    description: '审核用户提交的学校接入申请。',
+    description: '处理用户提交的新学校申请，确认资料后通过或驳回。',
   },
   feedback: {
     title: '用户反馈',
-    description: '查看用户反馈和关联学生信息。',
+    description: '查看用户遇到的问题，按学校和状态筛选，并记录处理结果。',
   },
   notifications: {
     title: '通知管理',
-    description: '向指定用户或全平台发送通知，用户下次打开项目时弹窗并进入消息历史。',
+    description: '给全平台、某个学校或某个用户发送弹窗通知，并查看发送记录。',
   },
   reminders: {
     title: '提醒设置',
-    description: '调整每日课程和考试提醒的发送窗口、批量、并发与 dry-run 状态。',
+    description: '设置课程和考试提醒什么时候发送、发多少、是否只试运行。',
   },
   appSettings: {
     title: '首页菜单',
-    description: '调整小程序首页日期下方快捷入口的显示、排序和短标题。',
+    description: '控制小程序首页快捷入口显示哪些、叫什么、排在什么位置。',
   },
 }
 
@@ -456,6 +465,13 @@ function buildQuery(params: Record<string, string | number | undefined>) {
 
 function joinFilled(values: Array<string | number | null | undefined>) {
   return values.filter((value) => value !== null && value !== undefined && String(value).trim()).join(' / ')
+}
+
+function getSchoolWeatherDisplayName(school: SchoolItem) {
+  if (!school.weatherLocation) return '未配置坐标'
+
+  const displayName = String(school.weatherLocation.displayName || '').trim()
+  return displayName || school.city || '未配置坐标'
 }
 
 function display(value: unknown, fallback = '--') {
@@ -541,6 +557,8 @@ function getSubmissionGroupTime(group: { items: SubmissionItem[] }, mode: 'min' 
 }
 
 function getFeedbackTypeLabel(type: string) {
+  if (type === 'school_import_alert') return '学校异常告警'
+
   const labels: Record<string, string> = {
     experience: '体验反馈',
     bug: '问题反馈',
@@ -548,6 +566,42 @@ function getFeedbackTypeLabel(type: string) {
   }
 
   return labels[type] || display(type, '反馈')
+}
+
+function getFeedbackStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending: '待处理',
+    processed: '已处理',
+    ignored: '已忽略',
+    archived: '已归档',
+  }
+
+  return labels[status] || display(status, '未知')
+}
+
+function getSchoolStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    catalog_only: '仅在目录中',
+    candidate: '候选学校',
+    researching: '调研中',
+    beta: '小范围试用',
+    enabled: '正式开放',
+    disabled: '已停用',
+  }
+
+  return labels[status] || display(status, '未知状态')
+}
+
+function getAccountStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    active: '正常可用',
+    need_login: '需要重新登录',
+    cached_only: '仅有缓存',
+    disabled: '已停用',
+    unbound: '已解绑',
+  }
+
+  return labels[status] || display(status, '未知状态')
 }
 
 function formatDate(value: string | null | undefined) {
@@ -605,10 +659,39 @@ function describeFetchError(error: unknown, apiBaseUrl: string) {
 }
 
 function statusTone(status: string) {
-  if (['enabled', 'processed', 'success'].includes(status)) return 'green'
-  if (['submitted', 'pending', 'catalog_only', 'candidate', 'researching', 'beta'].includes(status)) return 'amber'
-  if (['disabled', 'failed'].includes(status)) return 'red'
+  if (['enabled', 'processed', 'success', 'active'].includes(status)) return 'green'
+  if (['submitted', 'pending', 'catalog_only', 'candidate', 'researching', 'beta', 'need_login', 'cached_only'].includes(status)) return 'amber'
+  if (['disabled', 'failed', 'ignored', 'archived', 'unbound'].includes(status)) return 'red'
   return ''
+}
+
+function getPendingTaskCards(stats: AdminStats | null) {
+  return [
+    {
+      title: '学校异常告警',
+      count: stats?.pendingSchoolAlerts ?? 0,
+      detail: '先查看用户反馈里的学校异常，必要时停用学校。',
+      tone: 'red',
+    },
+    {
+      title: '待审核接入申请',
+      count: stats?.pendingSubmissions ?? 0,
+      detail: '确认学校资料和教务链接后，通过或驳回。',
+      tone: 'amber',
+    },
+    {
+      title: '待处理用户反馈',
+      count: stats?.pendingFeedback ?? 0,
+      detail: '查看反馈内容、学校和学生信息后更新状态。',
+      tone: 'blue',
+    },
+    {
+      title: '通知记录检查',
+      count: stats?.activeNotifications ?? 0,
+      detail: '确认仍在生效的通知是否需要停用。',
+      tone: 'green',
+    },
+  ]
 }
 
 function normalizeSearchText(value: string) {
@@ -702,7 +785,7 @@ export function App() {
     sortOrder: 'desc',
     offset: 0,
   })
-  const [feedbackFilters, setFeedbackFilters] = useState<FeedbackFilters>({ status: '', schoolKeyword: '', offset: 0 })
+  const [feedbackFilters, setFeedbackFilters] = useState<FeedbackFilters>({ status: '', type: '', schoolKeyword: '', offset: 0 })
   const [notificationFilters, setNotificationFilters] = useState<NotificationFilters>({ keyword: '', targetType: '', active: '', offset: 0 })
   const [notificationDraft, setNotificationDraft] = useState<NotificationDraft>({
     title: '',
@@ -714,6 +797,8 @@ export function App() {
   const [modal, setModal] = useState<ModalState | null>(null)
   const [confirmAction, setConfirmAction] = useState<ConfirmState | null>(null)
   const [submissionConfirmAction, setSubmissionConfirmAction] = useState<SubmissionConfirmState | null>(null)
+  const pendingTasks = getPendingTaskCards(stats)
+  const activeTask = pendingTasks.find((task) => task.count > 0)
 
   const requestApi = async <T,>(path: string, options: RequestInit & { bodyData?: unknown } = {}) => {
     const headers = new Headers(options.headers)
@@ -797,7 +882,7 @@ export function App() {
     }, FILTER_DEBOUNCE_MS)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeView, feedbackFilters.status, feedbackFilters.schoolKeyword])
+  }, [activeView, feedbackFilters.status, feedbackFilters.type, feedbackFilters.schoolKeyword])
 
   useEffect(() => {
     if (!authed || activeView !== 'notifications') return undefined
@@ -911,6 +996,7 @@ export function App() {
     if (view === 'feedback') {
       const query = buildQuery({
         status: feedbackFilters.status,
+        type: feedbackFilters.type,
         schoolKeyword: feedbackFilters.schoolKeyword,
         limit: PAGE_SIZE,
         offset: feedbackFilters.offset,
@@ -1039,6 +1125,7 @@ export function App() {
       if (showSpinner) setLoading(true)
       const query = buildQuery({
         status: nextFilters.status,
+        type: nextFilters.type,
         schoolKeyword: nextFilters.schoolKeyword,
         limit: PAGE_SIZE,
         offset: nextFilters.offset,
@@ -1098,7 +1185,7 @@ export function App() {
 
   function openSchoolFeedback(school: SchoolItem) {
     setActiveView('feedback')
-    setFeedbackFilters({ status: '', schoolKeyword: school.name, offset: 0 })
+    setFeedbackFilters({ status: '', type: '', schoolKeyword: school.name, offset: 0 })
   }
 
   function openSchoolUsers(school: SchoolItem) {
@@ -1185,6 +1272,32 @@ export function App() {
         })
       )))
       await refreshCurrentView(`${rejectedItems.length} 条申请已删除。`)
+    } catch (error) {
+      showStatus(describeFetchError(error, baseUrl), 'error')
+    }
+  }
+
+  async function updateFeedbackStatus(item: FeedbackItem, nextStatus: string) {
+    const status = nextStatus.trim()
+    if (!status) return
+
+    try {
+      await requestApi(`/admin/feedback/${encodeURIComponent(item.id)}`, {
+        method: 'PATCH',
+        bodyData: { status },
+      })
+      await refreshFeedbackWithFilters(feedbackFilters, `反馈已设为${getFeedbackStatusLabel(status)}。`)
+    } catch (error) {
+      showStatus(describeFetchError(error, baseUrl), 'error')
+    }
+  }
+
+  async function deleteFeedback(item: FeedbackItem) {
+    try {
+      await requestApi(`/admin/feedback/${encodeURIComponent(item.id)}`, {
+        method: 'DELETE',
+      })
+      await refreshFeedbackWithFilters(feedbackFilters, '反馈已删除。')
     } catch (error) {
       showStatus(describeFetchError(error, baseUrl), 'error')
     }
@@ -1323,7 +1436,7 @@ export function App() {
         method: 'POST',
       })
       setReminderRun(result)
-      showStatus('提醒 dry-run 已完成。')
+      showStatus('提醒试跑已完成。')
     } catch (error) {
       showStatus(describeFetchError(error, baseUrl), 'error')
     } finally {
@@ -1340,17 +1453,17 @@ export function App() {
             <div className="brand-mark">CS</div>
             <div>
               <div className="brand-title">CSchedule 管理后台</div>
-              <div className="brand-subtitle">网站版运维控制台</div>
+              <div className="brand-subtitle">网站版运营后台</div>
             </div>
           </div>
           <h1 id="login-title">管理员登录</h1>
-          <p>输入后端配置的 ADMIN_API_KEY。登录后会先读取统计接口，用于确认密钥和接口地址可用。</p>
+          <p>输入管理员密钥。登录后会先检查接口地址是否可用，再进入管理后台。</p>
           <label className="field">
             <span>后端接口地址</span>
             <input value={loginBaseUrl} onChange={(event) => setLoginBaseUrl(event.target.value)} autoComplete="url" />
           </label>
           <label className="field">
-            <span>Admin API Key</span>
+            <span>管理员密钥</span>
             <input
               type="password"
               value={loginKey}
@@ -1378,7 +1491,7 @@ export function App() {
           <div className="brand-mark">CS</div>
           <div>
             <div className="brand-title">CSchedule</div>
-            <div className="brand-subtitle">Admin Console</div>
+            <div className="brand-subtitle">运营后台</div>
           </div>
         </div>
         <nav className="nav" aria-label="主导航">
@@ -1396,15 +1509,21 @@ export function App() {
 
       <main className="main">
         {status && <StatusLine status={status} />}
-        <header className="topbar">
-          <div>
-            <div className="page-kicker">Admin</div>
+        <header className="topbar admin-hero">
+          <div className="hero-copy">
+            <div className="page-kicker">管理员后台</div>
             <h1>{viewMeta[activeView].title}</h1>
+            <p>{viewMeta[activeView].description}</p>
+            <div className="hero-task-line">
+              <span>当前优先事项</span>
+              <strong>{activeTask ? activeTask.title : '暂无待办'}</strong>
+              <small>{activeTask ? activeTask.detail : '可以检查学校配置和通知记录。'}</small>
+            </div>
           </div>
           <div className="topbar-actions">
             <button className="button secondary" type="button" onClick={() => void refreshCurrentView()} disabled={loading}>
               <RefreshCw size={16} />
-              刷新
+              刷新当前页
             </button>
             <button className="button ghost" type="button" onClick={logout}>
               <LogOut size={16} />
@@ -1419,7 +1538,7 @@ export function App() {
             <input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} autoComplete="url" />
           </label>
           <label className="field">
-            <span>Admin API Key</span>
+            <span>管理员密钥</span>
             <input type="password" value={adminKey} onChange={(event) => setAdminKey(event.target.value)} autoComplete="current-password" />
           </label>
           <button className="button secondary" type="button" onClick={() => showStatus('配置已保存。')}>
@@ -1432,7 +1551,18 @@ export function App() {
 
         <section className="workspace">
           {loading && <Panel><div className="empty">正在加载数据...</div></Panel>}
-          {!loading && activeView === 'overview' && <Overview stats={stats} onRefresh={() => void refreshCurrentView()} />}
+          {!loading && activeView === 'overview' && (
+            <Overview
+              stats={stats}
+              onRefresh={() => void refreshCurrentView()}
+              onOpenSchoolAlerts={() => {
+                const nextFilters = { status: 'pending', type: 'school_import_alert', schoolKeyword: '', offset: 0 }
+                setActiveView('feedback')
+                setFeedbackFilters(nextFilters)
+                void refreshFeedbackWithFilters(nextFilters)
+              }}
+            />
+          )}
           {!loading && activeView === 'schools' && (
             <SchoolsView
               schools={schools}
@@ -1511,6 +1641,8 @@ export function App() {
                 void refreshFeedbackWithFilters(nextFilters, '数据已刷新。')
               }}
               onSelect={setSelectedFeedback}
+              onUpdateStatus={(item, status) => void updateFeedbackStatus(item, status)}
+              onDelete={(item) => void deleteFeedback(item)}
               onShowJson={(item) => setModal({ title: '反馈原始数据', description: item.id, mode: 'json', value: item })}
             />
           )}
@@ -2192,20 +2324,26 @@ function StatusLine({ status }: { status: StatusMessage }) {
 }
 
 function MetricGrid({ stats }: { stats: AdminStats | null }) {
+  const pendingSubmissions = stats?.pendingSubmissions ?? 0
+  const pendingFeedback = stats?.pendingFeedback ?? 0
+
   return (
     <section className="metric-grid" aria-label="关键指标">
-      <Metric label="学校总数" value={stats?.schools.total} foot={`已启用 ${stats?.schools.enabled ?? '--'} 所`} />
-      <Metric label="学生账号" value={stats?.accounts} foot="当前数据库账号数量" />
-      <Metric label="待审核申请" value={stats?.pendingSubmissions} foot="状态为 submitted" />
-      <Metric label="待处理反馈" value={stats?.pendingFeedback} foot="状态为 pending" />
+      <Metric label="开放学校" value={stats?.schools.enabled} foot={`共 ${stats?.schools.total ?? '--'} 所学校，已开放的学生可直接使用`} tone="green" />
+      <Metric label="学生账号" value={stats?.accounts} foot="当前数据库中已有的学生账号数量" tone="blue" />
+      <Metric label="待审核申请" value={pendingSubmissions} foot="用户提交的新学校申请，需要人工确认" tone={pendingSubmissions ? 'amber' : 'green'} />
+      <Metric label="待处理反馈" value={pendingFeedback} foot="用户问题、建议和学校异常告警" tone={pendingFeedback ? 'red' : 'green'} />
     </section>
   )
 }
 
-function Metric({ label, value, foot }: { label: string; value?: number; foot: string }) {
+function Metric({ label, value, foot, tone = 'blue' }: { label: string; value?: number; foot: string; tone?: string }) {
   return (
-    <article className="metric-card">
-      <div className="metric-label">{label}</div>
+    <article className={'metric-card ' + tone}>
+      <div className="metric-head">
+        <div className="metric-label">{label}</div>
+        <span className="metric-chip">实时</span>
+      </div>
       <div className="metric-value">{value ?? '--'}</div>
       <div className="metric-foot">{foot}</div>
     </article>
@@ -2218,31 +2356,79 @@ function Panel({ children }: { children: React.ReactNode }) {
 
 function PanelHeader({ title, description, actions }: { title: string; description: string; actions?: React.ReactNode }) {
   return (
-    <header className="panel-header">
+    <header className={'panel-header' + (actions ? ' has-actions' : '')}>
       <div>
         <h2>{title}</h2>
         <div className="panel-description">{description}</div>
       </div>
-      <div className="row-actions">{actions}</div>
+      {actions && <div className="row-actions">{actions}</div>}
     </header>
   )
 }
 
-function Overview({ stats, onRefresh }: { stats: AdminStats | null; onRefresh: () => void }) {
+function Overview({
+  stats,
+  onRefresh,
+  onOpenSchoolAlerts,
+}: {
+  stats: AdminStats | null
+  onRefresh: () => void
+  onOpenSchoolAlerts: () => void
+}) {
+  const pendingSchoolAlerts = stats?.pendingSchoolAlerts ?? 0
+  const tasks = getPendingTaskCards(stats)
+  const enabledSchools = stats?.schools.enabled ?? 0
+  const totalSchools = stats?.schools.total ?? 0
+
   return (
     <Panel>
       <PanelHeader
-        title="待办概览"
-        description={viewMeta.overview.description}
+        title="今天先处理什么"
+        description="按影响用户的程度排序。先处理异常和申请，再检查反馈和通知。"
         actions={<button className="button secondary" type="button" onClick={onRefresh}><RefreshCw size={16} />刷新统计</button>}
       />
-      <div className="detail-panel">
-        <div className="detail-list">
-          <DetailItem label="学校接入" value={`${stats?.schools.enabled ?? 0} / ${stats?.schools.total ?? 0} 所学校已启用`} />
-          <DetailItem label="申请审核" value={`${stats?.pendingSubmissions ?? 0} 条学校接入申请待处理`} />
-          <DetailItem label="用户反馈" value={`${stats?.pendingFeedback ?? 0} 条用户反馈待处理`} />
-          <DetailItem label="运维建议" value="优先处理 submitted 申请，再检查 pending 反馈中是否有学校适配问题。" />
+      {pendingSchoolAlerts > 0 && (
+        <div className="priority-alert">
+          <div>
+            <strong>学校异常告警</strong>
+            <span>{pendingSchoolAlerts} 条导入或同步异常待处理，可先停用对应学校并排查学校网站/云函数。</span>
+          </div>
+          <button className="button primary" type="button" onClick={onOpenSchoolAlerts}>
+            <TriangleAlert size={16} />
+            查看告警
+          </button>
         </div>
+      )}
+      <div className="overview-grid">
+        <div className="task-board" aria-label="运营待办">
+          {tasks.map((task) => (
+            <article className={'task-card ' + task.tone} key={task.title}>
+              <div className="task-card-main">
+                <div className="task-title">{task.title}</div>
+                <div className="task-detail">{task.detail}</div>
+              </div>
+              <div className="task-count">{task.count}</div>
+              {task.title === '学校异常告警' && task.count > 0 && (
+                <button className="button primary task-action" type="button" onClick={onOpenSchoolAlerts}>
+                  <TriangleAlert size={16} />
+                  处理告警
+                </button>
+              )}
+            </article>
+          ))}
+        </div>
+        <aside className="operator-guide">
+          <h3>日常处理顺序</h3>
+          <ol>
+            <li>先看学校异常，影响学生导入或同步时及时停用学校。</li>
+            <li>再审核接入申请，确认学校名称、地区和教务系统链接。</li>
+            <li>最后处理普通反馈，能解决的设为已处理，暂不处理的设为已忽略或归档。</li>
+          </ol>
+          <div className="detail-list compact">
+            <DetailItem label="学校开放情况" value={`${enabledSchools} / ${totalSchools} 所学校已开放`} />
+            <DetailItem label="通知检查" value={`${stats?.activeNotifications ?? 0} 条通知仍在生效`} />
+          </div>
+        </aside>
       </div>
     </Panel>
   )
@@ -2291,10 +2477,15 @@ function SchoolsView(props: {
         left.name.localeCompare(right.name, 'zh-CN')
     })
   }, [props.schools.items, props.filters.sortBy, props.filters.sortOrder])
+  const enabledCount = props.schools.items.filter((school) => school.enabled).length
 
   return (
     <Panel>
-      <PanelHeader title="学校管理" description={viewMeta.schools.description} />
+      <PanelHeader
+        title="学校列表"
+        description={viewMeta.schools.description}
+        actions={<div className="panel-count">本页 {props.schools.items.length} 所，已开放 {enabledCount} 所</div>}
+      />
       <div className="panel-tools">
         <label className="field grow">
           <span>学校关键词</span>
@@ -2337,13 +2528,13 @@ function SchoolsView(props: {
           <table>
             <thead>
               <tr>
-                <th>学校</th>
-                <th>状态</th>
-                <th>用户</th>
-                <th>上课时间</th>
-                <th>天气</th>
+                <th>学校信息</th>
+                <th>开放状态</th>
+                <th>学生数</th>
+                <th>时间配置</th>
+                <th>天气位置</th>
                 <th>默认首周</th>
-                <th>操作</th>
+                <th>常用操作</th>
               </tr>
             </thead>
             <tbody>
@@ -2351,35 +2542,39 @@ function SchoolsView(props: {
                 const sectionCount = school.sectionTimes?.length || 0
                 const profileCount = school.sectionTimeProfiles?.length || 0
                 const hasSectionTimeConfig = sectionCount > 0 || profileCount > 0
+                const weatherDisplayName = getSchoolWeatherDisplayName(school)
 
                 return (
                   <tr key={school.id}>
-                    <td>
+                    <td className="school-name-cell">
                       <div className="cell-title">{school.name}</div>
                       <div className="cell-meta">{joinFilled([school.id, school.shortName, school.province, school.city])}</div>
                     </td>
                     <td>
                       <Badge tone={school.enabled ? 'green' : 'red'}>{school.enabled ? '已启用' : '未启用'}</Badge>
-                      <div className="cell-meta">{school.status}</div>
+                      <div className="cell-meta">{getSchoolStatusLabel(school.status)}</div>
                     </td>
                     <td>
-                      <button className="count-link" type="button" title={`${school.userCount ?? 0}`} onClick={() => props.onOpenUsers(school)}>
-                        {displayCount(school.userCount)}
-                      </button>
+                      <div className="count-cell">
+                        <button className="count-link" type="button" title={`${school.userCount ?? 0}`} onClick={() => props.onOpenUsers(school)}>
+                          {displayCount(school.userCount)}
+                        </button>
+                        <span>查看学生</span>
+                      </div>
                     </td>
                     <td>
                       <Badge tone={hasSectionTimeConfig ? 'green' : 'amber'}>{hasSectionTimeConfig ? '已配置' : '未配置'}</Badge>
-                      <div className="cell-meta">{sectionCount ? `默认 ${sectionCount} 节` : '默认未配置'}{profileCount ? ` / 楼栋 ${profileCount} 组` : ''}</div>
+                      <div className="cell-meta">{sectionCount ? `通用 ${sectionCount} 节` : '通用时间未配置'}{profileCount ? ` / 楼栋 ${profileCount} 组` : ''}</div>
                     </td>
                     <td>
                       <Badge tone={school.weatherLocation ? 'green' : 'amber'}>{school.weatherLocation ? '已启用' : '未启用'}</Badge>
-                      <div className="cell-meta">{school.weatherLocation?.displayName || '未配置坐标'}</div>
+                      <div className="cell-meta">{weatherDisplayName}</div>
                     </td>
                     <td>
                       <SchoolTermStartCell school={school} />
                     </td>
                     <td>
-                      <div className="row-actions">
+                      <div className="row-actions school-actions">
                         <button className={'button ' + (school.enabled ? 'danger' : 'secondary')} type="button" onClick={() => props.onToggle(school)}>
                           {school.enabled ? <PowerOff size={16} /> : <Power size={16} />}
                           {school.enabled ? '停用' : '启用'}
@@ -2444,10 +2639,15 @@ function UsersView(props: {
   const updateFilters = (patch: Partial<UserFilters>) => {
     props.onFiltersChange((current) => ({ ...current, ...patch, offset: 0 }))
   }
+  const normalCount = props.data.items.filter((item) => item.status === 'active').length
 
   return (
     <Panel>
-      <PanelHeader title="用户管理" description={viewMeta.users.description} />
+      <PanelHeader
+        title="学生账号"
+        description={viewMeta.users.description}
+        actions={<div className="panel-count">本页 {props.data.items.length} 个账号，正常 {normalCount} 个</div>}
+      />
       <div className="panel-tools">
         <label className="field grow">
           <span>学校筛选</span>
@@ -2470,11 +2670,11 @@ function UsersView(props: {
           value={props.filters.status}
           options={[
             ['', '全部'],
-            ['active', 'active'],
-            ['need_login', 'need_login'],
-            ['cached_only', 'cached_only'],
-            ['disabled', 'disabled'],
-            ['unbound', 'unbound'],
+            ['active', '正常可用'],
+            ['need_login', '需要重新登录'],
+            ['cached_only', '仅有缓存'],
+            ['disabled', '已停用'],
+            ['unbound', '已解绑'],
           ]}
           onChange={(status) => updateFilters({ status })}
         />
@@ -2490,12 +2690,12 @@ function UsersView(props: {
           <table className="dense-table">
             <thead>
               <tr>
-                <th>用户</th>
+                <th>学生</th>
                 <th>联系方式</th>
                 <th>学校</th>
-                <th>专业</th>
-                <th>状态</th>
-                <th>来源</th>
+                <th>班级专业</th>
+                <th>账号状态</th>
+                <th>账号来源</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -2518,7 +2718,7 @@ function UsersView(props: {
                     <div className="cell-meta">{joinFilled([item.student?.level, item.student?.className])}</div>
                   </td>
                   <td>
-                    <Badge tone={statusTone(item.status)}>{item.status}</Badge>
+                    <Badge tone={statusTone(item.status)}>{getAccountStatusLabel(item.status)}</Badge>
                     <div className="cell-meta">{item.lastLoginAt ? `最近登录 ${formatDate(item.lastLoginAt)}` : `创建 ${formatDate(item.createdAt)}`}</div>
                   </td>
                   <td>
@@ -2583,10 +2783,15 @@ function SubmissionsView(props: {
           a.schoolName.localeCompare(b.schoolName, 'zh-CN')
       })
   }, [props.data.items, props.filters.keyword, props.filters.sortBy, props.filters.sortOrder])
+  const pendingGroupCount = groups.filter((group) => getPendingSubmissions(group.items).length > 0).length
 
   return (
     <Panel>
-      <PanelHeader title="接入申请" description={viewMeta.submissions.description} />
+      <PanelHeader
+        title="学校接入申请"
+        description={viewMeta.submissions.description}
+        actions={<div className="panel-count">本页 {groups.length} 所学校，{pendingGroupCount} 所待审核</div>}
+      />
       <div className="panel-tools">
         <label className="field grow">
           <span>学校搜索</span>
@@ -2668,7 +2873,7 @@ function SubmissionSchoolGroup(props: {
             <Badge tone="amber">{props.group.items.length} 人申请</Badge>
           </div>
           <div className="submission-school-meta">
-            <span>存放 {props.group.items.length} 条申请</span>
+            <span>同一学校的申请会合并在一起处理</span>
             <span>{statusSummary}</span>
           </div>
         </div>
@@ -2716,13 +2921,22 @@ function SubmissionCard(props: {
   }
 
   return (
-    <article className="submission-card" role="button" tabIndex={0} onClick={() => props.onOpen(props.item)} onKeyDown={(event) => {
+    <article className={'submission-card ' + statusTone(props.item.status)} role="button" tabIndex={0} onClick={() => props.onOpen(props.item)} onKeyDown={(event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault()
         props.onOpen(props.item)
       }
     }}>
-      <span className="submission-link">{website || '未填写链接'}</span>
+      <div className="submission-card-body">
+        <div className="submission-card-head">
+          <Badge tone={statusTone(props.item.status)}>{getSubmissionStatusLabel(props.item.status)}</Badge>
+          <span>{formatDate(props.item.createdAt)}</span>
+        </div>
+        <div className="submission-link">{website || '未填写教务链接'}</div>
+        <div className="submission-card-meta">
+          {display(joinFilled([props.item.province, props.item.city]), '省市未填写')}
+        </div>
+      </div>
       <div className="submission-card-actions">
         <button className="button ghost icon-button" type="button" title="打开链接" aria-label="打开链接" disabled={!website} onClick={jump}><ExternalLink size={16} /></button>
         {props.item.status === 'disabled' && (
@@ -2738,7 +2952,7 @@ function SubmissionDetail({ item }: { item: SubmissionItem }) {
   const website = item.eduSystemWebsite || item.loginUrl || item.officialWebsite || ''
   return (
     <div className="submission-detail">
-      <div className="detail-list">
+      <div className="detail-list detail-list-grid">
         <DetailItem label="学校名称" value={item.schoolName} />
         <DetailItem label="接入状态" value={getSubmissionStatusLabel(item.status)} />
         <DetailItem label="省市" value={display(joinFilled([item.province, item.city]))} />
@@ -2764,16 +2978,41 @@ function FeedbackView(props: {
   onFiltersChange: React.Dispatch<React.SetStateAction<FeedbackFilters>>
   onPage: (offset: number) => void
   onSelect: (item: FeedbackItem) => void
+  onUpdateStatus: (item: FeedbackItem, status: string) => void
+  onDelete: (item: FeedbackItem) => void
   onShowJson: (item: FeedbackItem) => void
 }) {
+  const [customStatus, setCustomStatus] = useState('')
   const updateFilters = (patch: Partial<FeedbackFilters>) => {
     props.onFiltersChange((current) => ({ ...current, ...patch, offset: 0 }))
   }
+  const selected = props.selected
+  const selectedSchool = selected
+    ? display(selected.account?.school?.name || selected.school?.name || selected.schoolId)
+    : '--'
+  const selectedStudent = selected
+    ? joinFilled([
+      selected.student?.name,
+      selected.student?.studentNo,
+      selected.student?.grade,
+      selected.student?.major,
+      selected.student?.className,
+      selected.student?.level,
+    ]) || '--'
+    : '--'
+  const selectedAccount = selected
+    ? joinFilled([selected.account?.displayName, selected.accountId]) || '--'
+    : '--'
+  const pendingCount = props.data.items.filter((item) => item.status === 'pending').length
 
   return (
-    <div className="split-grid">
+    <div className="split-grid feedback-workspace">
       <Panel>
-        <PanelHeader title="用户反馈" description={viewMeta.feedback.description} />
+        <PanelHeader
+          title="反馈列表"
+          description={viewMeta.feedback.description}
+          actions={<div className="panel-count">本页 {props.data.items.length} 条，待处理 {pendingCount} 条</div>}
+        />
         <div className="panel-tools">
           <label className="field grow">
             <span>学校名称</span>
@@ -2786,8 +3025,14 @@ function FeedbackView(props: {
           <SelectField
             label="状态"
             value={props.filters.status}
-            options={[['', '全部'], ['pending', '待处理'], ['processed', '已处理']]}
+            options={FEEDBACK_STATUS_OPTIONS}
             onChange={(status) => updateFilters({ status })}
+          />
+          <SelectField
+            label="类型"
+            value={props.filters.type}
+            options={[['', '全部'], ['school_import_alert', '学校异常告警'], ['experience', '体验反馈'], ['bug', '问题反馈'], ['suggestion', '功能建议']]}
+            onChange={(type) => updateFilters({ type })}
           />
           {props.filters.schoolKeyword && (
             <button className="button secondary" type="button" onClick={() => updateFilters({ schoolKeyword: '' })}>
@@ -2802,7 +3047,7 @@ function FeedbackView(props: {
               const active = props.selected?.id === item.id
               return (
                 <button
-                  className={'feedback-row' + (active ? ' active' : '')}
+                  className={'feedback-row' + (active ? ' active' : '') + (item.type === 'school_import_alert' ? ' alert-row' : '')}
                   type="button"
                   key={item.id}
                   onClick={() => props.onSelect(item)}
@@ -2810,9 +3055,11 @@ function FeedbackView(props: {
                   <span className="feedback-row-main">
                     <span className="feedback-row-title">
                       {getFeedbackTypeLabel(item.type)}
-                      <Badge tone={statusTone(item.status)}>{item.status}</Badge>
+                      <Badge tone={statusTone(item.status)}>{getFeedbackStatusLabel(item.status)}</Badge>
                     </span>
-                    <span className="feedback-row-content">{display(item.content).slice(0, 120)}</span>
+                    <span className="feedback-row-content" title={display(item.content)}>
+                      {display(item.content).slice(0, 120)}
+                    </span>
                   </span>
                   <span className="feedback-row-side">
                     <span>{display(item.account?.school?.name || item.school?.name || item.schoolId)}</span>
@@ -2826,27 +3073,78 @@ function FeedbackView(props: {
         ) : <div className="empty">没有匹配的用户反馈。</div>}
         <Pagination page={props.data} offset={props.filters.offset} onPage={props.onPage} />
       </Panel>
-      <aside className="panel detail-panel">
+      <aside className="panel detail-panel feedback-detail-panel">
         <div className="detail-heading">
           <h2>反馈详情</h2>
-          {props.selected && <Badge tone={statusTone(props.selected.status)}>{props.selected.status}</Badge>}
+          {selected && <Badge tone={statusTone(selected.status)}>{getFeedbackStatusLabel(selected.status)}</Badge>}
         </div>
-        {props.selected ? (
-          <>
-            <div className="detail-list">
-              <DetailItem label="内容" value={display(props.selected.content)} />
-              <DetailItem label="类型" value={getFeedbackTypeLabel(props.selected.type)} />
-              <DetailItem label="联系方式" value={display(props.selected.contact)} />
-              <DetailItem label="学校" value={display(props.selected.account?.school?.name || props.selected.school?.name || props.selected.schoolId)} />
-              <DetailItem label="学生" value={joinFilled([props.selected.student?.name, props.selected.student?.studentNo, props.selected.student?.grade, props.selected.student?.major, props.selected.student?.className]) || '--'} />
-              <DetailItem label="账号" value={display(props.selected.accountId)} />
-              <DetailItem label="时间" value={formatDate(props.selected.createdAt)} />
+        {selected ? (
+          <div className="feedback-detail">
+            <section className="feedback-detail-section primary">
+              <div className="feedback-detail-section-head">
+                <span>完整反馈内容</span>
+                <Badge tone={selected.type === 'school_import_alert' ? 'red' : ''}>{getFeedbackTypeLabel(selected.type)}</Badge>
+              </div>
+              <div className="feedback-detail-content">{display(selected.content)}</div>
+            </section>
+            <div className="feedback-detail-grid">
+              <DetailItem label="联系方式" value={display(selected.contact)} />
+              <DetailItem label="提交时间" value={formatDate(selected.createdAt)} />
+              <DetailItem label="学校" value={selectedSchool} />
+              <DetailItem label="学生" value={selectedStudent} />
+              <DetailItem label="账号" value={selectedAccount} />
+              <DetailItem label="反馈 ID" value={selected.id} />
+              <DetailItem label="学校 ID" value={display(selected.schoolId)} />
+              <DetailItem label="账号状态" value={selected.account?.status ? getAccountStatusLabel(selected.account.status) : '--'} />
             </div>
-            <button className="button secondary detail-button" type="button" onClick={() => props.selected && props.onShowJson(props.selected)}>
-              <FileJson size={16} />
-              查看原始 JSON
-            </button>
-          </>
+            <div className="feedback-action-note">处理后请更新状态，列表里的待处理数量会同步减少。</div>
+            <div className="feedback-detail-actions">
+              <button className="button secondary detail-button" type="button" onClick={() => props.onUpdateStatus(selected, 'pending')}>
+                <RefreshCw size={16} />
+                设为待处理
+              </button>
+              <button className="button secondary detail-button" type="button" onClick={() => props.onUpdateStatus(selected, 'processed')}>
+                <Check size={16} />
+                设为已处理
+              </button>
+              <button className="button secondary detail-button" type="button" onClick={() => props.onUpdateStatus(selected, 'ignored')}>
+                <X size={16} />
+                设为已忽略
+              </button>
+              <button className="button secondary detail-button" type="button" onClick={() => props.onUpdateStatus(selected, 'archived')}>
+                <Inbox size={16} />
+                设为已归档
+              </button>
+              <label className="field detail-button">
+                <span>其他状态</span>
+                <input
+                  value={customStatus}
+                  placeholder="例如 follow_up"
+                  onChange={(event) => setCustomStatus(event.target.value)}
+                />
+              </label>
+              <button
+                className="button secondary detail-button"
+                type="button"
+                disabled={!customStatus.trim()}
+                onClick={() => {
+                  props.onUpdateStatus(selected, customStatus)
+                  setCustomStatus('')
+                }}
+              >
+                <Save size={16} />
+                保存状态
+              </button>
+              <button className="button secondary detail-button" type="button" onClick={() => props.onShowJson(selected)}>
+                <FileJson size={16} />
+                查看原始 JSON
+              </button>
+              <button className="button danger detail-button" type="button" onClick={() => props.onDelete(selected)}>
+                <Trash2 size={16} />
+                删除反馈
+              </button>
+            </div>
+          </div>
         ) : <div className="empty">选择一条反馈查看详情。</div>}
       </aside>
     </div>
@@ -2904,7 +3202,7 @@ function NotificationsView(props: {
   return (
     <div className="workspace notification-workspace">
       <Panel>
-        <PanelHeader title="发送通知" description={viewMeta.notifications.description} />
+        <PanelHeader title="新建通知" description={viewMeta.notifications.description} />
         <form className="notification-form" onSubmit={(event) => {
           event.preventDefault()
           if (canSubmit) props.onSubmit(props.draft)
@@ -2912,7 +3210,7 @@ function NotificationsView(props: {
           <div className="notification-composer">
             <div className="notification-target-card">
               <div className="notification-target-head">
-                <span className="notification-kicker">投放方式</span>
+                <span className="notification-kicker">发送给谁</span>
                 <Badge tone={targetBadgeTone}>{targetBadgeLabel}</Badge>
               </div>
               <SelectField
@@ -2927,26 +3225,26 @@ function NotificationsView(props: {
               />
               {props.draft.targetType === 'school' && (
                 <label className="field">
-                  <span>目标学校 ID</span>
+                  <span>学校 ID</span>
                   <input
                     value={props.draft.targetSchoolId}
-                    placeholder="schoolId"
+                    placeholder="从学校管理页复制学校 ID"
                     onChange={(event) => setDraftValue('targetSchoolId', event.target.value.trim())}
                   />
                 </label>
               )}
               {props.draft.targetType === 'user' && (
                 <label className="field">
-                  <span>目标用户 ID</span>
+                  <span>用户 ID</span>
                   <input
                     value={props.draft.targetAccountId}
-                    placeholder="accountId"
+                    placeholder="从用户管理页复制用户 ID"
                     onChange={(event) => setDraftValue('targetAccountId', event.target.value.trim())}
                   />
                 </label>
               )}
               <div className="notification-note">
-                全平台、指定学校和指定用户消息都会在用户下次打开项目时弹窗，并同步进入个人中心的通知页。
+                发送后，用户下次打开小程序会看到弹窗，也能在个人中心通知页再次查看。
               </div>
             </div>
             <div className="notification-message-card">
@@ -2955,7 +3253,7 @@ function NotificationsView(props: {
                   <span>标题</span>
                   <input
                     value={props.draft.title}
-                    placeholder="用于弹窗标题和消息列表标题"
+                    placeholder="例如：今晚 22:00 进行系统维护"
                     onChange={(event) => setDraftValue('title', event.target.value)}
                   />
                 </label>
@@ -2963,7 +3261,7 @@ function NotificationsView(props: {
                   <span>内容</span>
                   <textarea
                     value={props.draft.content}
-                    placeholder="请输入通知内容"
+                    placeholder="用一句话讲清楚发生了什么、影响谁、需要用户做什么。"
                     onChange={(event) => setDraftValue('content', event.target.value)}
                   />
                 </label>
@@ -3105,6 +3403,9 @@ function RemindersView(props: {
   const setNumber = (key: keyof ReminderConfig, value: string) => {
     setDraft((current) => current ? { ...current, [key]: Math.max(1, Number(value) || 1) } : current)
   }
+  const dryRunSummary = props.runResult
+    ? `扫描 ${props.runResult.total ?? 0} 条，发送 ${props.runResult.sent ?? 0} 条，跳过 ${props.runResult.skipped ?? 0} 条，失败 ${props.runResult.failed ?? 0} 条`
+    : '还没有运行过试跑'
 
   return (
     <Panel>
@@ -3113,66 +3414,98 @@ function RemindersView(props: {
         description={viewMeta.reminders.description}
         actions={
           <>
-            <button className="button secondary" type="button" onClick={props.onDryRun}><RefreshCw size={16} />Dry-run</button>
+            <button className="button secondary" type="button" onClick={props.onDryRun}><RefreshCw size={16} />试跑一次</button>
             <button className="button primary" type="button" onClick={() => props.onSave(draft)}><Save size={16} />保存</button>
           </>
         }
       />
-      <div className="settings-grid">
-        <label className="check-field">
-          <input type="checkbox" checked={draft.enabled} onChange={(event) => setValue('enabled', event.target.checked)} />
-          <span>启用自动提醒 worker</span>
-        </label>
-        <label className="check-field">
-          <input type="checkbox" checked={draft.dryRun} onChange={(event) => setValue('dryRun', event.target.checked)} />
-          <span>Dry-run 模式</span>
-        </label>
-        <label className="field">
-          <span>发送开始时间</span>
-          <input value={draft.sendWindowStart} onChange={(event) => setValue('sendWindowStart', event.target.value)} placeholder="07:30" />
-        </label>
-        <label className="field">
-          <span>发送结束时间</span>
-          <input value={draft.sendWindowEnd} onChange={(event) => setValue('sendWindowEnd', event.target.value)} placeholder="留空表示不设结束时间" />
-        </label>
-        <label className="field">
-          <span>每批数量</span>
-          <input type="number" min={1} value={draft.batchSize} onChange={(event) => setNumber('batchSize', event.target.value)} />
-        </label>
-        <label className="field">
-          <span>并发 worker 数</span>
-          <input type="number" min={1} value={draft.concurrency} onChange={(event) => setNumber('concurrency', event.target.value)} />
-        </label>
-        <label className="field">
-          <span>全局发送速率/秒</span>
-          <input type="number" min={1} value={draft.ratePerSecond} onChange={(event) => setNumber('ratePerSecond', event.target.value)} />
-        </label>
-        <label className="field">
-          <span>扫描间隔 ms</span>
-          <input type="number" min={1} value={draft.scanIntervalMs} onChange={(event) => setNumber('scanIntervalMs', event.target.value)} />
-        </label>
-        <label className="field">
-          <span>单轮最大运行 ms</span>
-          <input type="number" min={1} value={draft.maxRuntimeMs} onChange={(event) => setNumber('maxRuntimeMs', event.target.value)} />
-        </label>
-        <label className="field">
-          <span>测试 openid</span>
-          <input value={draft.testOpenid} onChange={(event) => setValue('testOpenid', event.target.value)} placeholder="生产留空" />
-        </label>
-        <label className="field">
-          <span>课程模板 ID</span>
-          <input value={draft.dailyCourseTemplateId} onChange={(event) => setValue('dailyCourseTemplateId', event.target.value)} />
-        </label>
-        <label className="field">
-          <span>考试模板 ID</span>
-          <input value={draft.examTemplateId} onChange={(event) => setValue('examTemplateId', event.target.value)} />
-        </label>
+      <div className="settings-sections">
+        <section className="settings-section">
+          <div className="settings-section-head">
+            <h3>开关</h3>
+            <p>决定提醒是否真正发送。试跑模式适合上线前检查，不会正式推送给用户。</p>
+          </div>
+          <div className="settings-grid compact">
+            <label className="check-field">
+              <input type="checkbox" checked={draft.enabled} onChange={(event) => setValue('enabled', event.target.checked)} />
+              <span>启用自动提醒</span>
+            </label>
+            <label className="check-field">
+              <input type="checkbox" checked={draft.dryRun} onChange={(event) => setValue('dryRun', event.target.checked)} />
+              <span>只试跑，不发送</span>
+            </label>
+          </div>
+        </section>
+        <section className="settings-section">
+          <div className="settings-section-head">
+            <h3>发送时间</h3>
+            <p>控制一天里什么时候可以发提醒，避免太早或太晚打扰学生。</p>
+          </div>
+          <div className="settings-grid compact">
+            <label className="field">
+              <span>开始发送</span>
+              <input value={draft.sendWindowStart} onChange={(event) => setValue('sendWindowStart', event.target.value)} placeholder="07:30" />
+            </label>
+            <label className="field">
+              <span>停止发送</span>
+              <input value={draft.sendWindowEnd} onChange={(event) => setValue('sendWindowEnd', event.target.value)} placeholder="留空表示不设结束时间" />
+            </label>
+            <label className="field">
+              <span>多久检查一次（毫秒）</span>
+              <input type="number" min={1} value={draft.scanIntervalMs} onChange={(event) => setNumber('scanIntervalMs', event.target.value)} />
+            </label>
+          </div>
+        </section>
+        <section className="settings-section">
+          <div className="settings-section-head">
+            <h3>发送能力</h3>
+            <p>数量越大，发送越快；如果平台限流或失败增多，就调小这些值。</p>
+          </div>
+          <div className="settings-grid compact">
+            <label className="field">
+              <span>每批最多处理</span>
+              <input type="number" min={1} value={draft.batchSize} onChange={(event) => setNumber('batchSize', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>同时处理数量</span>
+              <input type="number" min={1} value={draft.concurrency} onChange={(event) => setNumber('concurrency', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>每秒最多发送</span>
+              <input type="number" min={1} value={draft.ratePerSecond} onChange={(event) => setNumber('ratePerSecond', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>单轮最长运行（毫秒）</span>
+              <input type="number" min={1} value={draft.maxRuntimeMs} onChange={(event) => setNumber('maxRuntimeMs', event.target.value)} />
+            </label>
+          </div>
+        </section>
+        <section className="settings-section">
+          <div className="settings-section-head">
+            <h3>模板和测试</h3>
+            <p>模板 ID 来自微信订阅消息配置。测试用户标识留空时按正常规则发送。</p>
+          </div>
+          <div className="settings-grid compact">
+            <label className="field">
+              <span>测试用户标识</span>
+              <input value={draft.testOpenid} onChange={(event) => setValue('testOpenid', event.target.value)} placeholder="生产环境通常留空" />
+            </label>
+            <label className="field">
+              <span>课程提醒模板 ID</span>
+              <input value={draft.dailyCourseTemplateId} onChange={(event) => setValue('dailyCourseTemplateId', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>考试提醒模板 ID</span>
+              <input value={draft.examTemplateId} onChange={(event) => setValue('examTemplateId', event.target.value)} />
+            </label>
+          </div>
+        </section>
       </div>
       <div className="detail-panel">
-        <div className="detail-list">
-          <DetailItem label="窗口策略" value={draft.sendWindowEnd ? `${draft.sendWindowStart} - ${draft.sendWindowEnd}` : `${draft.sendWindowStart} 开始，不设结束时间`} />
-          <DetailItem label="吞吐估算" value={`约 ${draft.ratePerSecond * 60} 条/分钟，单轮最多处理 ${draft.batchSize} 条`} />
-          <DetailItem label="最近 dry-run" value={props.runResult ? JSON.stringify(props.runResult) : '尚未运行'} />
+        <div className="detail-list detail-list-grid">
+          <DetailItem label="发送窗口" value={draft.sendWindowEnd ? `${draft.sendWindowStart} - ${draft.sendWindowEnd}` : `${draft.sendWindowStart} 开始，不设结束时间`} />
+          <DetailItem label="发送速度估算" value={`约 ${draft.ratePerSecond * 60} 条/分钟，单轮最多处理 ${draft.batchSize} 条`} />
+          <DetailItem label="最近试跑结果" value={dryRunSummary} />
         </div>
       </div>
     </Panel>
@@ -3246,6 +3579,7 @@ function HomeShortcutSettingsView(props: {
               <div className="shortcut-settings-info">
                 <div className="cell-title">{option.name}</div>
                 <div className="cell-meta">{option.description}</div>
+                <div className="shortcut-user-effect">{item.enabled ? `用户会看到“${item.label}”入口` : '用户暂时看不到这个入口'}</div>
               </div>
               <label className="field shortcut-label-field">
                 <span>显示名称</span>

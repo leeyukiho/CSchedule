@@ -56,6 +56,7 @@ interface ManualSyncTask {
   key: string
   recordId: string
   account: ManualSyncAccount
+  schoolName: string
   target: DataTarget
   targets: DataTarget[]
   credentials: {
@@ -149,6 +150,25 @@ export class SyncService implements OnModuleInit {
       throw new BadRequestException(
         'UNSUPPORTED_TARGETS: targets must include course, score, exam or profile',
       )
+    }
+
+    if (!account.school.enabled || account.school.status !== 'enabled') {
+      const now = new Date()
+      const record = await this.prisma.syncRecord.create({
+        data: {
+          accountId: account.id,
+          schoolId: account.schoolId,
+          providerId: account.providerId,
+          target,
+          status: 'failed',
+          errorCode: 'SCHOOL_DISABLED',
+          errorMessage: '该学校暂时暂停同步，请等待恢复或联系管理员',
+          startedAt: now,
+          finishedAt: now,
+        },
+      })
+
+      return this.toSyncJobResponse(record)
     }
 
     if (account.status === 'unbound' || account.status === 'disabled') {
@@ -285,6 +305,7 @@ export class SyncService implements OnModuleInit {
           credentialSaveMode: account.credentialSaveMode,
           schoolConfig: account.school.config,
         },
+        schoolName: account.school.name,
         target,
         targets,
         credentials,
@@ -412,6 +433,16 @@ export class SyncService implements OnModuleInit {
           finishedAt: new Date(),
         },
       })
+
+      if (this.shouldCreateSchoolImportAlert(failure.errorCode)) {
+        await this.createSchoolImportAlert({
+          account: task.account,
+          schoolName: task.schoolName,
+          stage: 'manual_sync',
+          errorCode: failure.errorCode,
+          errorMessage: failure.errorMessage,
+        })
+      }
     }
   }
 
@@ -747,6 +778,59 @@ export class SyncService implements OnModuleInit {
       errorCode: 'UNKNOWN',
       errorMessage: message,
     }
+  }
+
+  private shouldCreateSchoolImportAlert(errorCode: string) {
+    return ![
+      'INVALID_CREDENTIAL',
+      'SAVED_CREDENTIAL_REQUIRED',
+      'SESSION_EXPIRED',
+      'RATE_LIMITED',
+    ].includes(errorCode)
+  }
+
+  private async createSchoolImportAlert(input: {
+    account: ManualSyncAccount
+    schoolName: string
+    stage: string
+    errorCode: string
+    errorMessage: string
+  }) {
+    const existing = await this.prisma.feedbackItem.findFirst({
+      where: {
+        schoolId: input.account.schoolId,
+        type: 'school_import_alert',
+        status: 'pending',
+        content: {
+          contains: `错误码：${input.errorCode}`,
+        },
+        createdAt: {
+          gt: new Date(Date.now() - 60 * 60 * 1000),
+        },
+      },
+      select: { id: true },
+    })
+
+    if (existing) {
+      return
+    }
+
+    await this.prisma.feedbackItem.create({
+      data: {
+        accountId: input.account.id,
+        schoolId: input.account.schoolId,
+        type: 'school_import_alert',
+        content: [
+          '学校导入/同步异常，请管理员优先处理。',
+          `学校：${input.schoolName}`,
+          `学校 ID：${input.account.schoolId}`,
+          `Provider：${input.account.providerId}`,
+          `阶段：${input.stage}`,
+          `错误码：${input.errorCode}`,
+          `错误信息：${input.errorMessage}`,
+        ].join('\n'),
+      },
+    })
   }
 
   private getCredentialAuthStatePatch(authState: unknown) {

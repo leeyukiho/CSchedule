@@ -38,6 +38,13 @@ type SchoolWeatherCacheEntry = SchoolWeatherResponse & {
   expiresAtMs: number
 }
 
+type SchoolWeatherCurrent = {
+  text: string
+  temperature?: number
+  weatherCode?: number
+  condition?: string
+}
+
 @Injectable()
 export class SchoolsService {
   private readonly weatherCache = new Map<string, SchoolWeatherCacheEntry>()
@@ -179,6 +186,7 @@ export class SchoolsService {
         id: true,
         name: true,
         shortName: true,
+        city: true,
         config: true,
         enabled: true,
         status: true,
@@ -201,6 +209,7 @@ export class SchoolsService {
       id: school.id,
       name: school.name,
       shortName: school.shortName,
+      city: school.city,
       location,
     })
   }
@@ -212,6 +221,7 @@ export class SchoolsService {
         id: true,
         name: true,
         shortName: true,
+        city: true,
         config: true,
         enabled: true,
         status: true,
@@ -234,6 +244,7 @@ export class SchoolsService {
       id: school.id,
       name: school.name,
       shortName: school.shortName,
+      city: school.city,
       location,
     })
   }
@@ -242,6 +253,7 @@ export class SchoolsService {
     id: string
     name: string
     shortName?: string | null
+    city?: string | null
     location: SchoolWeatherLocation
   }) {
     const cacheKey = this.getWeatherCacheKey(input.id, input.location)
@@ -259,10 +271,11 @@ export class SchoolsService {
     id: string
     name: string
     shortName?: string | null
+    city?: string | null
     location: SchoolWeatherLocation
   }) {
-    const displayName = input.location.displayName || input.shortName || input.name
-    const text = await this.fetchSchoolWeatherText({
+    const displayName = input.location.displayName || input.city || input.name
+    const weather = await this.fetchSchoolWeatherText({
       ...input.location,
       displayName,
     })
@@ -270,7 +283,10 @@ export class SchoolsService {
     const response: SchoolWeatherResponse = {
       schoolId: input.id,
       displayName,
-      text,
+      text: weather.text,
+      temperature: weather.temperature,
+      weatherCode: weather.weatherCode,
+      condition: weather.condition,
       cachedAt: new Date(cachedAtMs).toISOString(),
       expiresAt: new Date(cachedAtMs + WEATHER_CACHE_TTL_MS).toISOString(),
     }
@@ -834,21 +850,27 @@ export class SchoolsService {
       this.settleRequest(this.fetchJson(this.buildWeatherRequestUrl(location))),
       this.settleRequest(this.fetchJson(this.buildAirQualityRequestUrl(location))),
     ])
-    const weatherText = weatherData ? this.buildWeatherText(weatherData) : ''
+    const weather = weatherData ? this.buildWeatherText(weatherData) : null
+    const weatherText = weather?.text || ''
     const airQualityText = airQualityData ? this.buildAirQualityText(airQualityData) : ''
 
     if (!weatherText && !airQualityText) {
       throw new Error('Weather data unavailable')
     }
 
-    return [location.displayName, weatherText, airQualityText].filter(Boolean).join(' · ')
+    return {
+      text: [location.displayName, weatherText, airQualityText].filter(Boolean).join(' · '),
+      temperature: weather?.temperature,
+      weatherCode: weather?.weatherCode,
+      condition: weather?.condition,
+    }
   }
 
   private settleRequest<T>(request: Promise<T>) {
     return request.catch(() => undefined)
   }
 
-  private buildWeatherText(data: unknown) {
+  private buildWeatherText(data: unknown): SchoolWeatherCurrent {
     const record = this.asRecord(data)
     const current = this.asRecord(record.current)
     const legacyCurrent = this.asRecord(record.current_weather)
@@ -861,7 +883,12 @@ export class SchoolsService {
     const conditionText = this.getWeatherCodeLabel(weatherCode)
     const temperatureText = typeof temperature === 'number' ? `${Math.round(temperature)}°` : ''
 
-    return [conditionText, temperatureText].filter(Boolean).join(' ')
+    return {
+      text: [conditionText, temperatureText].filter(Boolean).join(' '),
+      temperature,
+      weatherCode,
+      condition: conditionText,
+    }
   }
 
   private buildAirQualityText(data: unknown) {

@@ -11,6 +11,24 @@ export interface SubmitFeedbackRequest {
   contact?: string
 }
 
+export interface SubmitSchoolImportAlertRequest {
+  schoolId?: string
+  accountId?: string
+  providerId?: string
+  contextId?: string
+  stage?: string
+  errorCode?: string
+  errorMessage?: string
+}
+
+export interface SubmitSchoolImportAlertResponse {
+  id: string
+  status: string
+  createdAt: string
+  schoolDisabled: boolean
+  userMessage?: string
+}
+
 const MAX_CONTENT_LENGTH = 1000
 const MAX_CONTACT_LENGTH = 120
 const CLIENT_COOLDOWN_MS = 60 * 1000
@@ -63,6 +81,76 @@ export class FeedbackService {
       id: feedback.id,
       status: feedback.status,
       createdAt: feedback.createdAt.toISOString(),
+    }
+  }
+
+  async submitSchoolImportAlert(
+    input: SubmitSchoolImportAlertRequest,
+  ): Promise<SubmitSchoolImportAlertResponse> {
+    const schoolId = this.getOptionalText(input.schoolId, 80)
+
+    if (!schoolId) {
+      throw new BadRequestException('缺少学校信息')
+    }
+
+    const school = await this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: {
+        id: true,
+        name: true,
+        shortName: true,
+        providerId: true,
+        enabled: true,
+        status: true,
+      },
+    })
+
+    if (!school) {
+      throw new BadRequestException('学校不存在')
+    }
+
+    const accountId = this.getOptionalText(input.accountId, 80)
+    const account = accountId
+      ? await this.prisma.studentAccount.findFirst({
+          where: { id: accountId, schoolId },
+          select: { id: true },
+        })
+      : null
+    const shouldDisableSchool = this.isSchoolSystemError(input)
+    const feedback = await this.prisma.$transaction(async (tx) => {
+      if (shouldDisableSchool && (school.enabled || school.status !== 'disabled')) {
+        await tx.school.update({
+          where: { id: school.id },
+          data: { enabled: false, status: 'disabled' },
+        })
+      }
+
+      return tx.feedbackItem.create({
+        data: {
+          accountId: account?.id,
+          schoolId: school.id,
+          type: 'school_import_alert',
+          content: this.buildSchoolImportAlertContent({
+            school,
+            providerId: input.providerId,
+            contextId: input.contextId,
+            stage: input.stage,
+            errorCode: input.errorCode,
+            errorMessage: input.errorMessage,
+            schoolDisabled: shouldDisableSchool,
+          }),
+        },
+      })
+    })
+
+    return {
+      id: feedback.id,
+      status: feedback.status,
+      createdAt: feedback.createdAt.toISOString(),
+      schoolDisabled: shouldDisableSchool,
+      ...(shouldDisableSchool
+        ? { userMessage: '学校教务系统暂时异常，已暂停该学校导入，请稍后再试' }
+        : {}),
     }
   }
 
@@ -142,5 +230,62 @@ export class FeedbackService {
   private getOptionalText(value: unknown, maxLength: number) {
     const text = this.getText(value, maxLength)
     return text || undefined
+  }
+
+  private buildSchoolImportAlertContent(input: {
+    school: { id: string; name: string; shortName: string | null; providerId: string | null }
+    providerId?: string
+    contextId?: string
+    stage?: string
+    errorCode?: string
+    errorMessage?: string
+    schoolDisabled?: boolean
+  }) {
+    const lines = [
+      `Auto disabled: ${input.schoolDisabled ? 'yes' : 'no'}`,
+      '学校导入/同步异常，请管理员优先处理。',
+      `学校：${input.school.name}${input.school.shortName ? `（${input.school.shortName}）` : ''}`,
+      `学校 ID：${input.school.id}`,
+      `Provider：${this.getOptionalText(input.providerId, 80) || input.school.providerId || '--'}`,
+      `阶段：${this.getOptionalText(input.stage, 80) || '--'}`,
+      `错误码：${this.getOptionalText(input.errorCode, 120) || '--'}`,
+      `错误信息：${this.getOptionalText(input.errorMessage, 500) || '--'}`,
+      `Context：${this.getOptionalText(input.contextId, 120) || '--'}`,
+    ]
+
+    return lines.join('\n').slice(0, MAX_CONTENT_LENGTH)
+  }
+
+  private isSchoolSystemError(input: SubmitSchoolImportAlertRequest) {
+    const code = this.getOptionalText(input.errorCode, 120)?.toUpperCase() || ''
+    const message = this.getOptionalText(input.errorMessage, 500)?.toLowerCase() || ''
+    const userErrorCodes = [
+      'INVALID_CREDENTIAL',
+      'SAVED_CREDENTIAL_REQUIRED',
+      'SESSION_EXPIRED',
+      'CREDENTIAL_SAVE_UNSUPPORTED',
+      'CLIENT_CACHE_RESULTS_UNTRUSTED',
+      'CLOUD_IMPORT_PROOF_REQUIRED',
+    ]
+
+    if (userErrorCodes.some((item) => code.includes(item) || message.includes(item.toLowerCase()))) {
+      return false
+    }
+
+    return (
+      code.includes('CLOUD_SYNC_FAILED') ||
+      code.includes('CLOUD_SYNC_EMPTY_RESULT') ||
+      code.includes('SYNC_TASK_TIMEOUT') ||
+      code.includes('PARSER_FAILED') ||
+      code.includes('UNKNOWN') ||
+      message.includes('request:fail') ||
+      message.includes('timeout') ||
+      message.includes('timed out') ||
+      message.includes('cloud_sync_failed') ||
+      message.includes('cloud_sync_empty_result') ||
+      message.includes('parser') ||
+      message.includes('课表导入失败') ||
+      message.includes('暂时无法导入')
+    )
   }
 }

@@ -8,7 +8,8 @@ import {
   hasCloudCredentialSync,
   runCredentialSyncWithCloud,
 } from '../../shared/api/cloud-sync'
-import { createLoginContext, listSchools, refreshSchoolTermStarts, saveSchoolTermStartsFromResponse } from '../../shared/api/schools'
+import { clearSchoolListCache, createLoginContext, listSchools, refreshSchoolTermStarts, saveSchoolTermStartsFromResponse } from '../../shared/api/schools'
+import { submitSchoolImportAlert } from '../../shared/api/feedback'
 import {
   FeatureCacheResponse,
   LoginContextResponse,
@@ -219,6 +220,18 @@ function getBindErrorMessage(error: unknown) {
   return message || '绑定失败'
 }
 
+function getImportErrorCode(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || '')
+  const match = message.match(/[A-Z][A-Z0-9_]{4,}/)
+
+  return match ? match[0] : undefined
+}
+
+function isSchoolDisabledError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || '')
+  return message.includes('SCHOOL_DISABLED')
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
 }
@@ -371,6 +384,7 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
   const contextSeq = useRef(0)
   const initialSchoolApplied = useRef(false)
   const initialSchool = useRef<SchoolListItem | null>(getInitialSchoolFromRoute())
+  const ignoreRouteSchoolSelection = useRef(false)
   const initialAccountId = useRef(getInitialAccountIdFromRoute())
   const redirectAfterBind = useRef(getRedirectAfterBindFromRoute())
 
@@ -426,6 +440,10 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
   )
 
   useDidShow(() => {
+    if (ignoreRouteSchoolSelection.current) {
+      return
+    }
+
     const routeSchool = getInitialSchoolFromRoute()
 
     if (!routeSchool || initialSchoolApplied.current || selectedSchool?.id === routeSchool.id) {
@@ -462,6 +480,10 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
   }, [message, errorText])
 
   useEffect(() => {
+    if (ignoreRouteSchoolSelection.current) {
+      return
+    }
+
     const routeSchool = initialSchool.current || getInitialSchoolFromRoute()
 
     if (!routeSchool || initialSchoolApplied.current || selectedSchool) {
@@ -580,8 +602,11 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
     setMessage(isFrontendCloudImport || isPasswordServerImport ? '正在导入课表' : '正在进入学校页面')
     setErrorText('')
 
+    let activeContextId = loginContext?.contextId
+
     try {
       const context = loginContext || await createLoginContext(selectedSchool.id)
+      activeContextId = context.contextId
       const reusableAccountId =
         initialAccountId.current &&
         getStoredAccountAccessToken(initialAccountId.current)
@@ -763,10 +788,60 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
         return
       }
     } catch (error) {
+      const alertResult = isSchoolDisabledError(error)
+        ? { schoolDisabled: true, userMessage: '学校教务系统暂时异常，已暂停该学校导入，请稍后再试' }
+        : await submitSchoolImportAlert({
+            schoolId: selectedSchool.id,
+            providerId: selectedSchool.providerId || selectedSchool.id,
+            contextId: activeContextId,
+            stage: 'first_import',
+            errorCode: getImportErrorCode(error),
+            errorMessage: error instanceof Error ? error.message : String(error || ''),
+          }).catch(() => null)
+
+      if (alertResult?.schoolDisabled) {
+        await handleSchoolDisabledAfterImport(alertResult.userMessage)
+        return
+      }
+
       setErrorText(getBindErrorMessage(error))
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleSchoolDisabledAfterImport(userMessage?: string) {
+    const text = userMessage || '学校教务系统暂时异常，已暂停该学校导入，请稍后再试'
+    const disabledSchoolId = selectedSchool?.id
+
+    clearSchoolListCache()
+    ignoreRouteSchoolSelection.current = true
+    requestSeq.current += 1
+    contextSeq.current += 1
+    if (disabledSchoolId) {
+      setSchools((current) => current.filter((school) => school.id !== disabledSchoolId))
+    } else {
+      setSchools([])
+    }
+    setSelectedSchool(null)
+    setLoginContext(null)
+    setForm({})
+    setSavePassword(false)
+    setFirstImportAgreementAccepted(false)
+    setStep('select_school')
+    setKeyword('')
+    setMessage('')
+    setErrorText(text)
+    initialSchool.current = null
+    initialSchoolApplied.current = false
+    await Taro.showModal({
+      title: '学校暂不可用',
+      content: text,
+      showCancel: false,
+      confirmText: '我知道了',
+    })
+
+    Taro.switchTab({ url: activeTab === 'home' ? '/pages/index/index' : '/pages/profile/index' })
   }
 
   async function finishBindSuccess() {
