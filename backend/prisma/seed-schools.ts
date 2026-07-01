@@ -71,8 +71,8 @@ interface ConnectedSchoolSeed {
   providerConfig: Record<string, unknown>
 }
 
-function toJson(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue
+function toJson(value: unknown) {
+  return JSON.parse(JSON.stringify(value ?? null))
 }
 
 function loadEnvFile(envFile: string) {

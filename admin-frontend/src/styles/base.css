@@ -1,0 +1,66 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 360px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  transition: background var(--motion-base), color var(--motion-base);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+a {
+  color: inherit;
+}
+
+pre,
+code {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+}
+
+.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -40px;
+  z-index: var(--z-modal);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--text-strong);
+  color: var(--surface);
+}
+
+.skip-link:focus {
+  top: 16px;
+}

@@ -335,7 +335,7 @@ export class RemindersService {
     }
 
     await this.prisma.reminderSubscription.updateMany({
-      where: { accountId, openid },
+      where: { accountId },
       data: {
         status: 'disabled',
         preferredTime,
