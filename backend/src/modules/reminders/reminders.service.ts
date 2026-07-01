@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { ReminderSubscription, ReminderType } from '@prisma/client'
+import { ReminderDeliveryStatus, ReminderSubscription, ReminderType } from '@prisma/client'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { ProviderDisplayService } from '../providers/provider-display.service'
@@ -72,6 +72,16 @@ interface AccountReminderPreference {
   dailyCourseEnabled: boolean
   examEnabled: boolean
   templateIds: string[]
+  templateIdMap: {
+    dailyCourse?: string
+    exam?: string
+  }
+}
+
+interface ReminderDeliveryListOptions {
+  limit?: number
+  status?: string
+  accountId?: string
 }
 
 @Injectable()
@@ -237,9 +247,35 @@ export class RemindersService {
       byType.get('daily_course'),
       byType.get('exam'),
       config.sendWindowStart,
-      this.getTemplateIds(config),
+      this.getTemplateInfo(config),
       account.wechatOpenid || undefined,
     )
+  }
+
+  async listRecentDeliveries(options: ReminderDeliveryListOptions = {}) {
+    const status = this.normalizeDeliveryStatus(options.status)
+    const limit = Math.min(Math.max(options.limit || 50, 1), 200)
+
+    const items = await this.prisma.reminderDelivery.findMany({
+      where: {
+        ...(status ? { status } : {}),
+        ...(options.accountId ? { accountId: options.accountId } : {}),
+      },
+      include: {
+        account: {
+          select: {
+            id: true,
+            displayName: true,
+            status: true,
+            school: { select: { id: true, name: true, shortName: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    })
+
+    return { items }
   }
 
   async updateAccountPreference(
@@ -248,6 +284,8 @@ export class RemindersService {
       enabled: boolean
       preferredTime?: string
       openid?: string
+      dailyCourseEnabled?: boolean
+      examEnabled?: boolean
     },
   ) {
     const account = await this.prisma.studentAccount.findUnique({
@@ -288,7 +326,7 @@ export class RemindersService {
           undefined,
           undefined,
           preferredTime,
-          this.getTemplateIds(config),
+          this.getTemplateInfo(config),
           account.wechatOpenid || undefined,
         )
       }
@@ -296,12 +334,23 @@ export class RemindersService {
       throw new Error('OPENID_REQUIRED')
     }
 
+    await this.prisma.reminderSubscription.updateMany({
+      where: { accountId },
+      data: {
+        status: 'disabled',
+        preferredTime,
+      },
+    })
+
+    const dailyCourseEnabled = input.enabled && (input.dailyCourseEnabled ?? true)
+    const examEnabled = input.enabled && (input.examEnabled ?? true)
+
     const [dailyCourse, exam] = await Promise.all([
       this.upsertAccountReminderType(
         accountId,
         openid,
         'daily_course',
-        input.enabled,
+        dailyCourseEnabled,
         preferredTime,
         byType.get('daily_course')?.templateId,
       ),
@@ -309,7 +358,7 @@ export class RemindersService {
         accountId,
         openid,
         'exam',
-        input.enabled,
+        examEnabled,
         preferredTime,
         byType.get('exam')?.templateId,
       ),
@@ -319,7 +368,7 @@ export class RemindersService {
       dailyCourse,
       exam,
       config.sendWindowStart,
-      this.getTemplateIds(config),
+      this.getTemplateInfo(config),
       openid,
     )
   }
@@ -706,7 +755,7 @@ export class RemindersService {
     dailyCourse: ReminderSubscription | undefined,
     exam: ReminderSubscription | undefined,
     defaultTime: string,
-    templateIds: string[],
+    templateInfo: { ids: string[]; map: { dailyCourse?: string; exam?: string } },
     accountOpenid?: string,
   ): AccountReminderPreference {
     const preferredTime = dailyCourse?.preferredTime || exam?.preferredTime || defaultTime
@@ -720,12 +769,27 @@ export class RemindersService {
       openid: accountOpenid || dailyCourse?.openid || exam?.openid || undefined,
       dailyCourseEnabled,
       examEnabled,
-      templateIds,
+      templateIds: templateInfo.ids,
+      templateIdMap: templateInfo.map,
     }
   }
 
-  private getTemplateIds(config: ReminderWorkerConfig) {
-    return [config.dailyCourseTemplateId, config.examTemplateId].filter(Boolean)
+  private getTemplateInfo(config: ReminderWorkerConfig) {
+    const map = {
+      dailyCourse: config.dailyCourseTemplateId || undefined,
+      exam: config.examTemplateId || undefined,
+    }
+
+    return {
+      ids: [map.dailyCourse, map.exam].filter((templateId): templateId is string => Boolean(templateId)),
+      map,
+    }
+  }
+
+  private normalizeDeliveryStatus(value?: string): ReminderDeliveryStatus | undefined {
+    return value === 'sent' || value === 'skipped' || value === 'failed' || value === 'pending'
+      ? value
+      : undefined
   }
 
   private normalizePreferredTime(value: string | undefined, fallback: string) {
@@ -1171,7 +1235,7 @@ export class RemindersService {
   }
 
   private getErrorCode(message: string) {
-    const subscribeSendMatch = message.match(/^WECHAT_SUBSCRIBE_SEND_FAILED:([^:]+)/)
+    const subscribeSendMatch = message.match(/WECHAT_SUBSCRIBE_SEND_FAILED:([^:]+)/)
 
     if (subscribeSendMatch) {
       return subscribeSendMatch[1] || 'WECHAT_SUBSCRIBE_SEND_FAILED'

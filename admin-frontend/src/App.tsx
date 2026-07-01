@@ -223,6 +223,36 @@ interface ReminderRunResult {
   reason?: string
 }
 
+interface ReminderDeliveryItem {
+  id: string
+  subscriptionId: string | null
+  accountId: string
+  openid: string
+  type: 'daily_course' | 'exam'
+  dateKey: string
+  status: 'pending' | 'sent' | 'skipped' | 'failed'
+  title?: string | null
+  summary?: string | null
+  errorCode?: string | null
+  errorMessage?: string | null
+  sentAt?: string | null
+  createdAt: string
+  account?: {
+    id: string
+    displayName: string | null
+    status: string
+    school?: {
+      id: string
+      name: string
+      shortName: string | null
+    } | null
+  } | null
+}
+
+interface ReminderDeliveriesResponse {
+  items: ReminderDeliveryItem[]
+}
+
 type HomeShortcutKey =
   | 'query'
   | 'schedule'
@@ -622,6 +652,20 @@ function getAdminNotificationTargetTone(targetType: NotificationItem['targetType
   return ''
 }
 
+function getReminderDeliveryStatusLabel(status: ReminderDeliveryItem['status']) {
+  if (status === 'sent') return '已发送'
+  if (status === 'failed') return '失败'
+  if (status === 'skipped') return '跳过'
+  return '待处理'
+}
+
+function getReminderDeliveryStatusTone(status: ReminderDeliveryItem['status']) {
+  if (status === 'sent') return 'green'
+  if (status === 'failed') return 'red'
+  if (status === 'skipped') return 'amber'
+  return ''
+}
+
 function getAdminNotificationTargetDetail(item: NotificationItem) {
   if (item.targetType === 'school') {
     return item.targetSchool
@@ -771,6 +815,7 @@ export function App() {
   const [feedback, setFeedback] = useState<PageResult<FeedbackItem>>({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
   const [notifications, setNotifications] = useState<PageResult<NotificationItem>>({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
   const [reminderConfig, setReminderConfig] = useState<ReminderConfig | null>(null)
+  const [reminderDeliveries, setReminderDeliveries] = useState<ReminderDeliveryItem[]>([])
   const [reminderRun, setReminderRun] = useState<ReminderRunResult | null>(null)
   const [homeShortcutConfig, setHomeShortcutConfig] = useState<HomeShortcutConfig | null>(null)
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null)
@@ -1018,7 +1063,13 @@ export function App() {
     }
 
     if (view === 'reminders') {
-      setReminderConfig(await load<ReminderConfig>('/admin/reminders/config'))
+      const [nextReminderConfig, nextReminderDeliveries] = await Promise.all([
+        load<ReminderConfig>('/admin/reminders/config'),
+        load<ReminderDeliveriesResponse>('/admin/reminders/deliveries?limit=50'),
+      ])
+
+      setReminderConfig(nextReminderConfig)
+      setReminderDeliveries(nextReminderDeliveries.items)
     }
 
     if (view === 'appSettings') {
@@ -1436,6 +1487,8 @@ export function App() {
         method: 'POST',
       })
       setReminderRun(result)
+      const nextDeliveries = await requestApi<ReminderDeliveriesResponse>('/admin/reminders/deliveries?limit=50')
+      setReminderDeliveries(nextDeliveries.items)
       showStatus('提醒试跑已完成。')
     } catch (error) {
       showStatus(describeFetchError(error, baseUrl), 'error')
@@ -1665,6 +1718,7 @@ export function App() {
           {!loading && activeView === 'reminders' && (
             <RemindersView
               config={reminderConfig}
+              deliveries={reminderDeliveries}
               runResult={reminderRun}
               onSave={(config) => void saveReminderConfig(config)}
               onDryRun={() => void runReminderDryRun()}
@@ -3383,6 +3437,7 @@ function NotificationsView(props: {
 
 function RemindersView(props: {
   config: ReminderConfig | null
+  deliveries: ReminderDeliveryItem[]
   runResult: ReminderRunResult | null
   onSave: (config: ReminderConfig) => void
   onDryRun: () => void
@@ -3508,6 +3563,52 @@ function RemindersView(props: {
           <DetailItem label="最近试跑结果" value={dryRunSummary} />
         </div>
       </div>
+      <section className="settings-section">
+        <div className="settings-section-head">
+          <h3>最近发送记录</h3>
+          <p>展示最近 50 条提醒发送、跳过和失败记录。微信拒收会显示 43101，便于直接判断用户未授权或授权已消耗。</p>
+        </div>
+        {props.deliveries.length ? (
+          <div className="table-wrap">
+            <table className="dense-table">
+              <thead>
+                <tr>
+                  <th>用户</th>
+                  <th>类型</th>
+                  <th>状态</th>
+                  <th>内容</th>
+                  <th>错误</th>
+                  <th>时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {props.deliveries.map((item) => (
+                  <tr key={item.id}>
+                    <td>
+                      <div className="cell-title">{item.account?.displayName || item.accountId}</div>
+                      <div className="cell-meta">{item.account?.school?.shortName || item.account?.school?.name || item.account?.status || item.accountId}</div>
+                    </td>
+                    <td>{item.type === 'daily_course' ? '课程' : '考试'}</td>
+                    <td><Badge tone={getReminderDeliveryStatusTone(item.status)}>{getReminderDeliveryStatusLabel(item.status)}</Badge></td>
+                    <td>
+                      <div className="cell-title">{item.title || '无标题'}</div>
+                      <div className="cell-meta">{item.summary || item.dateKey}</div>
+                    </td>
+                    <td>
+                      <div className="cell-title">{item.errorCode || '-'}</div>
+                      <div className="cell-meta">{item.errorMessage || '-'}</div>
+                    </td>
+                    <td>
+                      <div className="cell-title">{formatDate(item.createdAt)}</div>
+                      <div className="cell-meta">发送日 {item.dateKey}</div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <div className="empty">暂无提醒发送记录。</div>}
+      </section>
     </Panel>
   )
 }

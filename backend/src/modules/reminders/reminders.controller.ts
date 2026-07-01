@@ -20,6 +20,19 @@ export class RemindersAdminController {
     return this.reminders.updateConfig(input)
   }
 
+  @Get('deliveries')
+  listDeliveries(
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.reminders.listRecentDeliveries({
+      limit: Number(limit) || undefined,
+      status,
+      accountId,
+    })
+  }
+
   @Post('subscriptions')
   upsertSubscription(
     @Body()
@@ -78,6 +91,8 @@ export class AccountRemindersController {
       enabled: boolean
       preferredTime?: string
       openid?: string
+      dailyCourseEnabled?: boolean
+      examEnabled?: boolean
     },
   ) {
     return this.reminders.updateAccountPreference(accountId, input)

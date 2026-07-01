@@ -10,12 +10,23 @@ export interface ReminderPreferencesResponse {
   dailyCourseEnabled: boolean
   examEnabled: boolean
   templateIds: string[]
+  templateIdMap?: ReminderTemplateIds
+}
+
+export interface ReminderTemplateIds {
+  dailyCourse?: string
+  exam?: string
 }
 
 const LOCAL_REMINDER_TEMPLATE_IDS = [
   String(process.env.TARO_APP_WECHAT_DAILY_COURSE_TEMPLATE_ID || '').trim(),
   String(process.env.TARO_APP_WECHAT_EXAM_TEMPLATE_ID || '').trim(),
 ].filter(Boolean)
+
+const LOCAL_REMINDER_TEMPLATE_ID_MAP: ReminderTemplateIds = {
+  dailyCourse: String(process.env.TARO_APP_WECHAT_DAILY_COURSE_TEMPLATE_ID || '').trim() || undefined,
+  exam: String(process.env.TARO_APP_WECHAT_EXAM_TEMPLATE_ID || '').trim() || undefined,
+}
 
 interface CachedReminderPreferences {
   value: ReminderPreferencesResponse
@@ -54,7 +65,22 @@ function normalizeReminderPreferences(value: unknown): ReminderPreferencesRespon
     templateIds: Array.isArray(preferences.templateIds)
       ? preferences.templateIds.filter((templateId): templateId is string => typeof templateId === 'string')
       : [],
+    templateIdMap: normalizeReminderTemplateIds(preferences.templateIdMap),
   }
+}
+
+function normalizeReminderTemplateIds(value: unknown): ReminderTemplateIds | undefined {
+  const record = value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Partial<ReminderTemplateIds>)
+    : {}
+  const dailyCourse = typeof record.dailyCourse === 'string' && record.dailyCourse.trim()
+    ? record.dailyCourse.trim()
+    : undefined
+  const exam = typeof record.exam === 'string' && record.exam.trim()
+    ? record.exam.trim()
+    : undefined
+
+  return dailyCourse || exam ? { dailyCourse, exam } : undefined
 }
 
 function readCachedReminderPreferences(accountId: string) {
@@ -128,6 +154,10 @@ export function getLocalReminderTemplateIds() {
   return LOCAL_REMINDER_TEMPLATE_IDS
 }
 
+export function getLocalReminderTemplateIdMap() {
+  return LOCAL_REMINDER_TEMPLATE_ID_MAP
+}
+
 export async function getReminderPreferences(
   accountId: string,
   options: ReminderPreferencesOptions = {},
@@ -178,6 +208,8 @@ export function updateReminderPreference(
     enabled: boolean
     preferredTime?: string
     openid?: string
+    dailyCourseEnabled?: boolean
+    examEnabled?: boolean
   },
 ) {
   return requestApi<ReminderPreferencesResponse, typeof data>({

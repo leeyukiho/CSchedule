@@ -5,6 +5,7 @@ import { ScrollView, Text, View } from '@tarojs/components'
 import { getExams } from '../../shared/api/features'
 import {
   getCachedReminderPreferenceState,
+  getLocalReminderTemplateIdMap,
   getLocalReminderTemplateIds,
   getReminderPreferences,
   ReminderPreferencesResponse,
@@ -81,6 +82,24 @@ function getTextValue(source: Record<string, unknown>, keys: string[]) {
   }
 
   return ''
+}
+
+type ReminderSubscribeResult = {
+  acceptedTemplateIds: string[]
+  dailyCourseEnabled: boolean
+  examEnabled: boolean
+}
+
+function getReminderSubscribeTemplateIdMap(
+  preference: ReminderPreferencesResponse | null,
+  templateIds: string[],
+) {
+  const templateIdMap = preference?.templateIdMap || getLocalReminderTemplateIdMap()
+
+  return {
+    dailyCourse: templateIdMap.dailyCourse || templateIds[0],
+    exam: templateIdMap.exam || templateIds[1],
+  }
 }
 
 function getLocalDateKey(date = new Date()) {
@@ -810,13 +829,19 @@ export default function HomePage() {
     })
   }
 
-  function requestReminderSubscribe(templateIds: string[]) {
-    return new Promise<boolean>((resolve, reject) => {
+  function requestReminderSubscribe(templateIds: string[], templateIdMap = getLocalReminderTemplateIdMap()) {
+    return new Promise<ReminderSubscribeResult>((resolve, reject) => {
       const options = {
         tmplIds: templateIds,
         success: (result) => {
           const values = result as Record<string, string>
-          resolve(templateIds.some((templateId) => values[templateId] === 'accept'))
+          const acceptedTemplateIds = templateIds.filter((templateId) => values[templateId] === 'accept')
+
+          resolve({
+            acceptedTemplateIds,
+            dailyCourseEnabled: Boolean(templateIdMap.dailyCourse && values[templateIdMap.dailyCourse] === 'accept'),
+            examEnabled: Boolean(templateIdMap.exam && values[templateIdMap.exam] === 'accept'),
+          })
         },
         fail: (error) => reject(error),
       } as unknown as Parameters<typeof Taro.requestSubscribeMessage>[0]
@@ -855,22 +880,17 @@ export default function HomePage() {
       const templateIds = preference?.templateIds?.length
         ? preference.templateIds
         : getLocalReminderTemplateIds()
+      const templateIdMap = getReminderSubscribeTemplateIdMap(preference, templateIds)
 
       if (templateIds.length === 0) {
         Taro.showToast({ title: '暂时无法订阅', icon: 'none' })
         return
       }
 
-      const accepted = await requestReminderSubscribe(templateIds)
+      const subscribeResult = await requestReminderSubscribe(templateIds, templateIdMap)
 
-      if (!accepted) {
+      if (subscribeResult.acceptedTemplateIds.length === 0) {
         Taro.showToast({ title: '未授权订阅消息', icon: 'none' })
-        return
-      }
-
-      if (preference?.enabled && preference.openid) {
-        setReminderSubscribed(true)
-        Taro.showToast({ title: '已订阅', icon: 'success' })
         return
       }
 
@@ -879,6 +899,8 @@ export default function HomePage() {
         enabled: true,
         preferredTime: preference?.preferredTime || '07:30',
         openid,
+        dailyCourseEnabled: subscribeResult.dailyCourseEnabled,
+        examEnabled: subscribeResult.examEnabled,
       })
       setReminderSubscribed(Boolean(nextPreference.enabled))
       Taro.showToast({ title: '已订阅', icon: 'success' })
