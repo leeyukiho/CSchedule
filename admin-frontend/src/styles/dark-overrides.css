@@ -1,0 +1,184 @@
+[data-theme='dark'] body {
+  background:
+    radial-gradient(circle at top left, rgba(122, 162, 255, 0.08), transparent 360px),
+    var(--bg);
+}
+
+[data-theme='dark'] .topbar,
+[data-theme='dark'] .admin-hero,
+[data-theme='dark'] .config-row,
+[data-theme='dark'] .login-card,
+[data-theme='dark'] .panel,
+[data-theme='dark'] .panel-header,
+[data-theme='dark'] .panel-tools,
+[data-theme='dark'] .panel-tools.pagination,
+[data-theme='dark'] .metric-card,
+[data-theme='dark'] .priority-alert,
+[data-theme='dark'] .task-card,
+[data-theme='dark'] .operator-guide,
+[data-theme='dark'] .table-wrap,
+[data-theme='dark'] .submission-school-group,
+[data-theme='dark'] .submission-card,
+[data-theme='dark'] .feedback-row,
+[data-theme='dark'] .feedback-detail-content,
+[data-theme='dark'] .feedback-action-note,
+[data-theme='dark'] .settings-section,
+[data-theme='dark'] .shortcut-settings-row,
+[data-theme='dark'] .notification-target-card,
+[data-theme='dark'] .notification-message-card,
+[data-theme='dark'] .check-field,
+[data-theme='dark'] .modal-footer,
+[data-theme='dark'] .provider-muted-note,
+[data-theme='dark'] .provider-tab-button,
+[data-theme='dark'] .form-section,
+[data-theme='dark'] .form-section-subpanel,
+[data-theme='dark'] .term-display,
+[data-theme='dark'] .time-profile-card,
+[data-theme='dark'] .building-setting-button,
+[data-theme='dark'] .confirm-copy,
+[data-theme='dark'] .detail-item,
+[data-theme='dark'] .term-row,
+[data-theme='dark'] textarea,
+[data-theme='dark'] .term-start-picker select,
+[data-theme='dark'] .compact-select,
+[data-theme='dark'] .copy-button,
+[data-theme='dark'] input,
+[data-theme='dark'] select,
+[data-theme='dark'] tbody td,
+[data-theme='dark'] th {
+  background: var(--surface);
+  color: var(--text);
+}
+
+[data-theme='dark'] .panel-header,
+[data-theme='dark'] .settings-section-head,
+[data-theme='dark'] .form-section-header,
+[data-theme='dark'] .notification-actions,
+[data-theme='dark'] .section-time-row,
+[data-theme='dark'] .submission-school-header,
+[data-theme='dark'] .feedback-row.active,
+[data-theme='dark'] .feedback-row:hover,
+[data-theme='dark'] .shortcut-settings-row.is-enabled,
+[data-theme='dark'] .provider-tab-button:hover,
+[data-theme='dark'] .building-setting-button:hover,
+[data-theme='dark'] tbody tr:hover,
+[data-theme='dark'] tbody tr:hover td {
+  background: var(--surface-muted);
+}
+
+[data-theme='dark'] .topbar,
+[data-theme='dark'] .config-row,
+[data-theme='dark'] .panel,
+[data-theme='dark'] .metric-card,
+[data-theme='dark'] .settings-section,
+[data-theme='dark'] .notification-target-card,
+[data-theme='dark'] .notification-message-card,
+[data-theme='dark'] .submission-school-group,
+[data-theme='dark'] .submission-card,
+[data-theme='dark'] .feedback-row,
+[data-theme='dark'] .form-section,
+[data-theme='dark'] .term-row,
+[data-theme='dark'] .section-time-row,
+[data-theme='dark'] .time-profile-card,
+[data-theme='dark'] .building-setting-button,
+[data-theme='dark'] .check-field,
+[data-theme='dark'] input,
+[data-theme='dark'] select,
+[data-theme='dark'] textarea,
+[data-theme='dark'] .compact-select,
+[data-theme='dark'] .copy-button {
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+[data-theme='dark'] .feedback-detail-section.primary {
+  background: color-mix(in srgb, var(--success-soft) 45%, var(--surface));
+}
+
+[data-theme='dark'] .status-line.error,
+[data-theme='dark'] .feedback-row.alert-row,
+[data-theme='dark'] .feedback-row.alert-row.active,
+[data-theme='dark'] .feedback-row.alert-row:hover,
+[data-theme='dark'] .priority-alert {
+  background: color-mix(in srgb, var(--danger-soft) 55%, var(--surface));
+}
+
+[data-theme='dark'] .notification-row.inactive {
+  background: color-mix(in srgb, var(--surface-muted) 74%, var(--bg));
+}
+
+[data-theme='dark'] .notification-target-card,
+[data-theme='dark'] .notification-message-card {
+  background: color-mix(in srgb, var(--surface-muted) 72%, var(--surface));
+  border-color: var(--border);
+}
+
+[data-theme='dark'] .notification-note {
+  background: color-mix(in srgb, var(--accent-soft) 56%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+
+[data-theme='dark'] .notification-read-count {
+  background: color-mix(in srgb, var(--accent-soft) 58%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+
+[data-theme='dark'] .notification-summary span,
+[data-theme='dark'] .panel-count,
+[data-theme='dark'] .notification-editor-meta span,
+[data-theme='dark'] .task-count {
+  background: var(--surface-muted);
+  color: var(--text-strong);
+}
+
+[data-theme='dark'] .provider-tab-button.is-active,
+[data-theme='dark'] .building-setting-button.is-active,
+[data-theme='dark'] .notification-note,
+[data-theme='dark'] .check-field:has(input:checked) {
+  background: color-mix(in srgb, var(--accent-soft) 68%, var(--surface));
+  color: var(--text-strong);
+}
+
+[data-theme='dark'] .building-setting-button.is-configured {
+  background: color-mix(in srgb, var(--success-soft) 58%, var(--surface));
+}
+
+[data-theme='dark'] .confirm-icon,
+[data-theme='dark'] .task-count,
+[data-theme='dark'] .notification-target-summary,
+[data-theme='dark'] .json-output {
+  border-color: var(--border);
+}
+
+[data-theme='dark'] .notification-target-summary,
+[data-theme='dark'] .confirm-icon {
+  background: var(--surface-muted);
+}
+
+[data-theme='dark'] .json-output {
+  background: #101923;
+  color: #d8eef1;
+}
+
+[data-theme='dark'] .panel-description,
+[data-theme='dark'] .cell-meta,
+[data-theme='dark'] .detail-label,
+[data-theme='dark'] .task-detail,
+[data-theme='dark'] .notification-submit-hint,
+[data-theme='dark'] .notification-content-preview,
+[data-theme='dark'] .feedback-row-content,
+[data-theme='dark'] .feedback-row-side,
+[data-theme='dark'] .submission-card-meta,
+[data-theme='dark'] .provider-tab-button small,
+[data-theme='dark'] .building-setting-button small,
+[data-theme='dark'] .brand-subtitle {
+  color: var(--text-muted);
+}
+
+[data-theme='dark'] th,
+[data-theme='dark'] .settings-section-head,
+[data-theme='dark'] .form-section-header,
+[data-theme='dark'] .submission-school-header,
+[data-theme='dark'] .notification-actions {
+  border-color: var(--border-subtle);
+}
