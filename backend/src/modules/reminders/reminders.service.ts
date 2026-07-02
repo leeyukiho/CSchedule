@@ -525,7 +525,6 @@ export class RemindersService {
         'daily_course',
         dailyCourseEnabled,
         preferredTime,
-        byType.get('daily_course')?.templateId,
       ),
       this.upsertAccountReminderType(
         accountId,
@@ -533,7 +532,6 @@ export class RemindersService {
         'exam',
         examEnabled,
         preferredTime,
-        byType.get('exam')?.templateId,
       ),
     ])
 
@@ -927,10 +925,10 @@ export class RemindersService {
 
   private getTemplateId(subscription: ReminderSubscription, config: ReminderWorkerConfig) {
     return (
-      subscription.templateId ||
       (subscription.type === 'daily_course'
         ? config.dailyCourseTemplateId
-        : config.examTemplateId)
+        : config.examTemplateId) ||
+      subscription.templateId
     )
   }
 
@@ -966,7 +964,6 @@ export class RemindersService {
     type: ReminderType,
     enabled: boolean,
     preferredTime: string,
-    templateId?: string | null,
   ) {
     return this.prisma.reminderSubscription.upsert({
       where: {
@@ -979,7 +976,7 @@ export class RemindersService {
       update: {
         status: enabled ? 'enabled' : 'disabled',
         preferredTime,
-        templateId: templateId || undefined,
+        templateId: null,
         ...(enabled ? { lastSentDate: null, lastSentAt: null, lastErrorCode: null, lastErrorMessage: null } : {}),
       },
       create: {
@@ -988,7 +985,6 @@ export class RemindersService {
         type,
         status: enabled ? 'enabled' : 'disabled',
         preferredTime,
-        templateId: templateId || undefined,
       },
     })
   }
@@ -1498,7 +1494,7 @@ export class RemindersService {
 
   private describeTestSendFailure(errorCode?: string | null, errorMessage?: string | null) {
     if (errorCode === '40003') {
-      return '微信订阅消息发送失败：openid 无效或不属于当前 WECHAT_APP_ID，请确认后台配置的小程序 appid 与用户订阅时使用的小程序一致，并让用户重新订阅。'
+      return '微信订阅消息发送失败：微信返回 openid 无效。请优先确认后台课程/考试模板 ID 与小程序端请求订阅的模板 ID 完全一致；如果模板 ID 已更新，请让用户重新订阅。'
     }
 
     return errorMessage || '微信订阅消息测试发送失败，请查看最近发送记录。'
