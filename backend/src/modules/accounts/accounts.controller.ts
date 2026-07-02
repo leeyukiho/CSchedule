@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Param, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Put, UseGuards } from '@nestjs/common'
 
 import { AdminGuard } from '../admin/admin.guard'
 import { AccountAccessGuard } from './account-access-token.service'
@@ -24,5 +24,14 @@ export class StudentAccountController {
   @UseGuards(AccountAccessGuard)
   deactivateAccount(@Param('accountId') accountId: string) {
     return this.accountsService.deactivateAccount(accountId)
+  }
+
+  @Put(':accountId/preferences/term-starts')
+  @UseGuards(AccountAccessGuard)
+  updateTermStarts(
+    @Param('accountId') accountId: string,
+    @Body() input: { termStarts?: Record<string, string> },
+  ) {
+    return this.accountsService.updateTermStarts(accountId, input?.termStarts)
   }
 }

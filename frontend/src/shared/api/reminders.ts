@@ -154,11 +154,11 @@ export function setLocalReminderPreferenceState(
   setCachedReminderPreferences(accountId, value)
 }
 
-export function getLocalReminderTemplateIds() {
+export function getLocalReminderTemplateIds(): string[] {
   return []
 }
 
-export function getLocalReminderTemplateIdMap() {
+export function getLocalReminderTemplateIdMap(): ReminderTemplateIds {
   return {}
 }
 

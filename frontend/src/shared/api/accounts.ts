@@ -45,3 +45,11 @@ export function deactivateAccount(accountId: string) {
     path: `/account/${encodeURIComponent(accountId)}`,
   })
 }
+
+export function updateAccountTermStarts(accountId: string, termStarts: Record<string, string>) {
+  return requestApi<{ termStarts: Record<string, string> }, { termStarts: Record<string, string> }>({
+    method: 'PUT',
+    path: `/account/${encodeURIComponent(accountId)}/preferences/term-starts`,
+    data: { termStarts },
+  })
+}

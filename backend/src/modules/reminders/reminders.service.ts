@@ -39,6 +39,7 @@ interface ReminderContent {
   note: string
   shouldSend: boolean
   defer?: boolean
+  startsAt?: Date
   templateData: Record<string, { value: string }>
 }
 
@@ -188,7 +189,9 @@ export class RemindersService {
             nextSendAt = Math.max(Date.now(), nextSendAt) + Math.ceil(1000 / config.ratePerSecond)
             await this.delay(waitMs)
 
-            const result = await this.sendOne(subscription, dateKey, { ...config, dryRun })
+            const result = await this.sendOne(subscription, dateKey, { ...config, dryRun }, {
+              forceSend: Boolean(options.force),
+            })
             stats[result] += 1
           }
         }),
@@ -381,7 +384,7 @@ export class RemindersService {
         dryRun: false,
         testOpenid: '',
       },
-      { preserveSubscription: true, forceSend: true },
+      { forceSend: true },
     )
 
     if (result === 'failed') {
@@ -590,12 +593,38 @@ export class RemindersService {
         account: { select: { wechatOpenid: true } },
       },
       orderBy: { updatedAt: 'asc' },
-      take: limit * 3,
+      take: limit * 6,
     })
 
-    return subscriptions
-      .filter((subscription) => subscription.openid === subscription.account.wechatOpenid)
+    const dueByAccount = new Map<string, {
+      subscription: (typeof subscriptions)[number]
+      startsAt: number
+    }>()
+
+    for (const subscription of subscriptions) {
+      if (subscription.openid !== subscription.account.wechatOpenid) {
+        continue
+      }
+
+      const accountKey = `${subscription.accountId}:${subscription.openid}`
+      const content = await this.buildContent(subscription, config, { now })
+
+      if (!content.shouldSend) {
+        continue
+      }
+
+      const startsAt = content.startsAt?.getTime() || now.getTime()
+      const existing = dueByAccount.get(accountKey)
+
+      if (!existing || startsAt < existing.startsAt) {
+        dueByAccount.set(accountKey, { subscription, startsAt })
+      }
+    }
+
+    return [...dueByAccount.values()]
+      .sort((left, right) => left.startsAt - right.startsAt)
       .slice(0, limit)
+      .map((item) => item.subscription)
   }
 
   private async findCurrentSubscriptionForOpenid(openid: string, type?: ReminderType, accountId?: string) {
@@ -641,7 +670,25 @@ export class RemindersService {
       return subscriptions[0] || null
     }
 
-    return subscriptions.find((subscription) => subscription.type === 'daily_course') || subscriptions[0] || null
+    const config = await this.getConfig()
+    const candidates = await Promise.all(
+      subscriptions.map(async (subscription) => {
+        const candidate = await this.findNextReminderCandidate(
+          subscription.accountId,
+          subscription.type,
+          config,
+        )
+
+        return {
+          subscription,
+          startsAt: candidate?.startsAt.getTime() || Number.MAX_SAFE_INTEGER,
+        }
+      }),
+    )
+
+    return candidates
+      .sort((left, right) => left.startsAt - right.startsAt)
+      .map((item) => item.subscription)[0] || null
   }
 
   private async activateOpenidForAccount(accountId: string, openid: string, preferredTime?: string) {
@@ -676,7 +723,9 @@ export class RemindersService {
     config: ReminderWorkerConfig,
     options: ReminderSendOptions = {},
   ): Promise<'sent' | 'skipped' | 'failed'> {
-    const content = await this.buildContent(subscription, config)
+    const content = await this.buildContent(subscription, config, {
+      forceSend: Boolean(options.forceSend),
+    })
 
     if (!content.shouldSend && !options.forceSend) {
       if (content.defer) {
@@ -722,19 +771,17 @@ export class RemindersService {
   private async buildContent(
     subscription: ReminderSubscription,
     config: ReminderWorkerConfig,
+    options: { now?: Date; forceSend?: boolean } = {},
   ): Promise<ReminderContent> {
-    const candidate = await this.findNextReminderCandidate(subscription.accountId, config)
+    const now = options.now || new Date()
+    const candidate = await this.findNextReminderCandidate(subscription.accountId, subscription.type, config, now)
 
     if (!candidate) {
-      return this.emptyContent(subscription.type, '暂无后续课程或考试')
+      return this.emptyContent(subscription.type, subscription.type === 'daily_course' ? '暂无后续课程' : '暂无后续考试')
     }
 
-    if (!this.isWithinReminderLeadTime(candidate.startsAt)) {
+    if (!options.forceSend && !this.isWithinReminderLeadTime(candidate.startsAt, now)) {
       return this.deferContent(subscription.type, `下一次安排将在${candidate.summary.replace(/^下一次[课程考试]+：/, '')}开始`)
-    }
-
-    if (candidate.type !== subscription.type) {
-      return this.deferContent(subscription.type, '下一次最近安排由另一类提醒发送')
     }
 
     return candidate.type === 'daily_course'
@@ -744,20 +791,19 @@ export class RemindersService {
 
   private async findNextReminderCandidate(
     accountId: string,
+    type: ReminderType,
     config: ReminderWorkerConfig,
+    now = new Date(),
   ): Promise<ReminderCandidate | null> {
-    const [course, exam] = await Promise.all([
-      this.findNextCourseCandidate(accountId, config),
-      this.findNextExamCandidate(accountId),
-    ])
-    const candidates = [course, exam].filter((item): item is ReminderCandidate => Boolean(item))
-
-    return candidates.sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime())[0] || null
+    return type === 'daily_course'
+      ? this.findNextCourseCandidate(accountId, config, now)
+      : this.findNextExamCandidate(accountId, now)
   }
 
   private async findNextCourseCandidate(
     accountId: string,
     config: ReminderWorkerConfig,
+    now = new Date(),
   ): Promise<CourseReminderCandidate | null> {
     const cache = await this.prisma.courseCache.findFirst({
       where: { accountId },
@@ -765,6 +811,7 @@ export class RemindersService {
         account: {
           select: {
             providerId: true,
+            cacheState: true,
             school: { select: { config: true } },
           },
         },
@@ -772,8 +819,10 @@ export class RemindersService {
       orderBy: { syncedAt: 'desc' },
     })
     const courses = Array.isArray(cache?.coursesJson) ? cache.coursesJson.map((item) => this.asRecord(item)) : []
-    const now = new Date()
-    const termStarts = this.getTermStarts(cache?.account.school.config)
+    const termStarts = {
+      ...this.getTermStarts(cache?.account.school.config),
+      ...this.getTermStarts(cache?.account.cacheState),
+    }
     const term = this.getCurrentTerm(cache?.termId || '', cache?.termsJson)
     const weekStart = this.getTeachingWeekStart(term, cache?.termId || '', termStarts)
     const maxWeek = this.getMaxCourseWeek(courses)
@@ -812,6 +861,7 @@ export class RemindersService {
       summary: candidate.summary,
       note: [courseName, candidate.room, candidate.startTime].filter(Boolean).join(' '),
       shouldSend: true,
+      startsAt: candidate.startsAt,
       templateData: {
         thing8: { value: this.truncate(courseName, 20) },
         thing4: { value: this.truncate(candidate.room, 20) },
@@ -821,13 +871,12 @@ export class RemindersService {
     }
   }
 
-  private async findNextExamCandidate(accountId: string): Promise<ExamReminderCandidate | null> {
+  private async findNextExamCandidate(accountId: string, now = new Date()): Promise<ExamReminderCandidate | null> {
     const cache = await this.prisma.featureCache.findFirst({
       where: { accountId, target: 'exam' },
       orderBy: { syncedAt: 'desc' },
     })
     const items = this.extractExamItems(cache?.dataJson)
-    const now = new Date()
     const candidates = items
       .map((exam) => this.toExamReminderCandidate(exam, now))
       .filter((item): item is ExamReminderCandidate => Boolean(item))
@@ -844,6 +893,7 @@ export class RemindersService {
       summary: candidate.summary,
       note: [courseName, candidate.time, candidate.room].filter(Boolean).join(' '),
       shouldSend: true,
+      startsAt: candidate.startsAt,
       templateData: {
         thing10: { value: this.truncate(courseName, 20) },
         thing7: { value: this.truncate(candidate.room, 20) },
@@ -948,6 +998,28 @@ export class RemindersService {
         data: {
           lastErrorCode: status === 'failed' ? errorCode : null,
           lastErrorMessage: status === 'failed' ? errorMessage : null,
+        },
+      })
+      return
+    }
+
+    if (shouldDisable) {
+      await this.prisma.reminderSubscription.updateMany({
+        where: {
+          accountId: subscription.accountId,
+          openid: subscription.openid,
+          status: 'enabled',
+        },
+        data: {
+          status: 'disabled',
+          ...(status === 'failed'
+            ? { lastErrorCode: errorCode, lastErrorMessage: errorMessage }
+            : {
+              lastSentDate: dateKey,
+              lastSentAt: new Date(),
+              lastErrorCode: null,
+              lastErrorMessage: null,
+            }),
         },
       })
       return

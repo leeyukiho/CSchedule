@@ -106,11 +106,11 @@ export const HOME_SHORTCUT_CATALOG: Record<HomeShortcutKey, Omit<HomeShortcutRun
 
 export const DEFAULT_HOME_SHORTCUT_CONFIG: HomeShortcutConfig = {
   items: [
-    { key: 'query', label: '证书查询', enabled: true, order: 10 },
-    { key: 'schedule', label: '课表', enabled: true, order: 20 },
-    { key: 'grades', label: '成绩', enabled: true, order: 30 },
+    { key: 'query', label: '证书查询', enabled: false, order: 10 },
+    { key: 'schedule', label: '课表', enabled: false, order: 20 },
+    { key: 'grades', label: '成绩', enabled: false, order: 30 },
     { key: 'buddySpace', label: '搭子空间', enabled: false, order: 40 },
-    { key: 'messages', label: '消息', enabled: true, order: 50 },
+    { key: 'messages', label: '消息', enabled: false, order: 50 },
     { key: 'feedback', label: '反馈', enabled: false, order: 60 },
     { key: 'submission', label: '接入申请', enabled: false, order: 70 },
     { key: 'settings', label: '设置', enabled: false, order: 80 },

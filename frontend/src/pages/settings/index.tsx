@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { Button, Picker, View } from '@tarojs/components'
 
+import { updateAccountTermStarts } from '../../shared/api/accounts'
 import { getTimetable } from '../../shared/api/timetable'
 import { PageShell } from '../../shared/layout'
 import { useDefaultShare } from '../../shared/share'
@@ -12,6 +13,7 @@ import {
   clearStoredTermStarts,
   getStoredAccountId,
   getStoredTermStarts,
+  getStoredUserTermStarts,
   setStoredTermStart,
 } from '../../shared/storage'
 import { TermOption, buildTermOptions } from '../../shared/term'
@@ -68,14 +70,27 @@ export default function SettingsPage() {
     }
   }
 
+  function syncTermStartsToBackend(accountId = getStoredAccountId()) {
+    if (!accountId) {
+      return
+    }
+
+    const userTermStarts = getStoredUserTermStarts(accountId)
+    void updateAccountTermStarts(accountId, userTermStarts).catch(() => {
+      Taro.showToast({ title: '后台提醒同步失败', icon: 'none' })
+    })
+  }
+
   function updateTermStart(termId: string, date: string) {
     setStoredTermStart(termId, date)
     refreshTermStartState()
+    syncTermStartsToBackend()
   }
 
   function restoreDefaultTermStart(termId: string) {
     setStoredTermStart(termId, '')
     refreshTermStartState()
+    syncTermStartsToBackend()
     Taro.showToast({ title: '已恢复默认', icon: 'success' })
   }
 

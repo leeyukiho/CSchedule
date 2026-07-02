@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { ScrollView, Text, View } from '@tarojs/components'
 
+import { updateAccountTermStarts } from '../../shared/api/accounts'
 import { getExams } from '../../shared/api/features'
 import { getAppSettings } from '../../shared/api/settings'
 import {
@@ -28,7 +29,7 @@ import {
   HomeShortcutRuntimeItem,
 } from '../../shared/home-shortcuts'
 import { useDefaultShare } from '../../shared/share'
-import { getStoredAuthState, getStoredTermStarts } from '../../shared/storage'
+import { getStoredAuthState, getStoredTermStarts, getStoredUserTermStarts } from '../../shared/storage'
 import { buildTermOptions, courseRunsInWeek, getTeachingWeekForDate } from '../../shared/term'
 
 import './index.scss'
@@ -41,6 +42,8 @@ const REMINDER_STATE_RETRY_MS = 2 * 60 * 1000
 const REMINDER_STATE_FAST_RETRY_WINDOW_MS = 30 * 60 * 1000
 const REMINDER_STATE_STALE_RETRY_MS = 30 * 60 * 1000
 const REMINDER_STATE_KEEP_DAYS = 2
+const TERM_STARTS_SYNC_PREFIX = 'cschedule.termStartsSyncedAt.'
+const TERM_STARTS_SYNC_RETRY_MS = 30 * 60 * 1000
 const HOME_SHORTCUT_SCROLL_EDGE_TOLERANCE = 24
 
 type HomeExamItem = {
@@ -90,6 +93,10 @@ type ReminderSubscribeResult = {
   examEnabled: boolean
 }
 
+type ReminderStateLoadOptions = {
+  forceRefresh?: boolean
+}
+
 function getReminderSubscribeTemplateIdMap(
   preference: ReminderPreferencesResponse | null,
   templateIds: string[],
@@ -116,6 +123,39 @@ function getReminderRefreshKey(accountId: string, date = new Date()) {
 
 function getReminderExpireKey(accountId: string, date = new Date()) {
   return `${REMINDER_STATE_EXPIRE_PREFIX}${accountId}.${getLocalDateKey(date)}`
+}
+
+function getTermStartsSyncKey(accountId: string) {
+  return `${TERM_STARTS_SYNC_PREFIX}${accountId}`
+}
+
+function syncUserTermStartsToBackend(accountId: string) {
+  if (!accountId) {
+    return
+  }
+
+  const now = Date.now()
+  const key = getTermStartsSyncKey(accountId)
+  const userTermStarts = getStoredUserTermStarts(accountId)
+  const signature = JSON.stringify(userTermStarts)
+  const storedSyncState = Taro.getStorageSync(key)
+  const syncState = storedSyncState && typeof storedSyncState === 'object' && !Array.isArray(storedSyncState)
+    ? (storedSyncState as { syncedAt?: unknown; signature?: unknown })
+    : { syncedAt: storedSyncState }
+  const syncedAt = Number(syncState.syncedAt || 0)
+
+  if (
+    syncState.signature === signature &&
+    Number.isFinite(syncedAt) &&
+    now - syncedAt < TERM_STARTS_SYNC_RETRY_MS
+  ) {
+    return
+  }
+
+  Taro.setStorageSync(key, { syncedAt: now, signature })
+  void updateAccountTermStarts(accountId, userTermStarts).catch(() => {
+    Taro.removeStorageSync(key)
+  })
 }
 
 function cleanupReminderStateStorage(accountId: string, now = new Date()) {
@@ -654,7 +694,8 @@ export default function HomePage() {
 
     if (id) {
       void loadTimetable(id)
-      void loadReminderState(id)
+      void loadReminderState(id, { forceRefresh: true })
+      syncUserTermStartsToBackend(id)
     }
   })
 
@@ -677,13 +718,15 @@ export default function HomePage() {
     }
   }
 
-  async function loadReminderState(id: string) {
+  async function loadReminderState(id: string, options: ReminderStateLoadOptions = {}) {
     cleanupReminderStateStorage(id, new Date(nowMs))
     const cachedPreference = getCachedReminderPreferenceState(id)
     const freshPreference = await getReminderPreferences(id, { cacheOnly: true })
     const preference = freshPreference || cachedPreference
     setReminderSubscribed(Boolean(preference?.enabled))
-    const refreshAction = getReminderStateRefreshAction(id, preference, nowMs, Boolean(freshPreference))
+    const refreshAction = options.forceRefresh
+      ? 'refresh'
+      : getReminderStateRefreshAction(id, preference, nowMs, Boolean(freshPreference))
 
     if (refreshAction === 'none') {
       return
@@ -897,6 +940,7 @@ export default function HomePage() {
       }
 
       const openid = await getReminderOpenid(accountId)
+      await updateAccountTermStarts(accountId, getStoredUserTermStarts(accountId)).catch(() => null)
       const nextPreference = await updateReminderPreference(accountId, {
         enabled: true,
         preferredTime: preference?.preferredTime || '07:30',

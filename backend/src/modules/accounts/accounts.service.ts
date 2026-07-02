@@ -107,6 +107,32 @@ export class StudentAccountsService {
     return { success: true }
   }
 
+  async updateTermStarts(accountId: string, termStarts: Record<string, string> = {}) {
+    const account = await this.prisma.studentAccount.findUnique({
+      where: { id: accountId },
+      select: { cacheState: true },
+    })
+
+    if (!account) {
+      throw new NotFoundException('Student account not found')
+    }
+
+    const nextTermStarts = this.normalizeTermStarts(termStarts)
+
+    await this.prisma.studentAccount.update({
+      where: { id: accountId },
+      data: {
+        cacheState: this.toJson({
+          ...this.asRecord(account.cacheState),
+          termStarts: nextTermStarts,
+          termStartsUpdatedAt: new Date().toISOString(),
+        }),
+      },
+    })
+
+    return { termStarts: nextTermStarts }
+  }
+
   private toSummary(account: {
     id: string
     schoolId: string
@@ -270,6 +296,23 @@ export class StudentAccountsService {
     return value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {}
+  }
+
+  private normalizeTermStarts(value: unknown) {
+    const source = this.asRecord(value)
+    const result: Record<string, string> = {}
+
+    for (const [termId, date] of Object.entries(source)) {
+      if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        result[termId] = date
+      }
+    }
+
+    return result
+  }
+
+  private toJson(value: unknown) {
+    return JSON.parse(JSON.stringify(value ?? null))
   }
 
   private asDataAccess(value: unknown) {
