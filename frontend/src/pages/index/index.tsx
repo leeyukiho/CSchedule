@@ -139,7 +139,7 @@ function syncUserTermStartsToBackend(accountId: string) {
   const userTermStarts = getStoredUserTermStarts(accountId)
   const signature = JSON.stringify(userTermStarts)
   const storedSyncState = Taro.getStorageSync(key)
-  const syncState = storedSyncState && typeof storedSyncState === 'object' && !Array.isArray(storedSyncState)
+  const syncState: { syncedAt?: unknown; signature?: unknown } = storedSyncState && typeof storedSyncState === 'object' && !Array.isArray(storedSyncState)
     ? (storedSyncState as { syncedAt?: unknown; signature?: unknown })
     : { syncedAt: storedSyncState }
   const syncedAt = Number(syncState.syncedAt || 0)
@@ -1218,6 +1218,7 @@ export default function HomePage() {
         {isTodayComplete && (
           <View
             className={`soft-card today-complete-card today-complete-card-clickable${isTodayCompleteExpanded ? ' today-complete-card-open' : ''}`}
+            hoverClass='none'
             onClick={toggleTodayCompleteArrangements}
           >
             <View className='today-complete-icon' />

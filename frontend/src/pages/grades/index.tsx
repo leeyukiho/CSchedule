@@ -51,6 +51,14 @@ type ExamSummaryItem = {
 
 type ExamArrangementStatus = 'current' | 'next' | 'pending' | 'ended' | 'unscheduled'
 
+type ScoreStats = {
+  totalCredit: number
+  weightedScore: number
+  weightedGpa: number
+  scoreCredit: number
+  gpaCredit: number
+}
+
 const DEFAULT_SCORE_ITEM_FIELDS: FeatureDisplayField[] = [
   { key: 'name', label: '课程' },
   { key: 'credit', label: '学分' },
@@ -143,7 +151,7 @@ function isLowScoreItem(item: Record<string, unknown>, scoreValue: string) {
 }
 
 function calculateScoreStats(items: Record<string, unknown>[], scoreItemFields: FeatureDisplayField[]) {
-  return items.reduce(
+  return items.reduce<ScoreStats>(
     (stats, item) => {
       const credit = parseScoreNumber(getScoreFieldValue(item, scoreItemFields, ['credit', '学分'], 1))
       const scoreValue = getScoreFieldValue(item, scoreItemFields, ['score', 'grade', '成绩'], 2)
@@ -519,17 +527,25 @@ function getCollapsedExamTimeText(item: ExamSummaryItem | undefined) {
 function getCollapsedExamTitle(
   currentItem: ExamSummaryItem | undefined,
   nextItem: ExamSummaryItem | undefined,
-  examCount: number,
 ) {
   if (currentItem && !nextItem) {
-    return '当前考试'
+    return {
+      label: '当前考试',
+      timeText: '',
+    }
   }
 
   if (!nextItem) {
-    return examCount ? '暂未安排考试' : '暂无考试安排'
+    return {
+      label: '暂未安排考试',
+      timeText: '',
+    }
   }
 
-  return `下一场考试 ${getCollapsedExamTimeText(nextItem)}`
+  return {
+    label: '下一场考试',
+    timeText: getCollapsedExamTimeText(nextItem),
+  }
 }
 
 function getCollapsedExamSummary(
@@ -554,7 +570,7 @@ function getCollapsedExamSummary(
   if (!examCount) {
     return {
       prefix: '',
-      title: '请同步后查看最新考试信息',
+      title: '暂未安排考试',
     }
   }
 
@@ -802,7 +818,7 @@ export default function GradesPage() {
   const examCount = examSections.reduce((count, section) => count + section.items.length, 0)
   const currentExamItem = examItems.find((item) => isCurrentExamItem(item, nowMs))
   const nextCollapsedExamItem = getNextCollapsedExamItem(examItems, nowMs)
-  const examSummaryTitle = getCollapsedExamTitle(currentExamItem, nextCollapsedExamItem, examCount)
+  const examSummaryTitle = getCollapsedExamTitle(currentExamItem, nextCollapsedExamItem)
   const examSummarySubtitle = getCollapsedExamSummary(currentExamItem, nextCollapsedExamItem, examCount)
   const shouldShowExamSummarySubtitle = Boolean(examSummarySubtitle.prefix || examSummarySubtitle.title)
   const examSummarySubtitleScrolls = shouldScrollCollapsedExamSummary(
@@ -839,7 +855,7 @@ export default function GradesPage() {
       <View className='exam-section'>
         <View className='filter'>考试安排 <View className='exam-count'>{examCount}</View></View>
         {!examCount && (
-          <View className='soft-card exam-empty'>请同步后查看最新考试信息</View>
+          <View className='soft-card exam-empty'>暂未安排考试</View>
         )}
         {examCount > 0 && (
           <View
@@ -848,7 +864,10 @@ export default function GradesPage() {
           >
             <View className='exam-stack-main'>
               <View className={`exam-stack-title${shouldShowExamSummarySubtitle ? '' : ' exam-stack-title-only'}`}>
-                {examSummaryTitle}
+                <Text>{examSummaryTitle.label}</Text>
+                {examSummaryTitle.timeText && (
+                  <Text className='exam-stack-title-time'>{examSummaryTitle.timeText}</Text>
+                )}
               </View>
               {shouldShowExamSummarySubtitle && (
                 <View className='exam-stack-subtitle'>
