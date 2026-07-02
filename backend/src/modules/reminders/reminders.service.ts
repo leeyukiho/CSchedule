@@ -371,6 +371,23 @@ export class RemindersService {
       { preserveSubscription: true, forceSend: true },
     )
 
+    if (result === 'failed') {
+      const failedDelivery = await this.prisma.reminderDelivery.findUnique({
+        where: {
+          subscriptionId_dateKey: {
+            subscriptionId: subscription.id,
+            dateKey,
+          },
+        },
+        select: {
+          errorCode: true,
+          errorMessage: true,
+        },
+      })
+
+      throw new BadRequestException(this.describeTestSendFailure(failedDelivery?.errorCode, failedDelivery?.errorMessage))
+    }
+
     return {
       result,
       subscriptionId: subscription.id,
@@ -1477,6 +1494,14 @@ export class RemindersService {
     }
 
     return message.includes(':') ? message.split(':')[0] : 'REMINDER_SEND_FAILED'
+  }
+
+  private describeTestSendFailure(errorCode?: string | null, errorMessage?: string | null) {
+    if (errorCode === '40003') {
+      return '微信订阅消息发送失败：openid 无效或不属于当前 WECHAT_APP_ID，请确认后台配置的小程序 appid 与用户订阅时使用的小程序一致，并让用户重新订阅。'
+    }
+
+    return errorMessage || '微信订阅消息测试发送失败，请查看最近发送记录。'
   }
 
   private isPermanentDeliveryError(errorCode?: string) {
