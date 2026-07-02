@@ -33,6 +33,31 @@ export class RemindersAdminController {
     })
   }
 
+  @Get('subscriptions')
+  listSubscriptions(
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('accountId') accountId?: string,
+    @Query('openid') openid?: string,
+  ) {
+    return this.reminders.listSubscribedWxUsers({
+      limit: Number(limit) || undefined,
+      status,
+      accountId,
+      openid,
+    })
+  }
+
+  @Post('subscriptions/clear')
+  clearSubscriptions(@Body() input: { openid?: string; accountId?: string }) {
+    return this.reminders.clearSubscriptions(input)
+  }
+
+  @Post('subscriptions/test')
+  testSubscription(@Body() input: { openid?: string; type?: ReminderType }) {
+    return this.reminders.sendTestReminderToWxUser(String(input.openid || ''), input.type)
+  }
+
   @Post('subscriptions')
   upsertSubscription(
     @Body()

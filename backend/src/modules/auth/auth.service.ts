@@ -58,10 +58,20 @@ export class AuthService {
       throw new BadRequestException("openid is required");
     }
 
-    await this.prisma.studentAccount.update({
-      where: { id: accountId },
-      data: { wechatOpenid: cleanOpenid },
-    });
+    await this.prisma.$transaction([
+      this.prisma.studentAccount.update({
+        where: { id: accountId },
+        data: { wechatOpenid: cleanOpenid },
+      }),
+      this.prisma.reminderSubscription.updateMany({
+        where: {
+          openid: cleanOpenid,
+          accountId: { not: accountId },
+          status: "enabled",
+        },
+        data: { status: "disabled" },
+      }),
+    ]);
 
     return { success: true };
   }

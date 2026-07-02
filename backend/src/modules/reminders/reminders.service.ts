@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { ReminderDeliveryStatus, ReminderSubscription, ReminderType } from '@prisma/client'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
@@ -42,6 +42,11 @@ interface ReminderContent {
   templateData: Record<string, { value: string }>
 }
 
+interface ReminderSendOptions {
+  preserveSubscription?: boolean
+  forceSend?: boolean
+}
+
 interface CourseReminderCandidate {
   type: 'daily_course'
   item: Record<string, unknown>
@@ -82,6 +87,13 @@ interface ReminderDeliveryListOptions {
   limit?: number
   status?: string
   accountId?: string
+}
+
+interface ReminderSubscriptionListOptions {
+  limit?: number
+  status?: string
+  accountId?: string
+  openid?: string
 }
 
 @Injectable()
@@ -195,11 +207,15 @@ export class RemindersService {
   }) {
     const account = await this.prisma.studentAccount.findUnique({
       where: { id: input.accountId },
-      select: { id: true },
+      select: { id: true, wechatOpenid: true },
     })
 
     if (!account) {
       throw new NotFoundException('Student account not found')
+    }
+
+    if (input.status === 'enabled') {
+      await this.activateOpenidForAccount(input.accountId, input.openid)
     }
 
     return this.prisma.reminderSubscription.upsert({
@@ -224,6 +240,145 @@ export class RemindersService {
         status: input.status || 'enabled',
       },
     })
+  }
+
+  async listSubscribedWxUsers(options: ReminderSubscriptionListOptions = {}) {
+    const status = this.normalizeSubscriptionStatus(options.status)
+    const limit = Math.min(Math.max(options.limit || 100, 1), 300)
+
+    const subscriptions = await this.prisma.reminderSubscription.findMany({
+      where: {
+        ...(status ? { status } : {}),
+        ...(options.accountId ? { accountId: options.accountId } : {}),
+        ...(options.openid ? { openid: options.openid } : {}),
+      },
+      include: {
+        account: {
+          select: {
+            id: true,
+            displayName: true,
+            status: true,
+            wechatOpenid: true,
+            school: { select: { id: true, name: true, shortName: true } },
+          },
+        },
+      },
+      orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
+      take: limit,
+    })
+    const byOpenid = new Map<string, {
+      openid: string
+      enabledCount: number
+      totalCount: number
+      activeAccountId?: string
+      activeAccount?: {
+        id: string
+        displayName: string | null
+        status: string
+        school?: { id: string; name: string; shortName: string | null } | null
+      }
+      subscriptions: typeof subscriptions
+    }>()
+
+    subscriptions.forEach((subscription) => {
+      const entry = byOpenid.get(subscription.openid) || {
+        openid: subscription.openid,
+        enabledCount: 0,
+        totalCount: 0,
+        subscriptions: [] as typeof subscriptions,
+      }
+      entry.totalCount += 1
+      if (subscription.status === 'enabled') {
+        entry.enabledCount += 1
+      }
+      if (
+        subscription.status === 'enabled' &&
+        subscription.account.wechatOpenid === subscription.openid &&
+        !entry.activeAccountId
+      ) {
+        entry.activeAccountId = subscription.accountId
+        entry.activeAccount = {
+          id: subscription.account.id,
+          displayName: subscription.account.displayName,
+          status: subscription.account.status,
+          school: subscription.account.school,
+        }
+      }
+      entry.subscriptions.push(subscription)
+      byOpenid.set(subscription.openid, entry)
+    })
+
+    return { items: [...byOpenid.values()] }
+  }
+
+  async clearSubscriptions(input: { openid?: string; accountId?: string }) {
+    const openid = this.normalizeOpenid(input.openid)
+    const accountId = this.normalizeOpenid(input.accountId)
+
+    if (!openid && !accountId) {
+      const result = await this.prisma.reminderSubscription.updateMany({
+        data: {
+          status: 'disabled',
+          lastSentDate: null,
+          lastSentAt: null,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+        },
+      })
+      return { disabled: result.count }
+    }
+
+    const result = await this.prisma.reminderSubscription.updateMany({
+      where: {
+        ...(openid ? { openid } : {}),
+        ...(accountId ? { accountId } : {}),
+      },
+      data: {
+        status: 'disabled',
+        lastSentDate: null,
+        lastSentAt: null,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      },
+    })
+
+    return { disabled: result.count }
+  }
+
+  async sendTestReminderToWxUser(openid: string, type?: ReminderType) {
+    const cleanOpenid = this.normalizeOpenid(openid)
+
+    if (!cleanOpenid) {
+      throw new BadRequestException('openid is required')
+    }
+
+    const subscription = await this.findCurrentSubscriptionForOpenid(cleanOpenid, type)
+
+    if (!subscription) {
+      throw new NotFoundException('No enabled reminder subscription for current wx account')
+    }
+
+    const config = await this.getConfig()
+    const dateKey = `${this.getLocalDateKey()}-test-${Date.now()}`
+    const result = await this.sendOne(
+      subscription,
+      dateKey,
+      {
+        ...config,
+        dryRun: false,
+        testOpenid: '',
+      },
+      { preserveSubscription: true, forceSend: true },
+    )
+
+    return {
+      result,
+      subscriptionId: subscription.id,
+      accountId: subscription.accountId,
+      openid: subscription.openid,
+      type: subscription.type,
+      dateKey,
+    }
   }
 
   async getAccountPreferences(accountId: string) {
@@ -307,10 +462,7 @@ export class RemindersService {
     const openid = input.openid || account.wechatOpenid || existingOpenid
 
     if (input.openid && input.openid !== account.wechatOpenid) {
-      await this.prisma.studentAccount.update({
-        where: { id: accountId },
-        data: { wechatOpenid: input.openid },
-      })
+      await this.activateOpenidForAccount(accountId, input.openid)
     }
 
     if (!openid) {
@@ -335,17 +487,7 @@ export class RemindersService {
     }
 
     if (input.enabled) {
-      await this.prisma.reminderSubscription.updateMany({
-        where: {
-          openid,
-          accountId: { not: accountId },
-          status: 'enabled',
-        },
-        data: {
-          status: 'disabled',
-          preferredTime,
-        },
-      })
+      await this.activateOpenidForAccount(accountId, openid, preferredTime)
     }
 
     await this.prisma.reminderSubscription.updateMany({
@@ -395,7 +537,7 @@ export class RemindersService {
   ) {
     const limit = Math.min(options.limit || config.batchSize, config.batchSize)
 
-    return this.prisma.reminderSubscription.findMany({
+    const subscriptions = await this.prisma.reminderSubscription.findMany({
       where: {
         status: 'enabled',
         ...(options.type ? { type: options.type } : {}),
@@ -404,26 +546,83 @@ export class RemindersService {
         OR: [{ lastSentDate: null }, { lastSentDate: { not: dateKey } }],
         account: {
           status: { in: ['active', 'cached_only'] },
+          wechatOpenid: { not: null },
         },
       },
+      include: {
+        account: { select: { wechatOpenid: true } },
+      },
       orderBy: { updatedAt: 'asc' },
-      take: limit,
+      take: limit * 3,
     })
+
+    return subscriptions
+      .filter((subscription) => subscription.openid === subscription.account.wechatOpenid)
+      .slice(0, limit)
+  }
+
+  private async findCurrentSubscriptionForOpenid(openid: string, type?: ReminderType) {
+    const subscriptions = await this.prisma.reminderSubscription.findMany({
+      where: {
+        openid,
+        status: 'enabled',
+        ...(type ? { type } : {}),
+        account: {
+          wechatOpenid: openid,
+          status: { in: ['active', 'cached_only'] },
+        },
+      },
+      orderBy: [{ type: 'asc' }, { updatedAt: 'desc' }],
+      take: 2,
+    })
+
+    if (type) {
+      return subscriptions[0] || null
+    }
+
+    return subscriptions.find((subscription) => subscription.type === 'daily_course') || subscriptions[0] || null
+  }
+
+  private async activateOpenidForAccount(accountId: string, openid: string, preferredTime?: string) {
+    const cleanOpenid = this.normalizeOpenid(openid)
+
+    if (!cleanOpenid) {
+      throw new BadRequestException('openid is required')
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.studentAccount.update({
+        where: { id: accountId },
+        data: { wechatOpenid: cleanOpenid },
+      }),
+      this.prisma.reminderSubscription.updateMany({
+        where: {
+          openid: cleanOpenid,
+          accountId: { not: accountId },
+          status: 'enabled',
+        },
+        data: {
+          status: 'disabled',
+          ...(preferredTime ? { preferredTime } : {}),
+        },
+      }),
+    ])
   }
 
   private async sendOne(
     subscription: ReminderSubscription,
     dateKey: string,
     config: ReminderWorkerConfig,
+    options: ReminderSendOptions = {},
   ): Promise<'sent' | 'skipped' | 'failed'> {
     const content = await this.buildContent(subscription, config)
 
-    if (!content.shouldSend) {
+    if (!content.shouldSend && !options.forceSend) {
       if (content.defer) {
         return 'skipped'
       }
 
-      await this.recordDelivery(subscription, dateKey, 'skipped', content)
+      await this.recordDelivery(subscription, dateKey, 'skipped', content, undefined, undefined, undefined, undefined, options)
       return 'skipped'
     }
 
@@ -431,7 +630,7 @@ export class RemindersService {
 
     if (!templateId) {
       if (!config.dryRun) {
-        await this.recordDelivery(subscription, dateKey, 'failed', content, undefined, 'TEMPLATE_ID_MISSING')
+        await this.recordDelivery(subscription, dateKey, 'failed', content, undefined, 'TEMPLATE_ID_MISSING', undefined, undefined, options)
         return 'failed'
       }
     }
@@ -446,11 +645,11 @@ export class RemindersService {
 
     try {
       const response = await this.wechat.send(request, config.dryRun)
-      await this.recordDelivery(subscription, dateKey, 'sent', content, request, undefined, undefined, response)
+      await this.recordDelivery(subscription, dateKey, 'sent', content, request, undefined, undefined, response, options)
       return 'sent'
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error || 'Unknown error')
-      await this.recordDelivery(subscription, dateKey, 'failed', content, request, this.getErrorCode(message), message)
+      await this.recordDelivery(subscription, dateKey, 'failed', content, request, this.getErrorCode(message), message, undefined, options)
       return 'failed'
     }
   }
@@ -636,6 +835,7 @@ export class RemindersService {
     errorCode?: string,
     errorMessage?: string,
     response?: unknown,
+    options: ReminderSendOptions = {},
   ) {
     const sentAt = status === 'sent' ? new Date() : undefined
     const shouldDisable = status === 'sent' ||
@@ -674,6 +874,17 @@ export class RemindersService {
         sentAt,
       },
     })
+
+    if (options.preserveSubscription) {
+      await this.prisma.reminderSubscription.update({
+        where: { id: subscription.id },
+        data: {
+          lastErrorCode: status === 'failed' ? errorCode : null,
+          lastErrorMessage: status === 'failed' ? errorMessage : null,
+        },
+      })
+      return
+    }
 
     await this.prisma.reminderSubscription.update({
       where: { id: subscription.id },
@@ -804,6 +1015,16 @@ export class RemindersService {
     return value === 'sent' || value === 'skipped' || value === 'failed' || value === 'pending'
       ? value
       : undefined
+  }
+
+  private normalizeSubscriptionStatus(value?: string) {
+    return value === 'enabled' || value === 'disabled' || value === 'blocked'
+      ? value
+      : undefined
+  }
+
+  private normalizeOpenid(value?: string) {
+    return typeof value === 'string' && value.trim() ? value.trim() : ''
   }
 
   private normalizePreferredTime(value: string | undefined, fallback: string) {

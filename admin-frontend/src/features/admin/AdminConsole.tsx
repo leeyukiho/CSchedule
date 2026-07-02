@@ -263,6 +263,57 @@ interface ReminderDeliveriesResponse {
   items: ReminderDeliveryItem[]
 }
 
+interface ReminderSubscriptionItem {
+  id: string
+  accountId: string
+  openid: string
+  type: 'daily_course' | 'exam'
+  status: 'enabled' | 'disabled' | 'blocked'
+  preferredTime: string
+  lastSentDate?: string | null
+  lastSentAt?: string | null
+  lastErrorCode?: string | null
+  lastErrorMessage?: string | null
+  updatedAt: string
+  account?: {
+    id: string
+    displayName: string | null
+    status: string
+    wechatOpenid?: string | null
+    school?: {
+      id: string
+      name: string
+      shortName: string | null
+    } | null
+  } | null
+}
+
+interface ReminderWxUserItem {
+  openid: string
+  enabledCount: number
+  totalCount: number
+  activeAccountId?: string
+  activeAccount?: ReminderSubscriptionItem['account']
+  subscriptions: ReminderSubscriptionItem[]
+}
+
+interface ReminderSubscriptionsResponse {
+  items: ReminderWxUserItem[]
+}
+
+interface ReminderClearResult {
+  disabled: number
+}
+
+interface ReminderTestResult {
+  result: 'sent' | 'skipped' | 'failed'
+  subscriptionId: string
+  accountId: string
+  openid: string
+  type: 'daily_course' | 'exam'
+  dateKey: string
+}
+
 type HomeShortcutKey =
   | 'query'
   | 'schedule'
@@ -929,6 +980,7 @@ export function AdminConsole() {
   const [notifications, setNotifications] = useState<PageResult<NotificationItem>>({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
   const [reminderConfig, setReminderConfig] = useState<ReminderConfig | null>(null)
   const [reminderDeliveries, setReminderDeliveries] = useState<ReminderDeliveryItem[]>([])
+  const [reminderSubscriptions, setReminderSubscriptions] = useState<ReminderWxUserItem[]>([])
   const [reminderRun, setReminderRun] = useState<ReminderRunResult | null>(null)
   const [homeShortcutConfig, setHomeShortcutConfig] = useState<HomeShortcutConfig | null>(null)
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null)
@@ -1228,13 +1280,15 @@ export function AdminConsole() {
     }
 
     if (view === 'reminders') {
-      const [nextReminderConfig, nextReminderDeliveries] = await Promise.all([
+      const [nextReminderConfig, nextReminderDeliveries, nextReminderSubscriptions] = await Promise.all([
         load<ReminderConfig>('/admin/reminders/config'),
         load<ReminderDeliveriesResponse>('/admin/reminders/deliveries?limit=50'),
+        load<ReminderSubscriptionsResponse>('/admin/reminders/subscriptions?status=enabled&limit=200'),
       ])
 
       setReminderConfig(nextReminderConfig)
       setReminderDeliveries(nextReminderDeliveries.items)
+      setReminderSubscriptions(nextReminderSubscriptions.items)
     }
 
     if (view === 'appSettings') {
@@ -1430,6 +1484,8 @@ export function AdminConsole() {
     setSubmissions({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
     setFeedback({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
     setNotifications({ items: [], total: 0, limit: PAGE_SIZE, offset: 0, hasMore: false })
+    setReminderSubscriptions([])
+    setReminderDeliveries([])
     setHomeShortcutConfig(null)
     setSelectedFeedback(null)
   }
@@ -1659,9 +1715,60 @@ export function AdminConsole() {
         method: 'POST',
       })
       setReminderRun(result)
-      const nextDeliveries = await requestApi<ReminderDeliveriesResponse>('/admin/reminders/deliveries?limit=50')
-      setReminderDeliveries(nextDeliveries.items)
+      await refreshReminderAdminData()
       showStatus('提醒试跑已完成。')
+    } catch (error) {
+      showStatus(describeFetchError(error, baseUrl), 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function refreshReminderAdminData() {
+    const [nextDeliveries, nextSubscriptions] = await Promise.all([
+      requestApi<ReminderDeliveriesResponse>('/admin/reminders/deliveries?limit=50'),
+      requestApi<ReminderSubscriptionsResponse>('/admin/reminders/subscriptions?status=enabled&limit=200'),
+    ])
+
+    setReminderDeliveries(nextDeliveries.items)
+    setReminderSubscriptions(nextSubscriptions.items)
+  }
+
+  async function clearReminderSubscriptions(input: { openid?: string; accountId?: string }) {
+    const scope = input.openid
+      ? `openid ${input.openid}`
+      : input.accountId
+        ? `账号 ${input.accountId}`
+        : '所有用户'
+
+    if (!input.openid && !input.accountId && !window.confirm('确认清空所有人的订阅提醒？')) {
+      return
+    }
+
+    try {
+      setLoading(true)
+      const result = await requestApi<ReminderClearResult>('/admin/reminders/subscriptions/clear', {
+        method: 'POST',
+        bodyData: input,
+      })
+      await refreshReminderAdminData()
+      showStatus(`${scope} 已清空 ${result.disabled} 条订阅提醒。`)
+    } catch (error) {
+      showStatus(describeFetchError(error, baseUrl), 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function sendReminderTest(input: { openid: string; type?: 'daily_course' | 'exam' }) {
+    try {
+      setLoading(true)
+      const result = await requestApi<ReminderTestResult>('/admin/reminders/subscriptions/test', {
+        method: 'POST',
+        bodyData: input,
+      })
+      await refreshReminderAdminData()
+      showStatus(`测试提醒已发送给 ${result.openid}，使用账号 ${result.accountId}。`)
     } catch (error) {
       showStatus(describeFetchError(error, baseUrl), 'error')
     } finally {
@@ -1872,9 +1979,12 @@ export function AdminConsole() {
           <RemindersView
             config={reminderConfig}
             deliveries={reminderDeliveries}
+            subscriptions={reminderSubscriptions}
             runResult={reminderRun}
             onSave={(config) => void saveReminderConfig(config)}
             onDryRun={() => void runReminderDryRun()}
+            onClearSubscriptions={(input) => void clearReminderSubscriptions(input)}
+            onSendTest={(input) => void sendReminderTest(input)}
           />
         )}
         {!loading && activeView === 'appSettings' && (
@@ -3632,11 +3742,17 @@ function NotificationsView(props: {
 function RemindersView(props: {
   config: ReminderConfig | null
   deliveries: ReminderDeliveryItem[]
+  subscriptions: ReminderWxUserItem[]
   runResult: ReminderRunResult | null
   onSave: (config: ReminderConfig) => void
   onDryRun: () => void
+  onClearSubscriptions: (input: { openid?: string; accountId?: string }) => void
+  onSendTest: (input: { openid: string; type?: 'daily_course' | 'exam' }) => void
 }) {
   const [draft, setDraft] = useState<ReminderConfig | null>(props.config)
+  const [targetOpenid, setTargetOpenid] = useState('')
+  const [targetAccountId, setTargetAccountId] = useState('')
+  const [testType, setTestType] = useState<'daily_course' | 'exam'>('daily_course')
 
   useEffect(() => {
     setDraft(props.config)
@@ -3652,6 +3768,8 @@ function RemindersView(props: {
   const setNumber = (key: keyof ReminderConfig, value: string) => {
     setDraft((current) => current ? { ...current, [key]: Math.max(1, Number(value) || 1) } : current)
   }
+  const cleanTargetOpenid = targetOpenid.trim()
+  const cleanTargetAccountId = targetAccountId.trim()
   const dryRunSummary = props.runResult
     ? `扫描 ${props.runResult.total ?? 0} 条，发送 ${props.runResult.sent ?? 0} 条，跳过 ${props.runResult.skipped ?? 0} 条，失败 ${props.runResult.failed ?? 0} 条`
     : '还没有运行过试跑'
@@ -3757,6 +3875,116 @@ function RemindersView(props: {
           <DetailItem label="最近试跑结果" value={dryRunSummary} />
         </div>
       </div>
+      <section className="settings-section">
+        <div className="settings-section-head">
+          <h3>订阅 wx 用户</h3>
+          <p>只展示开启订阅的 wx 用户。发送测试提醒时会使用该 openid 当前绑定的账号，避免同一个账号被多个微信导入或同一微信切换学校后串发。</p>
+        </div>
+        <div className="settings-grid compact">
+          <label className="field">
+            <span>wx openid</span>
+            <input value={targetOpenid} placeholder="指定 wx 用户" onChange={(event) => setTargetOpenid(event.target.value)} />
+          </label>
+          <label className="field">
+            <span>账号 ID</span>
+            <input value={targetAccountId} placeholder="指定账号清空" onChange={(event) => setTargetAccountId(event.target.value)} />
+          </label>
+          <SelectField
+            label="测试类型"
+            value={testType}
+            options={[
+              ['daily_course', '课程提醒'],
+              ['exam', '考试提醒'],
+            ]}
+            onChange={(value) => setTestType(value === 'exam' ? 'exam' : 'daily_course')}
+          />
+        </div>
+        <div className="row-actions">
+          <button className="button secondary" type="button" disabled={!cleanTargetOpenid} onClick={() => props.onSendTest({ openid: cleanTargetOpenid, type: testType })}>
+            <BellRing size={16} />
+            发送测试
+          </button>
+          <button className="button secondary" type="button" disabled={!cleanTargetOpenid} onClick={() => props.onClearSubscriptions({ openid: cleanTargetOpenid })}>
+            <PowerOff size={16} />
+            清空 wx
+          </button>
+          <button className="button secondary" type="button" disabled={!cleanTargetAccountId} onClick={() => props.onClearSubscriptions({ accountId: cleanTargetAccountId })}>
+            <PowerOff size={16} />
+            清空账号
+          </button>
+          <button className="button danger" type="button" onClick={() => props.onClearSubscriptions({})}>
+            <Trash2 size={16} />
+            清空所有
+          </button>
+        </div>
+        {props.subscriptions.length ? (
+          <div className="table-wrap">
+            <table className="dense-table">
+              <thead>
+                <tr>
+                  <th>wx 用户</th>
+                  <th>当前账号</th>
+                  <th>开启订阅</th>
+                  <th>最近错误</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {props.subscriptions.map((item) => {
+                  const activeAccount = item.activeAccount
+                  const latestError = item.subscriptions.find((subscription) => subscription.lastErrorCode)
+
+                  return (
+                    <tr key={item.openid}>
+                      <td>
+                        <div className="cell-title">{item.openid}</div>
+                        <div className="cell-meta">{item.totalCount} 条订阅记录</div>
+                      </td>
+                      <td>
+                        <div className="cell-title">{activeAccount?.displayName || item.activeAccountId || '--'}</div>
+                        <div className="cell-meta">{activeAccount?.school?.shortName || activeAccount?.school?.name || activeAccount?.status || '--'}</div>
+                      </td>
+                      <td>
+                        <Badge tone={item.activeAccountId ? 'green' : 'amber'}>{item.enabledCount} 项</Badge>
+                        <div className="cell-meta">
+                          {item.subscriptions
+                            .filter((subscription) => subscription.status === 'enabled')
+                            .map((subscription) => subscription.type === 'daily_course' ? '课程' : '考试')
+                            .join(' / ') || '--'}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="cell-title">{latestError?.lastErrorCode || '-'}</div>
+                        <div className="cell-meta">{latestError?.lastErrorMessage || '-'}</div>
+                      </td>
+                      <td>
+                        <div className="row-actions">
+                          <button className="button secondary" type="button" disabled={!item.activeAccountId} onClick={() => props.onSendTest({ openid: item.openid, type: testType })}>
+                            <Bell size={16} />
+                            测试
+                          </button>
+                          <button className="button secondary" type="button" onClick={() => {
+                            setTargetOpenid(item.openid)
+                            setTargetAccountId(item.activeAccountId || '')
+                          }}>
+                            <Eye size={16} />
+                            填入
+                          </button>
+                          <button className="button danger" type="button" onClick={() => props.onClearSubscriptions({ openid: item.openid })}>
+                            <PowerOff size={16} />
+                            清空
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : <div className="empty">暂无开启订阅的 wx 用户。</div>}
+      </section>
+
       <section className="settings-section">
         <div className="settings-section-head">
           <h3>最近发送记录</h3>
