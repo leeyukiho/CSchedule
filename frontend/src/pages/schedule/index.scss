@@ -236,6 +236,43 @@
   overflow-wrap: normal;
 }
 
+.exam-block {
+  z-index: 3;
+  padding: 8rpx 4rpx;
+  border: 1rpx solid #f2b84b;
+  background: #fff5d6;
+  color: #92400e;
+  box-shadow: 0 8rpx 18rpx rgba(146, 64, 14, 0.12);
+}
+
+.exam-badge {
+  position: absolute;
+  top: 5rpx;
+  right: 5rpx;
+  height: 22rpx;
+  padding: 0 6rpx;
+  border-radius: 999rpx;
+  background: #d97706;
+  color: #ffffff;
+  font-size: 14rpx;
+  font-weight: 800;
+  line-height: 22rpx;
+}
+
+.exam-name {
+  margin-top: 12rpx;
+}
+
+.exam-name .lesson-name-text {
+  color: #78350f;
+  font-size: 19rpx;
+}
+
+.exam-room,
+.exam-room .lesson-room-text {
+  color: #92400e;
+}
+
 .state-card {
   min-height: 88rpx;
   padding: 24rpx;

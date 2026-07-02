@@ -3,6 +3,7 @@ import { createHash } from 'crypto'
 import { BadRequestException, HttpException, HttpStatus, Injectable } from '@nestjs/common'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { SettingsService } from '../settings/settings.service'
 
 export interface SubmitFeedbackRequest {
   accountId?: string
@@ -46,9 +47,14 @@ interface ClientAbuseRecord {
 export class FeedbackService {
   private readonly clientAbuseRecords = new Map<string, ClientAbuseRecord>()
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settingsService: SettingsService,
+  ) {}
 
   async submitFeedback(input: SubmitFeedbackRequest, clientKey?: string) {
+    await this.settingsService.assertHomeShortcutEnabled('feedback')
+
     const content = this.getText(input.content, MAX_CONTENT_LENGTH)
 
     if (!content) {

@@ -13,6 +13,8 @@ export async function getAppSettings() {
 
   return {
     ...response,
-    homeShortcuts: normalizeHomeShortcutConfig(response.homeShortcuts),
+    homeShortcuts: normalizeHomeShortcutConfig(response.homeShortcuts, {
+      includeMissingDefaults: false,
+    }),
   }
 }

@@ -4,7 +4,7 @@ import { useDidShow, useLaunch } from '@tarojs/taro'
 import { getPendingNotifications, markNotificationRead, PendingNotification } from './shared/api/notifications'
 import { getAppSettings } from './shared/api/settings'
 import { initWechatAbuseSession } from './shared/api/wechat-session'
-import { setStoredHomeShortcutConfig } from './shared/home-shortcuts'
+import { publishHomeShortcutConfig } from './shared/home-shortcuts'
 import { setNotificationPopupState } from './shared/notification-popup'
 import { getStoredAccountId } from './shared/storage'
 import './app.scss'
@@ -88,7 +88,7 @@ function App({ children }: PropsWithChildren<unknown>) {
   async function loadAppSettings() {
     try {
       const response = await getAppSettings()
-      setStoredHomeShortcutConfig(response.homeShortcuts)
+      publishHomeShortcutConfig(response.homeShortcuts)
     } catch (error) {
       console.warn('Failed to load app settings.', error)
     }

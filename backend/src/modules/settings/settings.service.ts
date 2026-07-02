@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { ForbiddenException, Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
@@ -62,7 +62,7 @@ export class SettingsService {
     const homeShortcuts = await this.getHomeShortcuts()
 
     return {
-      homeShortcuts,
+      homeShortcuts: this.toPublicHomeShortcuts(homeShortcuts),
       updatedAt: homeShortcuts.updatedAt,
     }
   }
@@ -93,6 +93,22 @@ export class SettingsService {
     })
 
     return config
+  }
+
+  async assertHomeShortcutEnabled(key: HomeShortcutKey) {
+    const homeShortcuts = await this.getHomeShortcuts()
+    const shortcut = homeShortcuts.items.find((item) => item.key === key)
+
+    if (!shortcut?.enabled) {
+      throw new ForbiddenException('HOME_SHORTCUT_DISABLED')
+    }
+  }
+
+  private toPublicHomeShortcuts(config: HomeShortcutConfig): HomeShortcutConfig {
+    return {
+      items: config.items.filter((item) => item.enabled),
+      updatedAt: config.updatedAt,
+    }
   }
 
   private normalizeHomeShortcuts(value: unknown): HomeShortcutConfig {

@@ -334,8 +334,22 @@ export class RemindersService {
       throw new Error('OPENID_REQUIRED')
     }
 
+    if (input.enabled) {
+      await this.prisma.reminderSubscription.updateMany({
+        where: {
+          openid,
+          accountId: { not: accountId },
+          status: 'enabled',
+        },
+        data: {
+          status: 'disabled',
+          preferredTime,
+        },
+      })
+    }
+
     await this.prisma.reminderSubscription.updateMany({
-      where: { accountId, openid },
+      where: { accountId },
       data: {
         status: 'disabled',
         preferredTime,

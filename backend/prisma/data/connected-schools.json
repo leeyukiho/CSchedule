@@ -269,8 +269,7 @@
         },
         "termParams": {
           "first": "3",
-          "second": "12",
-          "third": "16"
+          "second": "12"
         },
         "authConfig": {
           "captchaRequired": false,
@@ -339,8 +338,7 @@
         },
         "termParams": {
           "first": "3",
-          "second": "12",
-          "third": "16"
+          "second": "12"
         },
         "authConfig": {
           "captchaRequired": false,

@@ -23,6 +23,10 @@ export interface HomeShortcutConfig {
   updatedAt?: string
 }
 
+interface NormalizeHomeShortcutOptions {
+  includeMissingDefaults?: boolean
+}
+
 export type HomeShortcutRuntimeItem = HomeShortcutConfigItem & {
   iconClass: string
   action: HomeShortcutKey
@@ -31,8 +35,6 @@ export type HomeShortcutRuntimeItem = HomeShortcutConfigItem & {
 }
 
 export const HOME_SHORTCUT_CONFIG_UPDATED_EVENT = 'cschedule.homeShortcuts.updated'
-
-const HOME_SHORTCUT_CONFIG_KEY = 'cschedule.homeShortcuts.config'
 
 export const HOME_SHORTCUT_CATALOG: Record<HomeShortcutKey, Omit<HomeShortcutRuntimeItem, 'order' | 'enabled'>> = {
   query: {
@@ -116,7 +118,11 @@ export const DEFAULT_HOME_SHORTCUT_CONFIG: HomeShortcutConfig = {
   ],
 }
 
-export function normalizeHomeShortcutConfig(value: unknown): HomeShortcutConfig {
+export function normalizeHomeShortcutConfig(
+  value: unknown,
+  options: NormalizeHomeShortcutOptions = {},
+): HomeShortcutConfig {
+  const { includeMissingDefaults = true } = options
   const record = value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Partial<HomeShortcutConfig>)
     : {}
@@ -146,9 +152,11 @@ export function normalizeHomeShortcutConfig(value: unknown): HomeShortcutConfig 
     })
   }
 
-  for (const item of DEFAULT_HOME_SHORTCUT_CONFIG.items) {
-    if (!byKey.has(item.key)) {
-      byKey.set(item.key, item)
+  if (includeMissingDefaults) {
+    for (const item of DEFAULT_HOME_SHORTCUT_CONFIG.items) {
+      if (!byKey.has(item.key)) {
+        byKey.set(item.key, item)
+      }
     }
   }
 
@@ -158,8 +166,11 @@ export function normalizeHomeShortcutConfig(value: unknown): HomeShortcutConfig 
   }
 }
 
-export function buildHomeShortcutRuntimeItems(config: HomeShortcutConfig) {
-  return normalizeHomeShortcutConfig(config).items
+export function buildHomeShortcutRuntimeItems(
+  config: HomeShortcutConfig,
+  options?: NormalizeHomeShortcutOptions,
+) {
+  return normalizeHomeShortcutConfig(config, options).items
     .filter((item) => item.enabled)
     .sort((left, right) => left.order - right.order)
     .map((item) => ({
@@ -171,14 +182,11 @@ export function buildHomeShortcutRuntimeItems(config: HomeShortcutConfig) {
     }))
 }
 
-export function getStoredHomeShortcutConfig() {
-  return normalizeHomeShortcutConfig(Taro.getStorageSync(HOME_SHORTCUT_CONFIG_KEY))
-}
+export function publishHomeShortcutConfig(config: HomeShortcutConfig) {
+  const normalized = normalizeHomeShortcutConfig(config, {
+    includeMissingDefaults: false,
+  })
 
-export function setStoredHomeShortcutConfig(config: HomeShortcutConfig) {
-  const normalized = normalizeHomeShortcutConfig(config)
-
-  Taro.setStorageSync(HOME_SHORTCUT_CONFIG_KEY, normalized)
   Taro.eventCenter.trigger(HOME_SHORTCUT_CONFIG_UPDATED_EVENT, normalized)
   return normalized
 }

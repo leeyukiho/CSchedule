@@ -7,6 +7,7 @@ import {
 import { randomBytes } from 'node:crypto'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { SettingsService } from '../settings/settings.service'
 import { TimetableService } from '../timetable/timetable.service'
 import { BuddyInvitePreviewResponse, BuddyInviteResponse, BuddySpaceResponse } from './buddies.types'
 
@@ -17,10 +18,12 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000
 export class BuddiesService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly settingsService: SettingsService,
     private readonly timetableService: TimetableService,
   ) {}
 
   async createInvite(accountId: string): Promise<BuddyInviteResponse> {
+    await this.settingsService.assertHomeShortcutEnabled('buddySpace')
     await this.assertAccountExists(accountId)
 
     const expiresAt = new Date(Date.now() + BUDDY_INVITE_TTL_DAYS * MS_PER_DAY)
@@ -40,6 +43,8 @@ export class BuddiesService {
   }
 
   async previewInvite(code: string): Promise<BuddyInvitePreviewResponse> {
+    await this.settingsService.assertHomeShortcutEnabled('buddySpace')
+
     const invite = await this.getInviteByCode(code)
     const status = this.getInviteStatus(invite.status, invite.expiresAt)
 
@@ -52,6 +57,8 @@ export class BuddiesService {
   }
 
   async acceptInvite(code: string, accountId: string) {
+    await this.settingsService.assertHomeShortcutEnabled('buddySpace')
+
     const invite = await this.getInviteByCode(code)
     const status = this.getInviteStatus(invite.status, invite.expiresAt)
 
@@ -78,6 +85,7 @@ export class BuddiesService {
   }
 
   async getSpace(accountId: string): Promise<BuddySpaceResponse> {
+    await this.settingsService.assertHomeShortcutEnabled('buddySpace')
     await this.assertAccountExists(accountId)
 
     const links = await this.prisma.buddyLink.findMany({

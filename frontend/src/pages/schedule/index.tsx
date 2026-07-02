@@ -2,8 +2,9 @@ import { useMemo, useRef, useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { Picker, RootPortal, Text, View, type ITouchEvent } from '@tarojs/components'
 
+import { getExams } from '../../shared/api/features'
 import { getTimetable } from '../../shared/api/timetable'
-import { CourseItem, FeatureDisplayField, TimetableCacheResponse } from '../../shared/api/types'
+import { CourseItem, FeatureCacheResponse, FeatureDisplayField, TimetableCacheResponse } from '../../shared/api/types'
 import {
   DEFAULT_SECTION_TIMES,
   formatCourseTime,
@@ -36,6 +37,7 @@ const HEADER_HEIGHT = 100
 const ROW_HEIGHT = 110
 const LESSON_HORIZONTAL_GAP = 3
 const LESSON_VERTICAL_GAP = 3
+const EXAM_MIN_HEIGHT = 64
 const WEEK_SWIPE_THRESHOLD = 48
 const COURSE_COLOR_HUE_STEP = 137.508
 const COURSE_COLOR_GENERATION_LIMIT = 2160
@@ -75,6 +77,7 @@ interface LessonDetailRow {
 
 interface PositionedLesson {
   id: string
+  type: 'course' | 'exam'
   name: string
   nameLines: string[]
   room: string
@@ -88,6 +91,19 @@ interface PositionedLesson {
   style: string
 }
 
+type PositionedScheduleItem = PositionedLesson
+
+interface ScheduleExamItem {
+  id: string
+  courseName: string
+  date: string
+  time: string
+  startAt: string
+  endAt: string
+  location: string
+  seatNo: string
+}
+
 interface WeekOption {
   value: number
   label: string
@@ -96,6 +112,7 @@ interface WeekOption {
 interface WeekdayColumn {
   weekday: string
   dateText: string
+  dateKey: string
   isToday: boolean
   style: string
 }
@@ -316,6 +333,189 @@ function formatMonthDay(date: Date) {
   return `${date.getMonth() + 1}/${date.getDate()}`
 }
 
+function getLocalDateKey(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function normalizeDateKey(date: string) {
+  const match = String(date || '').trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+
+  if (!match) {
+    return ''
+  }
+
+  return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`
+}
+
+function parseClockMinutes(value: string) {
+  const match = String(value || '').match(/(\d{1,2})\s*:\s*(\d{2})/)
+
+  if (!match) {
+    return null
+  }
+
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return null
+  }
+
+  return hour * 60 + minute
+}
+
+function parseExamTimeValue(value: string) {
+  const time = value ? Date.parse(value) : 0
+
+  return Number.isFinite(time) ? time : 0
+}
+
+function getDateKeyFromTimeValue(value: string) {
+  const time = parseExamTimeValue(value)
+
+  return time ? getLocalDateKey(new Date(time)) : ''
+}
+
+function parseExamRangeTime(exam: Pick<ScheduleExamItem, 'date' | 'time'>, edge: 'start' | 'end') {
+  const match = exam.time.match(/(\d{1,2})\s*:\s*(\d{2})\s*[~\-—至]\s*(\d{1,2})\s*:\s*(\d{2})/)
+
+  if (!exam.date || !match) {
+    return 0
+  }
+
+  const dateMatch = exam.date.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (!dateMatch) {
+    return 0
+  }
+
+  const hour = edge === 'start' ? match[1] : match[3]
+  const minute = edge === 'start' ? match[2] : match[4]
+
+  return new Date(
+    Number(dateMatch[1]),
+    Number(dateMatch[2]) - 1,
+    Number(dateMatch[3]),
+    Number(hour),
+    Number(minute),
+  ).getTime()
+}
+
+function getTextValue(source: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = source[key]
+
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value)
+    }
+  }
+
+  return ''
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
+}
+
+function normalizeScheduleExamItem(item: Record<string, unknown>, index: number): ScheduleExamItem {
+  const courseName = getTextValue(item, ['courseName', 'name', 'course']) || '未命名考试'
+  const startAt = getTextValue(item, ['startAt'])
+  const endAt = getTextValue(item, ['endAt'])
+
+  return {
+    id: String(item.id || item.courseCode || `${courseName}-${index}`),
+    courseName,
+    date: getTextValue(item, ['date']) || getDateKeyFromTimeValue(startAt) || getDateKeyFromTimeValue(endAt),
+    time: getTextValue(item, ['time']),
+    startAt,
+    endAt,
+    location: getTextValue(item, ['location', 'classroom', 'room']),
+    seatNo: getTextValue(item, ['seatNo', 'seat', 'seatNumber']),
+  }
+}
+
+function buildScheduleExamItems(data: unknown): ScheduleExamItem[] {
+  const record = asRecord(data)
+  const directList = Array.isArray(data) ? data : []
+  const upcoming = asArray(record.upcoming)
+  const finished = asArray(record.finished)
+  const fallback = directList.length ? directList : asArray(record.items)
+  const sourceItems = upcoming.length || finished.length
+    ? [...upcoming, ...finished]
+    : fallback
+
+  return sourceItems.map((item, index) => normalizeScheduleExamItem(asRecord(item), index))
+}
+
+function getExamStartTime(exam: ScheduleExamItem) {
+  return parseExamTimeValue(exam.startAt) || parseExamRangeTime(exam, 'start') || 0
+}
+
+function getExamEndTime(exam: ScheduleExamItem) {
+  return parseExamTimeValue(exam.endAt) || parseExamRangeTime(exam, 'end') || 0
+}
+
+function getExamTimeParts(exam: ScheduleExamItem) {
+  const match = exam.time.match(/(\d{1,2})\s*:\s*(\d{2})\s*[~\-—至]\s*(\d{1,2})\s*:\s*(\d{2})/)
+
+  if (match) {
+    return {
+      start: `${match[1].padStart(2, '0')}:${match[2]}`,
+      end: `${match[3].padStart(2, '0')}:${match[4]}`,
+    }
+  }
+
+  const startAt = getExamStartTime(exam)
+  const endAt = getExamEndTime(exam)
+
+  if (startAt || endAt) {
+    return {
+      start: startAt ? formatClockTime(new Date(startAt)) : '开始待定',
+      end: endAt ? formatClockTime(new Date(endAt)) : '结束待定',
+    }
+  }
+
+  return {
+    start: exam.time || '时间',
+    end: '待定',
+  }
+}
+
+function formatClockTime(date: Date) {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function getExamTimeText(exam: ScheduleExamItem) {
+  const timeParts = getExamTimeParts(exam)
+
+  if (!exam.time && !exam.startAt && !exam.endAt) {
+    return '时间待定'
+  }
+
+  return `${timeParts.start}-${timeParts.end}`
+}
+
+async function getExamsSafely(accountId: string, termId?: string) {
+  try {
+    return await getExams(accountId, termId)
+  } catch {
+    return null
+  }
+}
+
 function formatSectionsText(sections: number[]) {
   if (sections.length === 0) {
     return ''
@@ -411,9 +611,10 @@ export default function SchedulePage() {
   const [latestTermId, setLatestTermId] = useState('')
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null)
   const [termStarts, setTermStarts] = useState<Record<string, string>>({})
+  const [exams, setExams] = useState<FeatureCacheResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [errorText, setErrorText] = useState('')
-  const [selectedLesson, setSelectedLesson] = useState<PositionedLesson | null>(null)
+  const [selectedItem, setSelectedItem] = useState<PositionedScheduleItem | null>(null)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const resetToTodayRef = useRef<() => void>(() => undefined)
 
@@ -578,6 +779,7 @@ export default function SchedulePage() {
       return {
         weekday,
         dateText,
+        dateKey: getLocalDateKey(date),
         isToday,
         style: [
           `left:${LEFT_WIDTH_PERCENT + DAY_WIDTH_PERCENT * index}%;`,
@@ -613,6 +815,18 @@ export default function SchedulePage() {
     selectedWeek,
     timetable,
   ])
+  const examItems = useMemo<PositionedLesson[]>(() => {
+    const weekDateIndex = new Map(weekdays.map((weekday, index) => [weekday.dateKey, index]))
+
+    return buildScheduleExamItems(exams?.data)
+      .map((exam, index) => toExamItem(exam, index, weekDateIndex))
+      .filter((exam): exam is PositionedLesson => Boolean(exam))
+  }, [
+    exams,
+    sectionCount,
+    sectionTimeMap,
+    weekdays,
+  ])
 
   useDidShow(() => {
     const authState = getStoredAuthState()
@@ -628,6 +842,7 @@ export default function SchedulePage() {
 
     if (!id) {
       setTimetable(null)
+      setExams(null)
       setTermOptions([])
       setSelectedTermId('')
       setLatestTermId('')
@@ -657,7 +872,10 @@ export default function SchedulePage() {
 
     try {
       const requestedTermId = options?.resetToToday ? '' : termId
-      const nextTimetable = await getTimetable(id, requestedTermId || undefined)
+      const [nextTimetable, nextExams] = await Promise.all([
+        getTimetable(id, requestedTermId || undefined),
+        getExamsSafely(id, requestedTermId || undefined),
+      ])
       const nextTermOptions = buildTermOptions(nextTimetable)
       const todayTerm = requestedTermId ? null : getTodayTermOption(nextTermOptions)
 
@@ -666,7 +884,10 @@ export default function SchedulePage() {
       }
 
       if (todayTerm && nextTimetable.termId !== todayTerm.id) {
-        const todayTimetable = await getTimetable(id, todayTerm.id)
+        const [todayTimetable, todayExams] = await Promise.all([
+          getTimetable(id, todayTerm.id),
+          getExamsSafely(id, todayTerm.id),
+        ])
         const todayTermOptions = buildTermOptions(todayTimetable)
         const mergedTermOptions = mergeTermOptions(nextTermOptions, todayTermOptions)
         const todaySelectedTerm =
@@ -674,6 +895,7 @@ export default function SchedulePage() {
           todayTerm
 
         setTimetable(todayTimetable)
+        setExams(todayExams)
         setTermOptions((current) => mergeTermOptions(current, mergedTermOptions))
         setSelectedTermId(todayTimetable.termId || todayTerm.id)
         setSelectedWeek(getCurrentTeachingWeek(
@@ -693,6 +915,7 @@ export default function SchedulePage() {
       }
 
       setTimetable(nextTimetable)
+      setExams(nextExams)
       setTermOptions((current) => mergeTermOptions(current, nextTermOptions))
       setSelectedTermId(nextSelectedTermId)
       setSelectedWeek((current) =>
@@ -718,7 +941,7 @@ export default function SchedulePage() {
       return
     }
 
-    setSelectedLesson(null)
+    setSelectedItem(null)
 
     if (term.id === selectedTermId) {
       return
@@ -735,7 +958,7 @@ export default function SchedulePage() {
       return
     }
 
-    setSelectedLesson(null)
+    setSelectedItem(null)
     setSelectedWeek(week.value)
   }
 
@@ -746,7 +969,7 @@ export default function SchedulePage() {
       return
     }
 
-    setSelectedLesson(null)
+    setSelectedItem(null)
     setSelectedWeek(nextWeek.value)
   }
 
@@ -763,7 +986,7 @@ export default function SchedulePage() {
       void loadTimetable(accountId, todayTerm.id === '__current__' || todayTerm.id === latestTermId ? '' : todayTerm.id)
     }
 
-    setSelectedLesson(null)
+    setSelectedItem(null)
     setSelectedWeek(todayWeek)
   }
 
@@ -784,7 +1007,7 @@ export default function SchedulePage() {
     const touch = event.changedTouches[0]
     touchStartRef.current = null
 
-    if (!start || !touch || selectedLesson) {
+    if (!start || !touch || selectedItem) {
       return
     }
 
@@ -806,7 +1029,56 @@ export default function SchedulePage() {
   }
 
   function closeLessonDetail() {
-    setSelectedLesson(null)
+    setSelectedItem(null)
+  }
+
+  function getSectionStartMinutes(section: number) {
+    const time = sectionTimeMap[section] || DEFAULT_SECTION_TIMES[section]
+
+    return time ? parseClockMinutes(time.start) : null
+  }
+
+  function getSectionEndMinutes(section: number) {
+    const time = sectionTimeMap[section] || DEFAULT_SECTION_TIMES[section]
+
+    return time ? parseClockMinutes(time.end) : null
+  }
+
+  function getScheduleTopByMinutes(minutes: number) {
+    const firstStart = getSectionStartMinutes(1)
+    const lastEnd = getSectionEndMinutes(sectionCount)
+
+    if (firstStart === null || lastEnd === null) {
+      return null
+    }
+
+    if (minutes < firstStart) {
+      return HEADER_HEIGHT
+    }
+
+    if (minutes > lastEnd) {
+      return HEADER_HEIGHT + sectionCount * ROW_HEIGHT
+    }
+
+    for (let section = 1; section <= sectionCount; section += 1) {
+      const sectionStart = getSectionStartMinutes(section)
+      const sectionEnd = getSectionEndMinutes(section)
+
+      if (sectionStart !== null && sectionEnd !== null && minutes >= sectionStart && minutes <= sectionEnd) {
+        const duration = Math.max(sectionEnd - sectionStart, 1)
+        const offset = (minutes - sectionStart) / duration
+
+        return HEADER_HEIGHT + (section - 1 + offset) * ROW_HEIGHT
+      }
+
+      const nextStart = getSectionStartMinutes(section + 1)
+
+      if (sectionEnd !== null && nextStart !== null && minutes > sectionEnd && minutes < nextStart) {
+        return HEADER_HEIGHT + section * ROW_HEIGHT
+      }
+    }
+
+    return null
   }
 
   function toLesson(course: CourseItem, index: number, colors: Map<string, CourseColor>): PositionedLesson | null {
@@ -861,6 +1133,7 @@ export default function SchedulePage() {
 
     return {
       id: course.id || `${weekday}-${start}-${course.name || index}`,
+      type: 'course',
       name,
       nameLines: splitCourseName(name),
       room,
@@ -874,6 +1147,77 @@ export default function SchedulePage() {
         { label: '任课教师', value: teacher },
         { label: '上课地点', value: room },
         { label: '上课周次', value: weeksText },
+      ].filter((row) => row.value),
+      style,
+    }
+  }
+
+  function toExamItem(
+    exam: ScheduleExamItem,
+    index: number,
+    weekDateIndex: Map<string, number>,
+  ): PositionedLesson | null {
+    const dateKey = normalizeDateKey(exam.date)
+    const leftIndex = weekDateIndex.get(dateKey)
+
+    if (leftIndex === undefined) {
+      return null
+    }
+
+    const startTime = getExamStartTime(exam)
+    const endTime = getExamEndTime(exam)
+    const startDate = startTime ? new Date(startTime) : null
+    const endDate = endTime ? new Date(endTime) : null
+    const timeParts = getExamTimeParts(exam)
+    const startMinutes = startDate ? startDate.getHours() * 60 + startDate.getMinutes() : parseClockMinutes(timeParts.start)
+    const endMinutes = endDate ? endDate.getHours() * 60 + endDate.getMinutes() : parseClockMinutes(timeParts.end)
+
+    if (startMinutes === null) {
+      return null
+    }
+
+    const top = getScheduleTopByMinutes(startMinutes)
+
+    if (top === null) {
+      return null
+    }
+
+    const parsedEnd = parseClockMinutes(timeParts.end)
+    const fallbackEnd = parsedEnd !== null && parsedEnd > startMinutes ? parsedEnd : startMinutes + 90
+    const resolvedEndMinutes = endMinutes !== null && endMinutes > startMinutes ? endMinutes : fallbackEnd
+    const endTop = getScheduleTopByMinutes(resolvedEndMinutes)
+    const height = Math.max(
+      EXAM_MIN_HEIGHT,
+      endTop !== null && endTop > top ? endTop - top : ROW_HEIGHT,
+    )
+    const isLastDay = leftIndex === WEEKDAYS.length - 1
+    const name = exam.courseName || '未命名考试'
+    const room = exam.location || '地点待安排'
+    const timeText = getExamTimeText(exam)
+    const style = [
+      `left:calc(${LEFT_WIDTH_PERCENT + leftIndex * DAY_WIDTH_PERCENT}% + ${LESSON_HORIZONTAL_GAP}rpx)`,
+      isLastDay ? `right:${LESSON_HORIZONTAL_GAP}rpx` : '',
+      `top:${top + LESSON_VERTICAL_GAP}rpx`,
+      isLastDay ? '' : `width:calc(${DAY_WIDTH_PERCENT}% - ${LESSON_HORIZONTAL_GAP * 2}rpx)`,
+      `height:${Math.max(EXAM_MIN_HEIGHT, height - LESSON_VERTICAL_GAP * 2)}rpx`,
+    ].filter(Boolean).join(';')
+
+    return {
+      id: `exam-${exam.id || `${dateKey}-${index}`}`,
+      type: 'exam',
+      name,
+      nameLines: splitCourseName(name),
+      room,
+      roomLines: splitRoomName(room),
+      teacher: '',
+      weekdayText: WEEKDAYS[leftIndex] || '',
+      section: '考试',
+      weeksText: dateKey,
+      timeText,
+      detailRows: [
+        { label: '考试日期', value: dateKey },
+        { label: '考试地点', value: room },
+        { label: '座位号', value: exam.seatNo || '待安排' },
       ].filter((row) => row.value),
       style,
     }
@@ -953,7 +1297,7 @@ export default function SchedulePage() {
             className='lesson-block'
             key={lesson.id}
             style={lesson.style}
-            onClick={() => setSelectedLesson(lesson)}
+            onClick={() => setSelectedItem(lesson)}
           >
             <View className='lesson-name'>
               {lesson.nameLines.map((line, index) => (
@@ -977,13 +1321,43 @@ export default function SchedulePage() {
             </View>
           </View>
         ))}
+        {examItems.map((exam) => (
+          <View
+            className='lesson-block exam-block'
+            key={exam.id}
+            style={exam.style}
+            onClick={() => setSelectedItem(exam)}
+          >
+            <View className='exam-badge'>考试</View>
+            <View className='lesson-name exam-name'>
+              {exam.nameLines.map((line, index) => (
+                <View
+                  className='lesson-name-text'
+                  key={`${exam.id}-name-${line}-${index}`}
+                >
+                  {line}
+                </View>
+              ))}
+            </View>
+            <View className='lesson-room exam-room'>
+              {exam.roomLines.map((line, index) => (
+                <View
+                  className='lesson-room-text'
+                  key={`${exam.id}-room-${line}-${index}`}
+                >
+                  {line}
+                </View>
+              ))}
+            </View>
+          </View>
+        ))}
       </View>
 
-      {!loading && !errorText && timetable && lessons.length === 0 && (
+      {!loading && !errorText && timetable && lessons.length === 0 && examItems.length === 0 && (
         <View className='soft-card state-card empty-schedule'>暂无课表数据</View>
       )}
 
-      {selectedLesson && (
+      {selectedItem && (
         <RootPortal>
           <View className='lesson-detail-mask' onClick={closeLessonDetail}>
             <View
@@ -993,15 +1367,15 @@ export default function SchedulePage() {
               <View className='lesson-detail-head'>
                 <View>
                   <View className='lesson-detail-kicker'>
-                    {selectedLesson.weekdayText} {selectedLesson.section}
+                    {selectedItem.weekdayText} {selectedItem.section}
                   </View>
-                  <View className='lesson-detail-title'>{selectedLesson.name}</View>
+                  <View className='lesson-detail-title'>{selectedItem.name}</View>
                 </View>
                 <View className='lesson-detail-close' onClick={closeLessonDetail} />
               </View>
-              <View className='lesson-detail-time'>{selectedLesson.timeText}</View>
+              <View className='lesson-detail-time'>{selectedItem.timeText}</View>
               <View className='lesson-detail-list'>
-                {selectedLesson.detailRows.map((row) => (
+                {selectedItem.detailRows.map((row) => (
                   <View className='lesson-detail-row' key={row.label}>
                     <Text>{row.label}</Text>
                     <Text>{row.value}</Text>

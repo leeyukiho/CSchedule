@@ -3,6 +3,7 @@ import Taro, { useDidShow } from '@tarojs/taro'
 import { ScrollView, Text, View } from '@tarojs/components'
 
 import { getExams } from '../../shared/api/features'
+import { getAppSettings } from '../../shared/api/settings'
 import {
   getCachedReminderPreferenceState,
   getLocalReminderTemplateIdMap,
@@ -23,7 +24,6 @@ import {
 import { PageShell } from '../../shared/layout'
 import {
   buildHomeShortcutRuntimeItems,
-  getStoredHomeShortcutConfig,
   HOME_SHORTCUT_CONFIG_UPDATED_EVENT,
   HomeShortcutRuntimeItem,
 } from '../../shared/home-shortcuts'
@@ -520,7 +520,7 @@ export default function HomePage() {
   const [reminderSubscribed, setReminderSubscribed] = useState(false)
   const [showAllTodayArrangements, setShowAllTodayArrangements] = useState(false)
   const [activeOverlapHintKey, setActiveOverlapHintKey] = useState('')
-  const [homeShortcuts, setHomeShortcuts] = useState(() => buildHomeShortcutRuntimeItems(getStoredHomeShortcutConfig()))
+  const [homeShortcuts, setHomeShortcuts] = useState<HomeShortcutRuntimeItem[]>([])
   const [homeShortcutScrollPosition, setHomeShortcutScrollPosition] = useState<HomeShortcutScrollPosition>('start')
   const homeShortcutScrollMetricsRef = useRef({ clientWidth: 0, scrollWidth: 0 })
   const homeShortcutScrollPositionRef = useRef<HomeShortcutScrollPosition>('start')
@@ -544,16 +544,33 @@ export default function HomePage() {
 
   useEffect(() => {
     const updateHomeShortcuts = (config?: unknown) => {
-      setHomeShortcuts(buildHomeShortcutRuntimeItems(
+      setHomeShortcuts(
         config && typeof config === 'object' && 'items' in config
-          ? config as ReturnType<typeof getStoredHomeShortcutConfig>
-          : getStoredHomeShortcutConfig(),
-      ))
+          ? buildHomeShortcutRuntimeItems(config as Parameters<typeof buildHomeShortcutRuntimeItems>[0], {
+              includeMissingDefaults: false,
+            })
+          : [],
+      )
+    }
+    let cancelled = false
+
+    const loadHomeShortcuts = async () => {
+      try {
+        const response = await getAppSettings()
+
+        if (!cancelled) {
+          updateHomeShortcuts(response.homeShortcuts)
+        }
+      } catch (error) {
+        console.warn('Failed to load home shortcuts.', error)
+      }
     }
 
     Taro.eventCenter.on(HOME_SHORTCUT_CONFIG_UPDATED_EVENT, updateHomeShortcuts)
+    void loadHomeShortcuts()
 
     return () => {
+      cancelled = true
       Taro.eventCenter.off(HOME_SHORTCUT_CONFIG_UPDATED_EVENT, updateHomeShortcuts)
     }
   }, [])
@@ -894,7 +911,7 @@ export default function HomePage() {
         return
       }
 
-      const openid = preference?.openid || await getReminderOpenid(accountId)
+      const openid = await getReminderOpenid(accountId)
       const nextPreference = await updateReminderPreference(accountId, {
         enabled: true,
         preferredTime: preference?.preferredTime || '07:30',

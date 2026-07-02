@@ -5,6 +5,7 @@ import { DataTarget as PrismaDataTarget } from '@prisma/client'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { DataTarget, LoginMode } from '../providers/provider.types'
+import { SettingsService } from '../settings/settings.service'
 
 export interface CreateSchoolSubmissionRequest {
   schoolName: string
@@ -52,9 +53,14 @@ interface ClientAbuseRecord {
 export class SubmissionsService {
   private readonly clientAbuseRecords = new Map<string, ClientAbuseRecord>()
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settingsService: SettingsService,
+  ) {}
 
   async createSubmission(input: CreateSchoolSubmissionRequest, clientKey?: string) {
+    await this.settingsService.assertHomeShortcutEnabled('submission')
+
     const schoolName = this.getText(input.schoolName, MAX_TEXT_LENGTHS.schoolName)
 
     if (!schoolName) {
