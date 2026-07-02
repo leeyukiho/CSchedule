@@ -45,6 +45,7 @@ interface ReminderContent {
 interface ReminderSendOptions {
   preserveSubscription?: boolean
   forceSend?: boolean
+  dryRun?: boolean
 }
 
 interface CourseReminderCandidate {
@@ -81,6 +82,11 @@ interface AccountReminderPreference {
     dailyCourse?: string
     exam?: string
   }
+  canSubscribe: boolean
+  canSend: boolean
+  dryRun: boolean
+  hasWechatCredentials: boolean
+  missingConfig: string[]
 }
 
 interface ReminderDeliveryListOptions {
@@ -349,17 +355,20 @@ export class RemindersService {
     return { disabled: result.count }
   }
 
-  async sendTestReminderToWxUser(openid: string, type?: ReminderType) {
+  async sendTestReminderToWxUser(openid: string, type?: ReminderType, accountId?: string) {
     const cleanOpenid = this.normalizeOpenid(openid)
+    const cleanAccountId = this.normalizeId(accountId)
 
-    if (!cleanOpenid) {
-      throw new BadRequestException('openid is required')
+    if (!cleanOpenid && !cleanAccountId) {
+      throw new BadRequestException('openid or accountId is required')
     }
 
-    const subscription = await this.findCurrentSubscriptionForOpenid(cleanOpenid, type)
+    const subscription = await this.findCurrentSubscriptionForOpenid(cleanOpenid, type, cleanAccountId)
 
     if (!subscription) {
-      throw new NotFoundException('No enabled reminder subscription for current wx account')
+      throw new NotFoundException(cleanAccountId
+        ? 'No enabled reminder subscription for current wx account and account id'
+        : 'No enabled reminder subscription for current wx account')
     }
 
     const config = await this.getConfig()
@@ -424,6 +433,7 @@ export class RemindersService {
       byType.get('exam'),
       config.sendWindowStart,
       this.getTemplateInfo(config),
+      config,
       account.wechatOpenid || undefined,
     )
   }
@@ -462,6 +472,10 @@ export class RemindersService {
       openid?: string
       dailyCourseEnabled?: boolean
       examEnabled?: boolean
+      templateIdMap?: {
+        dailyCourse?: string
+        exam?: string
+      }
     },
   ) {
     const account = await this.prisma.studentAccount.findUnique({
@@ -500,6 +514,7 @@ export class RemindersService {
           undefined,
           preferredTime,
           this.getTemplateInfo(config),
+          config,
           account.wechatOpenid || undefined,
         )
       }
@@ -529,6 +544,7 @@ export class RemindersService {
         'daily_course',
         dailyCourseEnabled,
         preferredTime,
+        this.normalizeTemplateId(input.templateIdMap?.dailyCourse || config.dailyCourseTemplateId),
       ),
       this.upsertAccountReminderType(
         accountId,
@@ -536,6 +552,7 @@ export class RemindersService {
         'exam',
         examEnabled,
         preferredTime,
+        this.normalizeTemplateId(input.templateIdMap?.exam || config.examTemplateId),
       ),
     ])
 
@@ -544,6 +561,7 @@ export class RemindersService {
       exam,
       config.sendWindowStart,
       this.getTemplateInfo(config),
+      config,
       openid,
     )
   }
@@ -580,14 +598,38 @@ export class RemindersService {
       .slice(0, limit)
   }
 
-  private async findCurrentSubscriptionForOpenid(openid: string, type?: ReminderType) {
+  private async findCurrentSubscriptionForOpenid(openid: string, type?: ReminderType, accountId?: string) {
+    let targetOpenid = openid
+
+    if (accountId) {
+      const account = await this.prisma.studentAccount.findUnique({
+        where: { id: accountId },
+        select: { id: true, wechatOpenid: true },
+      })
+
+      if (!account) {
+        throw new NotFoundException('Student account not found')
+      }
+
+      targetOpenid = this.normalizeOpenid(account.wechatOpenid || undefined)
+
+      if (!targetOpenid) {
+        throw new BadRequestException('Student account has no bound wx openid')
+      }
+
+      if (openid && openid !== targetOpenid) {
+        throw new BadRequestException('wx openid does not match the current bound openid for this account')
+      }
+    }
+
     const subscriptions = await this.prisma.reminderSubscription.findMany({
       where: {
-        openid,
+        openid: targetOpenid,
         status: 'enabled',
+        ...(accountId ? { accountId } : {}),
         ...(type ? { type } : {}),
         account: {
-          wechatOpenid: openid,
+          wechatOpenid: targetOpenid,
           status: { in: ['active', 'cached_only'] },
         },
       },
@@ -659,12 +701,16 @@ export class RemindersService {
       template_id: templateId || `dry-run-${subscription.type}`,
       page: 'pages/index/index',
       data: content.templateData,
-      miniprogram_state: this.getMiniProgramState(),
+      miniprogram_state: config.miniProgramState,
+      lang: config.lang,
     }
 
     try {
       const response = await this.wechat.send(request, config.dryRun)
-      await this.recordDelivery(subscription, dateKey, 'sent', content, request, undefined, undefined, response, options)
+      await this.recordDelivery(subscription, dateKey, 'sent', content, request, undefined, undefined, response, {
+        ...options,
+        dryRun: config.dryRun,
+      })
       return 'sent'
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error || 'Unknown error')
@@ -857,8 +903,10 @@ export class RemindersService {
     options: ReminderSendOptions = {},
   ) {
     const sentAt = status === 'sent' ? new Date() : undefined
-    const shouldDisable = status === 'sent' ||
+    const shouldDisable = !options.dryRun && (
+      status === 'sent' ||
       (status === 'failed' && this.isPermanentDeliveryError(errorCode))
+    )
 
     await this.prisma.reminderDelivery.upsert({
       where: {
@@ -894,7 +942,7 @@ export class RemindersService {
       },
     })
 
-    if (options.preserveSubscription) {
+    if (options.preserveSubscription || options.dryRun) {
       await this.prisma.reminderSubscription.update({
         where: { id: subscription.id },
         data: {
@@ -929,10 +977,10 @@ export class RemindersService {
 
   private getTemplateId(subscription: ReminderSubscription, config: ReminderWorkerConfig) {
     return (
+      subscription.templateId ||
       (subscription.type === 'daily_course'
         ? config.dailyCourseTemplateId
-        : config.examTemplateId) ||
-      subscription.templateId
+        : config.examTemplateId)
     )
   }
 
@@ -959,6 +1007,11 @@ export class RemindersService {
       concurrency: config.concurrency,
       ratePerSecond: config.ratePerSecond,
       maxRuntimeMs: config.maxRuntimeMs,
+      miniProgramState: config.miniProgramState,
+      lang: config.lang,
+      hasWechatCredentials: config.hasWechatCredentials,
+      readyToSend: config.readyToSend,
+      missingConfig: this.getMissingConfig(config),
     }
   }
 
@@ -968,6 +1021,7 @@ export class RemindersService {
     type: ReminderType,
     enabled: boolean,
     preferredTime: string,
+    templateId: string,
   ) {
     return this.prisma.reminderSubscription.upsert({
       where: {
@@ -980,7 +1034,7 @@ export class RemindersService {
       update: {
         status: enabled ? 'enabled' : 'disabled',
         preferredTime,
-        templateId: null,
+        templateId: enabled ? templateId || null : null,
         ...(enabled ? { lastSentDate: null, lastSentAt: null, lastErrorCode: null, lastErrorMessage: null } : {}),
       },
       create: {
@@ -989,6 +1043,7 @@ export class RemindersService {
         type,
         status: enabled ? 'enabled' : 'disabled',
         preferredTime,
+        templateId: enabled ? templateId || null : null,
       },
     })
   }
@@ -998,6 +1053,7 @@ export class RemindersService {
     exam: ReminderSubscription | undefined,
     defaultTime: string,
     templateInfo: { ids: string[]; map: { dailyCourse?: string; exam?: string } },
+    config: ReminderWorkerConfig,
     accountOpenid?: string,
   ): AccountReminderPreference {
     const preferredTime = dailyCourse?.preferredTime || exam?.preferredTime || defaultTime
@@ -1013,6 +1069,11 @@ export class RemindersService {
       examEnabled,
       templateIds: templateInfo.ids,
       templateIdMap: templateInfo.map,
+      canSubscribe: templateInfo.ids.length > 0,
+      canSend: config.readyToSend,
+      dryRun: config.dryRun,
+      hasWechatCredentials: config.hasWechatCredentials,
+      missingConfig: this.getMissingConfig(config),
     }
   }
 
@@ -1044,8 +1105,26 @@ export class RemindersService {
     return typeof value === 'string' && value.trim() ? value.trim() : ''
   }
 
+  private normalizeId(value?: string) {
+    return typeof value === 'string' && value.trim() ? value.trim() : ''
+  }
+
   private normalizePreferredTime(value: string | undefined, fallback: string) {
     return value && /^\d{2}:\d{2}$/.test(value) ? value : fallback
+  }
+
+  private normalizeTemplateId(value?: string) {
+    return typeof value === 'string' && value.trim() ? value.trim() : ''
+  }
+
+  private getMissingConfig(config: ReminderWorkerConfig) {
+    return [
+      config.hasWechatCredentials ? '' : 'WECHAT_APP_ID/WECHAT_APP_SECRET',
+      config.dailyCourseTemplateId ? '' : 'WECHAT_DAILY_COURSE_TEMPLATE_ID',
+      config.examTemplateId ? '' : 'WECHAT_EXAM_TEMPLATE_ID',
+      config.dryRun ? 'REMINDER_DRY_RUN=false' : '',
+      config.enabled ? '' : 'REMINDER_ENABLED=true',
+    ].filter(Boolean)
   }
 
   private getWeekday(date = new Date()) {
@@ -1478,12 +1557,6 @@ export class RemindersService {
 
   private truncate(value: string, maxLength: number) {
     return value.length > maxLength ? value.slice(0, maxLength) : value
-  }
-
-  private getMiniProgramState(): 'developer' | 'trial' | 'formal' {
-    const value = process.env.WECHAT_MINIPROGRAM_STATE
-
-    return value === 'developer' || value === 'trial' ? value : 'formal'
   }
 
   private getErrorCode(message: string) {

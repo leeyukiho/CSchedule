@@ -221,6 +221,11 @@ interface ReminderConfig {
   testOpenid: string
   dailyCourseTemplateId: string
   examTemplateId: string
+  miniProgramState: 'developer' | 'trial' | 'formal'
+  lang: 'zh_CN' | 'en_US' | 'zh_HK' | 'zh_TW'
+  hasWechatCredentials: boolean
+  readyToSend: boolean
+  missingConfig: string[]
 }
 
 interface ReminderRunResult {
@@ -1760,7 +1765,7 @@ export function AdminConsole() {
     }
   }
 
-  async function sendReminderTest(input: { openid: string; type?: 'daily_course' | 'exam' }) {
+  async function sendReminderTest(input: { openid?: string; accountId?: string; type?: 'daily_course' | 'exam' }) {
     try {
       setLoading(true)
       const result = await requestApi<ReminderTestResult>('/admin/reminders/subscriptions/test', {
@@ -3747,7 +3752,7 @@ function RemindersView(props: {
   onSave: (config: ReminderConfig) => void
   onDryRun: () => void
   onClearSubscriptions: (input: { openid?: string; accountId?: string }) => void
-  onSendTest: (input: { openid: string; type?: 'daily_course' | 'exam' }) => void
+  onSendTest: (input: { openid?: string; accountId?: string; type?: 'daily_course' | 'exam' }) => void
 }) {
   const [draft, setDraft] = useState<ReminderConfig | null>(props.config)
   const [targetOpenid, setTargetOpenid] = useState('')
@@ -3770,6 +3775,15 @@ function RemindersView(props: {
   }
   const cleanTargetOpenid = targetOpenid.trim()
   const cleanTargetAccountId = targetAccountId.trim()
+  const hasTestTarget = Boolean(cleanTargetOpenid || cleanTargetAccountId)
+  const missingConfig = (draft.missingConfig || []).filter(Boolean)
+  const deliveryMode = !draft.enabled
+    ? '自动提醒未启用'
+    : draft.dryRun
+      ? '试跑模式：不会请求微信发送，也不会消耗订阅'
+      : draft.readyToSend
+        ? '真实发送：会调用微信订阅消息接口'
+        : '配置未完成，无法真实发送'
   const dryRunSummary = props.runResult
     ? `扫描 ${props.runResult.total ?? 0} 条，发送 ${props.runResult.sent ?? 0} 条，跳过 ${props.runResult.skipped ?? 0} 条，失败 ${props.runResult.failed ?? 0} 条`
     : '还没有运行过试跑'
@@ -3790,7 +3804,7 @@ function RemindersView(props: {
         <section className="settings-section">
           <div className="settings-section-head">
             <h3>开关</h3>
-            <p>决定提醒是否真正发送。试跑模式适合上线前检查，不会正式推送给用户。</p>
+            <p>dry-run 就是试跑：只生成发送记录，不请求微信接口，不推送给用户，也不会消耗一次性订阅次数。</p>
           </div>
           <div className="settings-grid compact">
             <label className="check-field">
@@ -3850,12 +3864,12 @@ function RemindersView(props: {
         <section className="settings-section">
           <div className="settings-section-head">
             <h3>模板和测试</h3>
-            <p>模板 ID 来自微信订阅消息配置。测试用户标识留空时按正常规则发送。</p>
+            <p>模板 ID 来自微信公众平台的订阅消息。小程序端会实时读取这里的 ID，不需要把模板 ID 写进小程序包。</p>
           </div>
           <div className="settings-grid compact">
             <label className="field">
-              <span>测试用户标识</span>
-              <input value={draft.testOpenid} onChange={(event) => setValue('testOpenid', event.target.value)} placeholder="生产环境通常留空" />
+              <span>worker 强制接收 openid</span>
+              <input value={draft.testOpenid} onChange={(event) => setValue('testOpenid', event.target.value)} placeholder="生产环境必须留空" />
             </label>
             <label className="field">
               <span>课程提醒模板 ID</span>
@@ -3865,16 +3879,52 @@ function RemindersView(props: {
               <span>考试提醒模板 ID</span>
               <input value={draft.examTemplateId} onChange={(event) => setValue('examTemplateId', event.target.value)} />
             </label>
+            <SelectField
+              label="跳转小程序版本"
+              value={draft.miniProgramState}
+              options={[
+                ['formal', '正式版'],
+                ['trial', '体验版'],
+                ['developer', '开发版'],
+              ]}
+              onChange={(value) => setValue('miniProgramState', value === 'developer' || value === 'trial' ? value : 'formal')}
+            />
+            <SelectField
+              label="消息语言"
+              value={draft.lang}
+              options={[
+                ['zh_CN', '简体中文'],
+                ['en_US', '英文'],
+                ['zh_HK', '繁体中文（香港）'],
+                ['zh_TW', '繁体中文（台湾）'],
+              ]}
+              onChange={(value) => setValue('lang', value === 'en_US' || value === 'zh_HK' || value === 'zh_TW' ? value : 'zh_CN')}
+            />
           </div>
         </section>
       </div>
       <div className="detail-panel">
         <div className="detail-list detail-list-grid">
+          <DetailItem label="当前模式" value={deliveryMode} />
+          <DetailItem label="微信凭据" value={draft.hasWechatCredentials ? '已配置 AppID 和 AppSecret' : '缺少 AppID 或 AppSecret'} />
+          <DetailItem label="配置缺口" value={missingConfig.length ? missingConfig.join(' / ') : '无'} />
           <DetailItem label="发送窗口" value={draft.sendWindowEnd ? `${draft.sendWindowStart} - ${draft.sendWindowEnd}` : `${draft.sendWindowStart} 开始，不设结束时间`} />
           <DetailItem label="发送速度估算" value={`约 ${draft.ratePerSecond * 60} 条/分钟，单轮最多处理 ${draft.batchSize} 条`} />
           <DetailItem label="最近试跑结果" value={dryRunSummary} />
         </div>
       </div>
+      <section className="settings-section">
+        <div className="settings-section-head">
+          <h3>模板字段</h3>
+          <p>微信发送时字段名必须和模板完全一致；字段类型也要满足微信限制，thing 最多 20 个字符，time 使用 24 小时时间或日期时间。</p>
+        </div>
+        <div className="detail-list detail-list-grid">
+          <DetailItem label="课程模板" value="课程名称 thing8；地点 thing4；开始时间 time15；教师 thing14" />
+          <DetailItem label="考试模板" value="考试科目 thing10；地点 thing7；时间 time6；温馨提示 thing3" />
+          <DetailItem label="跳转页面" value="pages/index/index，必须存在于小程序 app.config.ts" />
+          <DetailItem label="授权说明" value="一次性订阅只够发送一次；发送成功或微信返回 43101 后，需要用户重新订阅。" />
+        </div>
+      </section>
       <section className="settings-section">
         <div className="settings-section-head">
           <h3>订阅 wx 用户</h3>
@@ -3900,7 +3950,7 @@ function RemindersView(props: {
           />
         </div>
         <div className="row-actions">
-          <button className="button secondary" type="button" disabled={!cleanTargetOpenid} onClick={() => props.onSendTest({ openid: cleanTargetOpenid, type: testType })}>
+          <button className="button secondary" type="button" disabled={!hasTestTarget} onClick={() => props.onSendTest({ openid: cleanTargetOpenid || undefined, accountId: cleanTargetAccountId || undefined, type: testType })}>
             <BellRing size={16} />
             发送测试
           </button>
@@ -3959,7 +4009,7 @@ function RemindersView(props: {
                       </td>
                       <td>
                         <div className="row-actions">
-                          <button className="button secondary" type="button" disabled={!item.activeAccountId} onClick={() => props.onSendTest({ openid: item.openid, type: testType })}>
+                          <button className="button secondary" type="button" disabled={!item.activeAccountId} onClick={() => props.onSendTest({ openid: item.openid, accountId: item.activeAccountId, type: testType })}>
                             <Bell size={16} />
                             测试
                           </button>

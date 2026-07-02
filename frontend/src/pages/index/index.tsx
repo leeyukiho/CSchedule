@@ -867,19 +867,6 @@ export default function HomePage() {
     })
   }
 
-  function confirmOneTimeReminder() {
-    return new Promise<boolean>((resolve) => {
-      Taro.showModal({
-        title: '订阅本次提醒',
-        content: '授权后会发送下一次课程或考试提醒。',
-        confirmText: '去订阅',
-        cancelText: '取消',
-        success: (result) => resolve(Boolean(result.confirm)),
-        fail: () => resolve(false),
-      })
-    })
-  }
-
   async function subscribeOneTimeReminder() {
     if (!accountId || subscribingReminder) {
       return
@@ -888,12 +875,10 @@ export default function HomePage() {
     setSubscribingReminder(true)
 
     try {
-      const confirmed = await confirmOneTimeReminder()
-      if (!confirmed) {
-        return
-      }
-
-      const preference = getCachedReminderPreferenceState(accountId)
+      const cachedPreference = getCachedReminderPreferenceState(accountId)
+      const preference = cachedPreference?.templateIds?.length
+        ? cachedPreference
+        : await getReminderPreferences(accountId, { forceRefresh: true }).catch(() => cachedPreference)
       const templateIds = preference?.templateIds?.length
         ? preference.templateIds
         : getLocalReminderTemplateIds()
@@ -918,6 +903,7 @@ export default function HomePage() {
         openid,
         dailyCourseEnabled: subscribeResult.dailyCourseEnabled,
         examEnabled: subscribeResult.examEnabled,
+        templateIdMap,
       })
       setReminderSubscribed(Boolean(nextPreference.enabled))
       Taro.showToast({ title: '已订阅', icon: 'success' })

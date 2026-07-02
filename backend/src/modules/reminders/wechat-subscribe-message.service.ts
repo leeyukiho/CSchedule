@@ -6,6 +6,7 @@ interface SubscribeMessagePayload {
   page?: string
   data: Record<string, { value: string }>
   miniprogram_state?: 'developer' | 'trial' | 'formal'
+  lang?: 'zh_CN' | 'en_US' | 'zh_HK' | 'zh_TW'
 }
 
 @Injectable()

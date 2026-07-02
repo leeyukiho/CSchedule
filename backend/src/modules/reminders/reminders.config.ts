@@ -11,6 +11,11 @@ export interface ReminderWorkerConfig {
   testOpenid: string
   dailyCourseTemplateId: string
   examTemplateId: string
+  miniProgramState: 'developer' | 'trial' | 'formal'
+  lang: 'zh_CN' | 'en_US' | 'zh_HK' | 'zh_TW'
+  hasWechatCredentials: boolean
+  readyToSend: boolean
+  missingConfig: string[]
 }
 
 export type ReminderConfigPatch = Partial<{
@@ -26,6 +31,8 @@ export type ReminderConfigPatch = Partial<{
   testOpenid: string
   dailyCourseTemplateId: string
   examTemplateId: string
+  miniProgramState: 'developer' | 'trial' | 'formal'
+  lang: 'zh_CN' | 'en_US' | 'zh_HK' | 'zh_TW'
 }>
 
 function getBooleanEnv(name: string, fallback: boolean) {
@@ -53,15 +60,16 @@ function normalizeTime(value: unknown, fallback: string) {
 }
 
 export function getReminderConfig(): ReminderWorkerConfig {
-  const hasWechatConfig = Boolean(
-    process.env.WECHAT_APP_ID &&
-      process.env.WECHAT_APP_SECRET &&
-      (process.env.WECHAT_DAILY_COURSE_TEMPLATE_ID || process.env.WECHAT_EXAM_TEMPLATE_ID),
-  )
+  const dailyCourseTemplateId = String(process.env.WECHAT_DAILY_COURSE_TEMPLATE_ID || '').trim()
+  const examTemplateId = String(process.env.WECHAT_EXAM_TEMPLATE_ID || '').trim()
+  const hasWechatCredentials = Boolean(process.env.WECHAT_APP_ID && process.env.WECHAT_APP_SECRET)
+  const readyToSend = Boolean(hasWechatCredentials && (dailyCourseTemplateId || examTemplateId))
+  const enabled = getBooleanEnv('REMINDER_ENABLED', false)
+  const dryRun = getBooleanEnv('REMINDER_DRY_RUN', !readyToSend)
 
   return {
-    enabled: getBooleanEnv('REMINDER_ENABLED', false),
-    dryRun: getBooleanEnv('REMINDER_DRY_RUN', !hasWechatConfig),
+    enabled,
+    dryRun,
     sendWindowStart: '00:00',
     sendWindowEnd: '',
     scanIntervalMs: 60_000,
@@ -70,8 +78,19 @@ export function getReminderConfig(): ReminderWorkerConfig {
     ratePerSecond: 10,
     maxRuntimeMs: 25 * 60 * 1000,
     testOpenid: '',
-    dailyCourseTemplateId: String(process.env.WECHAT_DAILY_COURSE_TEMPLATE_ID || '').trim(),
-    examTemplateId: String(process.env.WECHAT_EXAM_TEMPLATE_ID || '').trim(),
+    dailyCourseTemplateId,
+    examTemplateId,
+    miniProgramState: normalizeMiniProgramState(process.env.WECHAT_MINIPROGRAM_STATE),
+    lang: normalizeLang(process.env.WECHAT_SUBSCRIBE_MESSAGE_LANG),
+    hasWechatCredentials,
+    readyToSend,
+    missingConfig: getMissingConfig({
+      enabled,
+      dryRun,
+      hasWechatCredentials,
+      dailyCourseTemplateId,
+      examTemplateId,
+    }),
   }
 }
 
@@ -83,7 +102,13 @@ export function mergeReminderConfig(
     ? (patch as ReminderConfigPatch)
     : {}
 
-  return {
+  const dailyCourseTemplateId = typeof source.dailyCourseTemplateId === 'string'
+    ? source.dailyCourseTemplateId.trim()
+    : base.dailyCourseTemplateId
+  const examTemplateId = typeof source.examTemplateId === 'string'
+    ? source.examTemplateId.trim()
+    : base.examTemplateId
+  const next = {
     ...base,
     enabled: typeof source.enabled === 'boolean' ? source.enabled : base.enabled,
     dryRun: typeof source.dryRun === 'boolean' ? source.dryRun : base.dryRun,
@@ -97,12 +122,16 @@ export function mergeReminderConfig(
     ratePerSecond: getPositivePatch(source.ratePerSecond, base.ratePerSecond),
     maxRuntimeMs: getPositivePatch(source.maxRuntimeMs, base.maxRuntimeMs),
     testOpenid: typeof source.testOpenid === 'string' ? source.testOpenid.trim() : base.testOpenid,
-    dailyCourseTemplateId: typeof source.dailyCourseTemplateId === 'string'
-      ? source.dailyCourseTemplateId.trim()
-      : base.dailyCourseTemplateId,
-    examTemplateId: typeof source.examTemplateId === 'string'
-      ? source.examTemplateId.trim()
-      : base.examTemplateId,
+    dailyCourseTemplateId,
+    examTemplateId,
+    miniProgramState: normalizeMiniProgramState(source.miniProgramState, base.miniProgramState),
+    lang: normalizeLang(source.lang, base.lang),
+  }
+
+  return {
+    ...next,
+    readyToSend: Boolean(next.hasWechatCredentials && (next.dailyCourseTemplateId || next.examTemplateId)),
+    missingConfig: getMissingConfig(next),
   }
 }
 
@@ -128,6 +157,30 @@ export function isWithinReminderWindow(
 
 function getPositivePatch(value: unknown, fallback: number) {
   return Number.isInteger(value) && Number(value) > 0 ? Number(value) : fallback
+}
+
+function normalizeMiniProgramState(value: unknown, fallback: 'developer' | 'trial' | 'formal' = 'formal') {
+  return value === 'developer' || value === 'trial' || value === 'formal' ? value : fallback
+}
+
+function normalizeLang(value: unknown, fallback: 'zh_CN' | 'en_US' | 'zh_HK' | 'zh_TW' = 'zh_CN') {
+  return value === 'zh_CN' || value === 'en_US' || value === 'zh_HK' || value === 'zh_TW' ? value : fallback
+}
+
+function getMissingConfig(config: {
+  enabled: boolean
+  dryRun: boolean
+  hasWechatCredentials: boolean
+  dailyCourseTemplateId: string
+  examTemplateId: string
+}) {
+  return [
+    config.hasWechatCredentials ? '' : 'WECHAT_APP_ID/WECHAT_APP_SECRET',
+    config.dailyCourseTemplateId ? '' : 'WECHAT_DAILY_COURSE_TEMPLATE_ID',
+    config.examTemplateId ? '' : 'WECHAT_EXAM_TEMPLATE_ID',
+    config.dryRun ? 'REMINDER_DRY_RUN=false' : '',
+    config.enabled ? '' : 'REMINDER_ENABLED=true',
+  ].filter(Boolean)
 }
 
 function toMinutes(value: string) {

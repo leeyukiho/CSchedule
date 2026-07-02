@@ -54,8 +54,8 @@ export class RemindersAdminController {
   }
 
   @Post('subscriptions/test')
-  testSubscription(@Body() input: { openid?: string; type?: ReminderType }) {
-    return this.reminders.sendTestReminderToWxUser(String(input.openid || ''), input.type)
+  testSubscription(@Body() input: { openid?: string; accountId?: string; type?: ReminderType }) {
+    return this.reminders.sendTestReminderToWxUser(String(input.openid || ''), input.type, String(input.accountId || ''))
   }
 
   @Post('subscriptions')
@@ -118,6 +118,10 @@ export class AccountRemindersController {
       openid?: string
       dailyCourseEnabled?: boolean
       examEnabled?: boolean
+      templateIdMap?: {
+        dailyCourse?: string
+        exam?: string
+      }
     },
   ) {
     return this.reminders.updateAccountPreference(accountId, input)

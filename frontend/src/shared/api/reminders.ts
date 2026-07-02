@@ -11,21 +11,16 @@ export interface ReminderPreferencesResponse {
   examEnabled: boolean
   templateIds: string[]
   templateIdMap?: ReminderTemplateIds
+  canSubscribe?: boolean
+  canSend?: boolean
+  dryRun?: boolean
+  hasWechatCredentials?: boolean
+  missingConfig?: string[]
 }
 
 export interface ReminderTemplateIds {
   dailyCourse?: string
   exam?: string
-}
-
-const LOCAL_REMINDER_TEMPLATE_IDS = [
-  String(process.env.TARO_APP_WECHAT_DAILY_COURSE_TEMPLATE_ID || '').trim(),
-  String(process.env.TARO_APP_WECHAT_EXAM_TEMPLATE_ID || '').trim(),
-].filter(Boolean)
-
-const LOCAL_REMINDER_TEMPLATE_ID_MAP: ReminderTemplateIds = {
-  dailyCourse: String(process.env.TARO_APP_WECHAT_DAILY_COURSE_TEMPLATE_ID || '').trim() || undefined,
-  exam: String(process.env.TARO_APP_WECHAT_EXAM_TEMPLATE_ID || '').trim() || undefined,
 }
 
 interface CachedReminderPreferences {
@@ -66,6 +61,15 @@ function normalizeReminderPreferences(value: unknown): ReminderPreferencesRespon
       ? preferences.templateIds.filter((templateId): templateId is string => typeof templateId === 'string')
       : [],
     templateIdMap: normalizeReminderTemplateIds(preferences.templateIdMap),
+    canSubscribe: typeof preferences.canSubscribe === 'boolean' ? preferences.canSubscribe : undefined,
+    canSend: typeof preferences.canSend === 'boolean' ? preferences.canSend : undefined,
+    dryRun: typeof preferences.dryRun === 'boolean' ? preferences.dryRun : undefined,
+    hasWechatCredentials: typeof preferences.hasWechatCredentials === 'boolean'
+      ? preferences.hasWechatCredentials
+      : undefined,
+    missingConfig: Array.isArray(preferences.missingConfig)
+      ? preferences.missingConfig.filter((item): item is string => typeof item === 'string')
+      : undefined,
   }
 }
 
@@ -151,11 +155,11 @@ export function setLocalReminderPreferenceState(
 }
 
 export function getLocalReminderTemplateIds() {
-  return LOCAL_REMINDER_TEMPLATE_IDS
+  return []
 }
 
 export function getLocalReminderTemplateIdMap() {
-  return LOCAL_REMINDER_TEMPLATE_ID_MAP
+  return {}
 }
 
 export async function getReminderPreferences(
@@ -210,6 +214,7 @@ export function updateReminderPreference(
     openid?: string
     dailyCourseEnabled?: boolean
     examEnabled?: boolean
+    templateIdMap?: ReminderTemplateIds
   },
 ) {
   return requestApi<ReminderPreferencesResponse, typeof data>({
