@@ -317,6 +317,9 @@ export class RemindersService {
 
     if (!openid && !accountId) {
       const result = await this.prisma.reminderSubscription.updateMany({
+        where: {
+          status: 'enabled',
+        },
         data: {
           status: 'disabled',
           lastSentDate: null,
@@ -332,6 +335,7 @@ export class RemindersService {
       where: {
         ...(openid ? { openid } : {}),
         ...(accountId ? { accountId } : {}),
+        status: 'enabled',
       },
       data: {
         status: 'disabled',
