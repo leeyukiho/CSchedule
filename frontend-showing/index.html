@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="UniLink校园是面向大学生的校园课表与教务信息助手，支持课表同步、成绩与考试查看、提醒订阅、搭子空间、证书查询和学校接入申请。">
   <title>UniLink校园 | 校园课表与教务信息助手</title>
+  <link rel="icon" type="image/png" href="./logo.png">
+  <link rel="shortcut icon" type="image/png" href="./logo.png">
+  <link rel="apple-touch-icon" href="./logo.png">
   <style>
     :root {
       --color-primary: #2F7BFF;
@@ -328,36 +331,9 @@
       width: 34px;
       height: 34px;
       border-radius: 12px;
-      position: relative;
-      background: linear-gradient(160deg, rgba(47, 123, 255, 0.96), rgba(125, 211, 252, 0.92));
+      object-fit: cover;
       box-shadow: 0 12px 24px rgba(47, 123, 255, 0.24);
-      overflow: hidden;
-    }
-
-    .brand-mark::before,
-    .brand-mark::after {
-      content: "";
-      position: absolute;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.92);
-    }
-
-    .brand-mark::before {
-      width: 10px;
-      height: 10px;
-      top: 8px;
-      left: 8px;
-      box-shadow:
-        0 0 0 5px rgba(255, 255, 255, 0.16),
-        8px 10px 0 3px rgba(255, 255, 255, 0.16);
-    }
-
-    .brand-mark::after {
-      width: 18px;
-      height: 18px;
-      right: -4px;
-      bottom: -4px;
-      opacity: 0.72;
+      flex: none;
     }
 
     .brand-sub {
@@ -2372,7 +2348,7 @@
       <div class="container nav-inner">
         <a class="brand" href="#hero" aria-label="UniLink校园 首页">
           <span class="brand-main">
-            <span class="brand-mark" aria-hidden="true"></span>
+            <img class="brand-mark" src="./logo.png" alt="" aria-hidden="true">
             <span>UniLink校园</span>
           </span>
           <span class="brand-sub">CSchedule</span>
