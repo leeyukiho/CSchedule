@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="UniLink校园是面向大学生的校园课表与教务信息同步助手，支持课表同步、成绩查询、考试安排与提醒订阅。">
-  <title>UniLink校园 | 校园课表、成绩、考试，一站同步</title>
+  <meta name="description" content="UniLink校园是面向大学生的校园课表与教务信息助手，支持课表同步、成绩与考试查看、提醒订阅、搭子空间、证书查询和学校接入申请。">
+  <title>UniLink校园 | 校园课表与教务信息助手</title>
   <style>
     :root {
       --color-primary: #2F7BFF;
@@ -1765,11 +1765,8 @@
     }
 
     .testimonial-card p::before {
-      content: "“";
-      color: var(--color-primary);
-      font-size: 26px;
-      margin-right: 4px;
-      vertical-align: -2px;
+      content: "";
+      display: none;
     }
 
     .trust-card {
@@ -2236,10 +2233,11 @@
       }
 
       .hero-title {
-        font-size: clamp(34px, 9.6vw, 42px);
+        width: min(100%, 366px);
+        max-width: min(100%, 366px);
+        font-size: clamp(32px, 9.2vw, 38px);
         line-height: 1.1;
-        letter-spacing: -0.04em;
-        max-width: none;
+        letter-spacing: 0;
         overflow-wrap: anywhere;
         word-break: normal;
       }
@@ -2252,28 +2250,34 @@
       }
 
       .hero-badge {
-        max-width: 100%;
+        max-width: min(100%, 366px);
+        white-space: normal;
       }
 
       .hero-tags {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        max-width: 100%;
-        width: 100%;
+        grid-template-columns: 1fr;
+        width: min(100%, 366px);
+        max-width: min(100%, 366px);
       }
 
       .hero-tag {
+        width: 100%;
         padding: 10px 8px;
         text-align: center;
+        overflow-wrap: anywhere;
       }
 
       .hero-desc,
       .hero-note {
-        max-width: 100%;
+        width: min(100%, 366px);
+        max-width: min(100%, 366px);
         overflow-wrap: anywhere;
       }
 
       .button-row {
+        width: min(100%, 366px);
+        max-width: min(100%, 366px);
         align-items: stretch;
       }
 
@@ -2379,7 +2383,7 @@
             <a class="nav-link" href="#preview">界面预览</a>
             <a class="nav-link" href="#usage">使用方式</a>
           </nav>
-          <a class="button nav-cta" href="#usage">微信扫码体验</a>
+          <a class="button nav-cta" href="#usage">微信扫码使用</a>
         </div>
       </div>
     </header>
@@ -2388,25 +2392,26 @@
       <section class="hero section" id="hero" aria-labelledby="hero-title">
         <div class="container hero-grid">
           <div class="hero-copy">
-            <div class="hero-badge" data-reveal>面向大学生的校园课表与教务信息同步助手</div>
+            <div class="hero-badge" data-reveal>面向大学生的校园课表与教务信息助手</div>
             <div data-reveal>
-              <h1 class="hero-title" id="hero-title">校园课表、<wbr>成绩、考试，<wbr>一站同步</h1>
+              <h1 class="hero-title" id="hero-title">课表、成绩、考试和校园工具，一起管理</h1>
             </div>
-            <p class="hero-desc" data-reveal>连接学校教务系统，把今日课程、本周课表、考试安排和学业信息放进一个更清爽的小程序里。</p>
+            <p class="hero-desc" data-reveal>在微信小程序里查看今日安排、本周课表、成绩、考试、消息提醒、搭子空间和学校接入申请。</p>
             <div class="hero-tags" data-reveal>
               <span class="hero-tag">课表同步</span>
-              <span class="hero-tag">成绩查询</span>
-              <span class="hero-tag">考试安排</span>
-              <span class="hero-tag">提醒订阅</span>
+              <span class="hero-tag">成绩与考试</span>
+              <span class="hero-tag">搭子空间</span>
+              <span class="hero-tag">证书查询</span>
+              <span class="hero-tag">消息与反馈</span>
             </div>
             <div class="button-row" data-reveal>
               <a class="button button-primary" href="#usage">
-                立即扫码体验
+                立即扫码使用
                 <span class="button-icon" aria-hidden="true"></span>
               </a>
               <a class="button button-secondary" href="#preview">查看界面预览</a>
             </div>
-            <p class="hero-note" data-reveal>扫码即可进入微信小程序，支持日常查看课表、成绩、考试与提醒。</p>
+            <p class="hero-note" data-reveal>打开微信扫一扫，按学校适配情况绑定账号后即可同步教务数据。</p>
           </div>
 
           <div class="hero-visual-wrap" data-reveal>
@@ -2436,21 +2441,21 @@
                       <div class="mini-dashboard-row">
                         <div>
                           <div class="mini-date">6 月 26 日 星期五</div>
-                          <div class="mini-title">今天也别漏课</div>
+                          <div class="mini-title">今日安排已更新</div>
                         </div>
                         <div class="mini-temp">
                           <span class="mini-weather" aria-hidden="true"></span>
                           <span>27°C 多云</span>
                         </div>
                       </div>
-                      <div class="mini-subtitle">已同步本周课表、考试安排与提醒状态</div>
+                      <div class="mini-subtitle">课表、考试和提醒状态已同步</div>
                     </section>
 
                     <div class="mini-quick-grid" aria-hidden="true">
                       <div class="mini-quick-item"><span class="mini-quick-icon"></span><span>课表</span></div>
                       <div class="mini-quick-item"><span class="mini-quick-icon"></span><span>成绩</span></div>
-                      <div class="mini-quick-item"><span class="mini-quick-icon"></span><span>考试</span></div>
-                      <div class="mini-quick-item"><span class="mini-quick-icon"></span><span>提醒</span></div>
+                      <div class="mini-quick-item"><span class="mini-quick-icon"></span><span>搭子</span></div>
+                      <div class="mini-quick-item"><span class="mini-quick-icon"></span><span>消息</span></div>
                     </div>
 
                     <article class="schedule-card glass-card">
@@ -2476,7 +2481,7 @@
                         </div>
                         <div class="mini-stat">
                           <strong>1 场</strong>
-                          <span>待提醒考试</span>
+                          <span>近期考试</span>
                         </div>
                         <div class="mini-stat">
                           <strong>已同步</strong>
@@ -2487,12 +2492,12 @@
 
                     <article class="reminder-card glass-card">
                       <div class="card-topline">
-                        <span class="card-title">订阅提醒</span>
+                        <span class="card-title">提醒设置</span>
                         <span class="card-link">管理</span>
                       </div>
                       <div class="reminder-row">
                         <div>
-                          <strong>课程 / 考试提醒</strong>
+                          <strong>课程/考试提醒</strong>
                           <div>上课前 30 分钟、考试前 1 天</div>
                         </div>
                         <span class="toggle" aria-hidden="true"></span>
@@ -2526,7 +2531,7 @@
               <img class="qr-image" src="xcxewm.jpg" alt="UniLink校园微信小程序码" decoding="async">
               <div class="qr-copy">
                 <strong>微信扫码即可使用，无需下载</strong>
-                <span>打开微信扫一扫，就能直接进入 UniLink校园 小程序。</span>
+                <span>打开微信扫一扫，直接进入 UniLink校园 小程序。</span>
               </div>
             </div>
           </div>
@@ -2537,8 +2542,8 @@
         <div class="container">
           <div class="section-head">
             <div class="eyebrow" data-reveal>功能亮点</div>
-            <h2 class="section-title" id="features-title" data-reveal>把校园信息放回你真正会每天打开的地方</h2>
-            <p class="section-desc" data-reveal>不需要在教务系统里反复跳转。课表、成绩、考试和同步状态，用一个清爽的小程序就能集中查看。</p>
+            <h2 class="section-title" id="features-title" data-reveal>把校园日常信息集中到微信小程序里</h2>
+            <p class="section-desc" data-reveal>课表、成绩、考试、消息、搭子空间和学校接入申请都放在清晰的入口里，日常查看更直接。</p>
           </div>
 
           <div class="feature-grid">
@@ -2558,10 +2563,10 @@
               <div class="feature-icon score" aria-hidden="true"></div>
               <div>
                 <h3 class="feature-title">成绩与考试集中查看</h3>
-                <p class="feature-desc">学业总览、学期成绩、考试时间与地点集中展示，减少在教务系统里反复查找。</p>
+                <p class="feature-desc">学业总览、学期成绩、考试时间与地点集中展示，复习和查分时更方便。</p>
               </div>
               <ul class="feature-points">
-                <li>成绩列表、考试安排和关键信息会放在更统一的阅读节奏里。</li>
+                <li>成绩列表、考试安排和关键信息会在清晰的列表和卡片中展示。</li>
                 <li>备考前查教室、查时间、看成绩，不必来回切页面找入口。</li>
               </ul>
             </article>
@@ -2569,12 +2574,12 @@
             <article class="feature-card" data-reveal>
               <div class="feature-icon sync" aria-hidden="true"></div>
               <div>
-                <h3 class="feature-title">提醒与同步状态</h3>
-                <p class="feature-desc">支持课程 / 考试提醒订阅，查看同步状态，需要时可重新同步。</p>
+                <h3 class="feature-title">提醒、搭子与校园工具</h3>
+                <p class="feature-desc">课程/考试提醒、消息通知、搭子空间、证书查询、反馈和学校接入申请集中提供。</p>
               </div>
               <ul class="feature-points">
-                <li>课程提醒、考试提醒可按需开启，尽量少打扰，但关键节点不漏掉。</li>
-                <li>如果学校系统有变动或缓存过期，也能在小程序里手动发起同步。</li>
+                <li>可按需开启课程和考试订阅，查看学校通知、个人消息和平台通知。</li>
+                <li>支持搭子空间对照课表，也能提交反馈或申请接入新的学校。</li>
               </ul>
             </article>
           </div>
@@ -2585,22 +2590,22 @@
         <div class="container preview-wrap">
           <div class="section-head">
             <div class="eyebrow" data-reveal>界面预览</div>
-            <h2 class="section-title" id="preview-title" data-reveal>更像真实小程序，而不是几块漂亮的占位图</h2>
-            <p class="section-desc" data-reveal>首页、课表、成绩、我的四个常用页面都按真实使用习惯做了模拟，日常查看路径会更直观。</p>
+            <h2 class="section-title" id="preview-title" data-reveal>首页、课表、成绩、个人中心，按常用路径展示</h2>
+            <p class="section-desc" data-reveal>以下界面对应完整小程序的主要页面结构，方便快速了解课表查看、成绩考试、同步管理和服务入口。</p>
           </div>
 
           <div class="preview-panel" data-reveal>
             <div class="preview-toolbar">
               <div>
-                <strong>小程序页面展示</strong>
-                <span>支持自动轮播、点击切换和触摸滑动</span>
+                <strong>小程序界面预览</strong>
+                <span>展示主要页面和常用信息结构</span>
               </div>
               <span>左右滑动查看</span>
             </div>
 
             <div class="preview-viewport" id="carousel">
               <div class="preview-track">
-                <article class="preview-card" data-title="首页" data-desc="把日期、天气、今日课程和考试提醒放在进入小程序后的第一屏。">
+                <article class="preview-card" data-title="首页" data-desc="进入小程序后先查看日期、天气、今日课程、考试提醒和同步状态。">
                   <div class="preview-card-frame">
                     <div class="preview-screen">
                       <div class="mock-topbar">
@@ -2608,8 +2613,8 @@
                         <span class="mock-pill">··· ○</span>
                       </div>
                       <div class="home-hero-card">
-                        <h4>今天先看哪一项？</h4>
-                        <p>6 月 26 日 星期五 · 武汉 27°C 多云 · 已同步 11:20</p>
+                        <h4>今日安排</h4>
+                        <p>6 月 26 日 星期五 · 天气 27°C 多云 · 已同步 11:20</p>
                       </div>
                       <div class="home-course-list">
                         <div class="mock-row">
@@ -2641,7 +2646,7 @@
                   </div>
                   <div class="preview-copy">
                     <strong>首页</strong>
-                    <span>打开小程序后，先看到今天课程、最近考试和同步状态，适合日常快速扫一眼。</span>
+                    <span>打开小程序后，先看到今日课程、最近考试和同步状态，适合日常快速查看。</span>
                   </div>
                 </article>
 
@@ -2662,7 +2667,7 @@
                           <strong>第 14 周</strong>
                           <span>下一周</span>
                         </div>
-                        <div class="tiny-chip">今天在周五</div>
+                        <div class="tiny-chip">回到今天</div>
                       </div>
                       <div class="week-grid week-grid-days">
                         <div class="week-day"><strong>周一</strong><span>06/22</span></div>
@@ -2686,11 +2691,11 @@
                   </div>
                   <div class="preview-copy">
                     <strong>课表页</strong>
-                    <span>按周查看课程块，颜色区分更直观，课名、节次和上课地点会保持在同一屏节奏里。</span>
+                    <span>按周查看课程块，颜色区分更直观，课名、节次和上课地点在一屏内清楚呈现。</span>
                   </div>
                 </article>
 
-                <article class="preview-card" data-title="成绩页" data-desc="把学业总览、考试安排和成绩列表集中放在一个页面里，复习前更方便。">
+                <article class="preview-card" data-title="成绩页" data-desc="把学业总览、考试安排和成绩列表集中放在一个页面里。">
                   <div class="preview-card-frame">
                     <div class="preview-screen">
                       <div class="mock-topbar">
@@ -2746,11 +2751,11 @@
                   </div>
                   <div class="preview-copy">
                     <strong>成绩页</strong>
-                    <span>学业总览和考试安排放在同一条信息链路里，期中期末查信息会少很多来回切换。</span>
+                    <span>学业总览和考试安排集中展示，期中期末查信息时不需要频繁切换入口。</span>
                   </div>
                 </article>
 
-                <article class="preview-card" data-title="个人页" data-desc="查看学校绑定状态、手动同步入口、反馈与学校接入申请，适合做日常管理。">
+                <article class="preview-card" data-title="个人中心" data-desc="查看学校绑定状态、手动同步入口、消息、反馈、设置与学校接入申请。">
                   <div class="preview-card-frame">
                     <div class="preview-screen">
                       <div class="mock-topbar">
@@ -2758,20 +2763,20 @@
                         <span class="mock-pill">··· ○</span>
                       </div>
                       <div class="profile-main-card">
-                        <h4>学校绑定与同步</h4>
-                        <p>把账号状态、同步入口和反馈入口集中放在一个页面里。</p>
+                        <h4>账号与服务</h4>
+                        <p>学校绑定、同步、消息、反馈和设置入口集中管理。</p>
                         <div class="profile-badges">
                           <span>学校账号已绑定</span>
-                          <span>支持手动同步</span>
+                          <span>同步功能可用</span>
                         </div>
                       </div>
                       <div class="binding-list">
                         <div class="binding-row">
                           <div>
                             <strong>当前学校</strong>
-                            <span>武汉某高校 · 教务系统已接入</span>
+                            <span>已绑定学校 · 教务系统同步可用</span>
                           </div>
-                          <span class="mock-badge blue">正常</span>
+                          <span class="mock-badge blue">已绑定</span>
                         </div>
                         <div class="binding-row">
                           <div>
@@ -2782,29 +2787,29 @@
                         </div>
                         <div class="binding-row">
                           <div>
-                            <strong>通知与反馈</strong>
-                            <span>提醒设置、意见反馈、问题上报</span>
+                            <strong>消息与反馈</strong>
+                            <span>消息通知、意见反馈、问题上报</span>
                           </div>
-                          <span class="mock-badge pink">入口</span>
+                          <span class="mock-badge pink">可用</span>
                         </div>
                         <div class="binding-row">
                           <div>
                             <strong>学校接入申请</strong>
-                            <span>如果你的学校还没适配，可以提交接入信息</span>
+                            <span>未适配学校可提交学校与教务系统信息</span>
                           </div>
-                          <span class="mock-badge yellow">提交</span>
+                          <span class="mock-badge yellow">申请</span>
                         </div>
                       </div>
                       <div class="tiny-action-row">
                         <span class="tiny-chip">重新同步</span>
-                        <span class="tiny-chip">管理提醒</span>
+                        <span class="tiny-chip">查看消息</span>
                         <span class="tiny-chip">提交反馈</span>
                       </div>
                     </div>
                   </div>
                   <div class="preview-copy">
-                    <strong>个人页</strong>
-                    <span>绑定状态、同步按钮、通知反馈和学校接入申请都能在这里找到，遇到问题也更容易自查。</span>
+                    <strong>个人中心</strong>
+                    <span>绑定状态、同步按钮、消息反馈、设置和学校接入申请都能在这里找到。</span>
                   </div>
                 </article>
               </div>
@@ -2814,7 +2819,7 @@
               <button class="carousel-dot active" type="button" data-index="0" aria-label="查看首页预览"></button>
               <button class="carousel-dot" type="button" data-index="1" aria-label="查看课表页预览"></button>
               <button class="carousel-dot" type="button" data-index="2" aria-label="查看成绩页预览"></button>
-              <button class="carousel-dot" type="button" data-index="3" aria-label="查看个人页预览"></button>
+              <button class="carousel-dot" type="button" data-index="3" aria-label="查看个人中心预览"></button>
             </div>
           </div>
         </div>
@@ -2823,43 +2828,43 @@
       <section class="section" id="feedback" aria-labelledby="feedback-title">
         <div class="container">
           <div class="section-head">
-            <div class="eyebrow" data-reveal>用户反馈</div>
-            <h2 class="section-title" id="feedback-title" data-reveal>来自校园里的真实使用感受</h2>
-            <p class="section-desc" data-reveal>更省事、少跳转、日常看得更顺，这些比夸张口号更重要。</p>
+            <div class="eyebrow" data-reveal>使用场景</div>
+            <h2 class="section-title" id="feedback-title" data-reveal>覆盖校园日常的几类高频查看场景</h2>
+            <p class="section-desc" data-reveal>从上课、备考到同学课表对照，把常用信息放到稳定、清晰的页面里。</p>
           </div>
 
           <div class="testimonial-grid">
             <article class="testimonial-card" data-reveal>
               <div class="testimonial-head">
-                <div class="avatar" aria-hidden="true">林</div>
+                <div class="avatar" aria-hidden="true">课</div>
                 <div>
-                  <strong>林同学</strong>
-                  <span>大二学生</span>
+                  <strong>上课前</strong>
+                  <span>查看今日安排</span>
                 </div>
               </div>
-              <p>之前查课表和考试总要进学校系统翻半天，现在基本先打开这个小程序看一眼，日常安排顺很多。</p>
+              <p>首页集中显示今日课程、上课地点、近期考试和同步状态，临出门前可以快速确认安排。</p>
             </article>
 
             <article class="testimonial-card" data-reveal>
               <div class="testimonial-head">
-                <div class="avatar" aria-hidden="true">乔</div>
+                <div class="avatar" aria-hidden="true">考</div>
                 <div>
-                  <strong>乔同学</strong>
-                  <span>期末备考中</span>
+                  <strong>复习周</strong>
+                  <span>查成绩与考试</span>
                 </div>
               </div>
-              <p>成绩、考试时间和地点放在一起真的省事，复习周不用老去教务系统来回查，心里会踏实一点。</p>
+              <p>成绩页把考试安排、成绩列表和学业总览放在一起，复习和查分时不用反复切换入口。</p>
             </article>
 
             <article class="testimonial-card" data-reveal>
               <div class="testimonial-head">
-                <div class="avatar" aria-hidden="true">许</div>
+                <div class="avatar" aria-hidden="true">搭</div>
                 <div>
-                  <strong>许同学</strong>
-                  <span>社团负责人</span>
+                  <strong>约自习或活动</strong>
+                  <span>对照同学课表</span>
                 </div>
               </div>
-              <p>界面很清爽，平时排活动的时候顺手看看当天课程和提醒就够了，不会被一堆复杂信息打断。</p>
+              <p>搭子空间支持双方查看课表并计算公共空闲时间，安排自习、社团活动和小组讨论更方便。</p>
             </article>
           </div>
         </div>
@@ -2869,8 +2874,8 @@
         <div class="container">
           <div class="section-head">
             <div class="eyebrow" data-reveal>信任说明</div>
-            <h2 class="section-title" id="trust-title" data-reveal>把该说清楚的地方，说得简单一点</h2>
-            <p class="section-desc" data-reveal>UniLink校园只做必要的数据同步与展示，信息使用边界、加密处理和参考属性会明确提醒。</p>
+            <h2 class="section-title" id="trust-title" data-reveal>数据使用边界清晰说明</h2>
+            <p class="section-desc" data-reveal>UniLink校园只做必要的数据同步与展示，授权范围、信息保护和参考属性都会在使用过程中明确提示。</p>
           </div>
 
           <div class="trust-grid">
@@ -2901,20 +2906,20 @@
             <div class="usage-grid">
               <div class="usage-copy">
                 <div class="eyebrow">使用方式</div>
-                <h2 class="usage-title" id="usage-title">打开微信，扫码体验更清爽的校园信息管理方式</h2>
-                <p class="usage-desc">无需下载 App，扫码即可进入小程序，查看课表、成绩、考试与提醒。</p>
+                <h2 class="usage-title" id="usage-title">打开微信，扫码使用 UniLink校园</h2>
+                <p class="usage-desc">无需下载 App，扫码即可进入小程序，查看课表、成绩、考试、搭子空间和校园工具入口。</p>
                 <div class="button-row">
-                  <a class="button button-primary" href="#usage">微信扫码体验</a>
+                  <a class="button button-primary" href="#usage">微信扫码使用</a>
                   <a class="button button-ghost" href="#features">查看功能亮点</a>
                 </div>
-                <p class="usage-small">支持课表、成绩、考试等信息同步，具体能力以学校适配情况为准。</p>
+                <p class="usage-small">课表、成绩、考试等教务同步能力以学校适配情况为准。</p>
                 <div class="usage-cards">
                   <article class="usage-card">
                     <h3>第一次使用也很简单</h3>
                     <ol class="usage-steps">
-                      <li data-step="1">微信扫码打开小程序，先看看首页和课表视图是否符合你的使用习惯。</li>
-                      <li data-step="2">如果需要同步学校数据，再绑定学校账号，按页面提示导入课程与考试信息。</li>
-                      <li data-step="3">想接收提醒时，可以开启课程 / 考试订阅，并在需要时手动重新同步。</li>
+                      <li data-step="1">微信扫码打开小程序，先查看首页、课表、成绩和个人中心。</li>
+                      <li data-step="2">需要同步学校数据时，选择学校并绑定教务账号，按页面提示导入课程、成绩与考试信息。</li>
+                      <li data-step="3">需要提醒、搭子空间、证书查询、反馈或学校接入申请时，可在对应入口继续使用。</li>
                     </ol>
                   </article>
                 </div>
@@ -2935,9 +2940,9 @@
     <footer class="site-footer">
       <div class="container">
         <div class="footer-card">
-          <p>© 2026 UniLink校园. All rights reserved.</p>
+          <p>© 2026 UniLink校园</p>
           <p>由UniLink校园团队提供支持</p>
-          <p><small>本页面仅用于产品展示，课程、成绩、考试等信息请以学校官方系统为准。</small></p>
+          <p><small>课程、成绩、考试等信息请以学校教务系统和正式通知为准。</small></p>
         </div>
       </div>
     </footer>
