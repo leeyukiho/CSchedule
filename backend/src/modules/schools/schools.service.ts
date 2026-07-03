@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { ProviderRegistryService } from '../providers/provider-registry.service'
+import { QrcodeLoginService } from '../auth/qrcode-login.service'
 import {
   EMPTY_CAPABILITIES,
   EMPTY_DATA_ACCESS,
@@ -53,6 +54,7 @@ export class SchoolsService {
     private readonly prisma: PrismaService,
     private readonly providers: ProviderRegistryService,
     private readonly cloudSync: CloudCredentialSyncService,
+    private readonly qrcodeLogin: QrcodeLoginService,
   ) {}
 
   async listSchools(
@@ -318,6 +320,7 @@ export class SchoolsService {
       config: school.config,
     })
     const webview = this.createFrontendWebviewDescriptor(school, authConfig)
+    const qrcodeLogin = this.qrcodeLogin.getDescriptorFromConfig(school.config)
     const contextId = this.createContextId(school.id)
     const frontendCloudImport = this.createFrontendCloudImport({
       schoolId: school.id,
@@ -335,6 +338,7 @@ export class SchoolsService {
         webview,
         credentialSave,
         syncStrategy,
+        ...(qrcodeLogin ? { qrcodeLogin } : {}),
         ...(frontendCloudImport ? { frontendCloudImport } : {}),
         expireAt,
       }
@@ -395,6 +399,7 @@ export class SchoolsService {
           : undefined,
       credentialSave,
       syncStrategy,
+      ...(qrcodeLogin ? { qrcodeLogin } : {}),
       ...(frontendCloudImport ? { frontendCloudImport } : {}),
       expireAt,
     }

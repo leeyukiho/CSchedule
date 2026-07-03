@@ -1,8 +1,14 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { Button, Checkbox, Input, ScrollView, Text, View } from '@tarojs/components'
+import { Button, Checkbox, Image, Input, ScrollView, Text, View } from '@tarojs/components'
 
-import { submitLogin } from '../../shared/api/auth'
+import {
+  cancelQrcodeLoginSession,
+  createQrcodeLoginSession,
+  getQrcodeLoginStatus,
+  QrcodeLoginCreateResponse,
+  submitLogin,
+} from '../../shared/api/auth'
 import { completePendingBuddyInvite } from '../../shared/buddy-invite'
 import {
   hasCloudCredentialSync,
@@ -64,6 +70,12 @@ const DEFAULT_LOGIN_FIELDS: LoginField[] = [
 const HIDDEN_FIELD_NAMES = new Set(['contextId'])
 const STATUS_CLEAR_DELAY_MS = 3000
 const SCHOOL_DROPDOWN_MAX_ROWS = 5
+const TERMINAL_QRCODE_STATUS = new Set([
+  'confirmed',
+  'expired',
+  'failed',
+  'cancelled',
+])
 
 function getVisibleFields(loginContext: LoginContextResponse | null) {
   const contextFields = loginContext ? loginContext.fields : undefined
@@ -378,10 +390,14 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
   const [agreementModal, setAgreementModal] = useState<AgreementModalType | null>(null)
   const [message, setMessage] = useState('')
   const [errorText, setErrorText] = useState('')
+  const [qrcodeSession, setQrcodeSession] = useState<QrcodeLoginCreateResponse | null>(null)
+  const [qrcodePolling, setQrcodePolling] = useState(false)
+  const [qrcodeStatusText, setQrcodeStatusText] = useState('')
   const [focusedCredentialField, setFocusedCredentialField] = useState('')
   const [step, setStep] = useState<BindStep>('select_school')
   const requestSeq = useRef(0)
   const contextSeq = useRef(0)
+  const qrcodePollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialSchoolApplied = useRef(false)
   const initialSchool = useRef<SchoolListItem | null>(getInitialSchoolFromRoute())
   const ignoreRouteSchoolSelection = useRef(false)
@@ -394,6 +410,8 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
   const syncStrategy = loginContext?.syncStrategy || selectedSchool?.syncStrategy
   const isPasswordServerImport = syncStrategy?.importMode === 'password_server'
   const frontendCloudImport = getFrontendCloudImport(loginContext)
+  const qrcodeLogin = loginContext?.qrcodeLogin
+  const hasQrcodeLogin = Boolean(qrcodeLogin?.enabled)
   const isFrontendCloudImport = Boolean(
     frontendCloudImport &&
       hasCloudCredentialSync(
@@ -412,7 +430,7 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
     !isExternalWebviewLogin
   const wantsPasswordVault = canSavePassword && savePassword
   const shouldCollectCredentials =
-    requiresCredentialInput ||
+    (requiresCredentialInput && !hasQrcodeLogin) ||
     isFrontendCloudImport ||
     isPasswordServerImport ||
     wantsPasswordVault
@@ -480,6 +498,12 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
   }, [message, errorText])
 
   useEffect(() => {
+    return () => {
+      clearQrcodePollTimer()
+    }
+  }, [])
+
+  useEffect(() => {
     if (ignoreRouteSchoolSelection.current) {
       return
     }
@@ -535,6 +559,7 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
     setErrorText('')
     setLoginContext(null)
     setForm({})
+    resetQrcodeSession()
     setSavePassword(false)
     setFirstImportAgreementAccepted(false)
     if (syncKeyword) setKeyword(school.name)
@@ -577,6 +602,117 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
       }
     }
     return ''
+  }
+
+  function clearQrcodePollTimer() {
+    if (qrcodePollTimer.current) {
+      clearTimeout(qrcodePollTimer.current)
+      qrcodePollTimer.current = null
+    }
+  }
+
+  function resetQrcodeSession() {
+    clearQrcodePollTimer()
+    setQrcodeSession(null)
+    setQrcodePolling(false)
+    setQrcodeStatusText('')
+  }
+
+  function getQrcodeImageSource(session: QrcodeLoginCreateResponse) {
+    if (session.qrcodeImage?.startsWith('data:')) {
+      return session.qrcodeImage
+    }
+
+    if (session.qrcodeImage) {
+      return `data:image/png;base64,${session.qrcodeImage}`
+    }
+
+    return session.qrcodeUrl || ''
+  }
+
+  async function startQrcodeLogin() {
+    if (!selectedSchool || !qrcodeLogin?.enabled) {
+      return
+    }
+
+    resetQrcodeSession()
+    setLoading(true)
+    setErrorText('')
+    setMessage('正在生成二维码')
+
+    try {
+      const session = await createQrcodeLoginSession(selectedSchool.id)
+      setQrcodeSession(session)
+      setQrcodeStatusText('等待扫码')
+      setMessage('')
+      scheduleQrcodePoll(session.sessionId, session.pollIntervalMs)
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : '二维码生成失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function scheduleQrcodePoll(sessionId: string, pollIntervalMs: number) {
+    clearQrcodePollTimer()
+    setQrcodePolling(true)
+    qrcodePollTimer.current = setTimeout(() => {
+      void pollQrcodeStatus(sessionId, pollIntervalMs)
+    }, Math.max(pollIntervalMs, 1000))
+  }
+
+  async function pollQrcodeStatus(sessionId: string, pollIntervalMs: number) {
+    if (!selectedSchool) {
+      setQrcodePolling(false)
+      return
+    }
+
+    try {
+      const status = await getQrcodeLoginStatus(selectedSchool.id, sessionId)
+
+      if (status.status === 'pending') {
+        setQrcodeStatusText('等待扫码')
+      } else if (status.status === 'scanned') {
+        setQrcodeStatusText('已扫码，等待确认')
+      } else if (status.status === 'confirmed') {
+        setQrcodeStatusText('扫码确认成功')
+        setMessage('扫码确认成功，等待接入数据同步')
+      } else if (status.status === 'expired') {
+        setQrcodeStatusText('二维码已过期')
+        setErrorText('二维码已过期，请刷新后重试')
+      } else if (status.status === 'cancelled') {
+        setQrcodeStatusText('已取消')
+      } else {
+        setQrcodeStatusText('扫码登录失败')
+        setErrorText(status.message || '扫码登录失败')
+      }
+
+      if (!TERMINAL_QRCODE_STATUS.has(status.status)) {
+        scheduleQrcodePoll(sessionId, pollIntervalMs)
+      } else {
+        setQrcodePolling(false)
+      }
+    } catch (error) {
+      setQrcodePolling(false)
+      setErrorText(error instanceof Error ? error.message : '扫码状态查询失败')
+    }
+  }
+
+  async function cancelQrcodeLogin() {
+    if (!selectedSchool || !qrcodeSession) {
+      resetQrcodeSession()
+      return
+    }
+
+    clearQrcodePollTimer()
+
+    try {
+      await cancelQrcodeLoginSession(selectedSchool.id, qrcodeSession.sessionId)
+    } catch {
+      // Session cleanup is best-effort; local UI state is authoritative here.
+    }
+
+    resetQrcodeSession()
   }
 
   async function bind() {
@@ -826,6 +962,7 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
     setSelectedSchool(null)
     setLoginContext(null)
     setForm({})
+    resetQrcodeSession()
     setSavePassword(false)
     setFirstImportAgreementAccepted(false)
     setStep('select_school')
@@ -968,6 +1105,48 @@ export function BindAccountPanel({ activeTab, subPage = true }: BindAccountPanel
               </View>
 
               {contextLoading && <View className='inline-status'>正在加载登录表单</View>}
+
+              {!contextLoading && hasQrcodeLogin && (
+                <View className='qrcode-login-panel'>
+                  <View className='qrcode-login-head'>
+                    <Text className='qrcode-login-title'>{qrcodeLogin?.title || '扫码登录'}</Text>
+                    <Text className='qrcode-login-status'>
+                      {qrcodeStatusText || '未生成'}
+                    </Text>
+                  </View>
+                  {qrcodeLogin?.notice && (
+                    <Text className='qrcode-login-notice'>{qrcodeLogin.notice}</Text>
+                  )}
+                  {qrcodeSession && getQrcodeImageSource(qrcodeSession) ? (
+                    <Image
+                      className='qrcode-login-image'
+                      mode='aspectFit'
+                      src={getQrcodeImageSource(qrcodeSession)}
+                    />
+                  ) : (
+                    <View className='qrcode-login-placeholder'>
+                      <Text>点击生成二维码</Text>
+                    </View>
+                  )}
+                  <View className='qrcode-login-actions'>
+                    <Button
+                      className='small-button qrcode-login-action'
+                      disabled={loading || qrcodePolling}
+                      onClick={startQrcodeLogin}
+                    >
+                      {qrcodeSession ? '刷新' : '生成'}
+                    </Button>
+                    {qrcodeSession && (
+                      <Button
+                        className='small-button qrcode-login-action qrcode-login-cancel'
+                        onClick={cancelQrcodeLogin}
+                      >
+                        取消
+                      </Button>
+                    )}
+                  </View>
+                </View>
+              )}
 
               {!contextLoading &&
                 shouldCollectCredentials &&

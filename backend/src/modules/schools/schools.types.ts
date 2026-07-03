@@ -9,6 +9,7 @@ import {
   ProviderStatus,
   SchoolSyncStrategy,
 } from '../providers/provider.types'
+import { QrcodeLoginDescriptor } from '../auth/qrcode-login.types'
 
 export type SchoolStatus =
   | 'catalog_only'
@@ -94,6 +95,7 @@ export interface LoginContextResponse {
     clientImportToken?: string
     clientImportTokenExpiresAt?: string
   }
+  qrcodeLogin?: QrcodeLoginDescriptor
   expireAt: string
 }
 

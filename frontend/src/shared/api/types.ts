@@ -212,6 +212,13 @@ export interface LoginContextResponse {
   credentialSave?: CredentialSaveCapability
   syncStrategy?: SchoolSyncStrategy
   frontendCloudImport?: FrontendCloudImportConfig
+  qrcodeLogin?: {
+    enabled: boolean
+    title?: string
+    notice?: string
+    expiresInSeconds: number
+    pollIntervalMs: number
+  }
   expireAt: string
 }
 

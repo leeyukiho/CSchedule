@@ -181,8 +181,22 @@ export class CloudCredentialSyncService {
     const data = await response.json().catch(() => null)
 
     if (!response.ok) {
+      const errorMessage = this.getErrorMessage(data)
+
+      if (this.isScheduleEmptyError(errorMessage)) {
+        return {
+          ok: true,
+          result: {
+            targets: payload.targets,
+            semesterId: payload.semesterId,
+            cacheResults: [],
+            warnings: [errorMessage || 'SCHEDULE_EMPTY'],
+          },
+        }
+      }
+
       throw new Error(
-        `CLOUD_SYNC_FAILED: ${response.status} ${this.getErrorMessage(data)}`,
+        `CLOUD_SYNC_FAILED: ${response.status} ${errorMessage}`,
       )
     }
 
@@ -199,7 +213,14 @@ export class CloudCredentialSyncService {
     const result = (data.result || data.data || response) as CloudCredentialSyncResult
 
     if (!Array.isArray(result.cacheResults) || result.cacheResults.length === 0) {
-      throw new Error('CLOUD_SYNC_EMPTY_RESULT')
+      return {
+        ...result,
+        cacheResults: [],
+        warnings: [
+          ...(Array.isArray(result.warnings) ? result.warnings : []),
+          'CLOUD_SYNC_EMPTY_CACHE_RESULTS',
+        ],
+      }
     }
 
     const cacheResults = result.cacheResults.flatMap((item) => {
@@ -224,7 +245,14 @@ export class CloudCredentialSyncService {
     })
 
     if (cacheResults.length === 0) {
-      throw new Error('CLOUD_SYNC_EMPTY_RESULT')
+      return {
+        ...result,
+        cacheResults: [],
+        warnings: [
+          ...(Array.isArray(result.warnings) ? result.warnings : []),
+          'CLOUD_SYNC_EMPTY_CACHE_RESULTS',
+        ],
+      }
     }
 
     return { ...result, cacheResults }
@@ -245,6 +273,10 @@ export class CloudCredentialSyncService {
     const record = this.asRecord(data)
 
     return String(record.errorMessage || record.errorCode || '').trim()
+  }
+
+  private isScheduleEmptyError(message: string) {
+    return /(^|[_:\s-])SCHEDULE_EMPTY($|[_:\s-])/i.test(message)
   }
 
   private normalizeTargets(targets: DataTarget[]) {

@@ -14,6 +14,7 @@ import {
 } from '../accounts/account-access-token.service'
 import { AuthService } from './auth.service'
 import { LoginSubmitRequest } from './auth.types'
+import { QrcodeLoginService } from './qrcode-login.service'
 
 @Controller('schools/:schoolId/login')
 export class AuthController {
@@ -33,6 +34,32 @@ export class AuthController {
     }
 
     return this.authService.submitLogin(schoolId, input)
+  }
+}
+
+@Controller('schools/:schoolId/qrcode-login')
+export class QrcodeLoginController {
+  constructor(private readonly qrcodeLogin: QrcodeLoginService) {}
+
+  @Post()
+  createSession(@Param('schoolId') schoolId: string) {
+    return this.qrcodeLogin.createSession(schoolId)
+  }
+
+  @Post(':sessionId/status')
+  getStatus(
+    @Param('schoolId') schoolId: string,
+    @Param('sessionId') sessionId: string,
+  ) {
+    return this.qrcodeLogin.getStatus(schoolId, sessionId)
+  }
+
+  @Post(':sessionId/cancel')
+  cancel(
+    @Param('schoolId') schoolId: string,
+    @Param('sessionId') sessionId: string,
+  ) {
+    return this.qrcodeLogin.cancelSession(schoolId, sessionId)
   }
 }
 

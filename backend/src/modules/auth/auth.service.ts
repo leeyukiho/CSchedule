@@ -453,6 +453,14 @@ export class AuthService {
   }): Promise<LoginSubmitResponse> {
     const writtenCaches = [];
 
+    if (input.cacheResults.length === 0) {
+      await this.markCloudLoginVerified({
+        accountId: input.accountId,
+        credentialSaveMode: input.credentialSaveMode,
+        authStatePatch: input.authStatePatch,
+      });
+    }
+
     for (const cacheResult of input.cacheResults) {
       const cache = await this.courseSync.writeCloudCacheResult({
         accountId: input.accountId,
@@ -464,16 +472,18 @@ export class AuthService {
       writtenCaches.push({ input: cacheResult, cache });
     }
 
-    const primary =
-      writtenCaches.find((item) => item.input.target === "course") ??
-      writtenCaches[0];
-    const savedTargets = writtenCaches.map((item) => item.input.target);
-    const cacheResults = (await this.courseSync.getLatestCacheResults(input.accountId))
-      .filter((item) => savedTargets.includes(item.target));
     const accountAccessToken = await this.accountAccessTokens.issueToken(
       input.accountId,
       "login",
     );
+    const primary =
+      writtenCaches.find((item) => item.input.target === "course") ??
+      writtenCaches[0];
+    const savedTargets = writtenCaches.map((item) => item.input.target);
+    const cacheResults = savedTargets.length
+      ? (await this.courseSync.getLatestCacheResults(input.accountId))
+          .filter((item) => savedTargets.includes(item.target))
+      : [];
 
     return {
       accountId: input.accountId,
@@ -482,11 +492,47 @@ export class AuthService {
       status: "cached",
       sessionReusable: false,
       requiredFetchTargets: [],
-      cacheId: primary?.cache.cacheId,
-      parsedCount: primary?.input.parsedCount ?? primary?.cache.parsedCount,
+      ...(primary
+        ? {
+            cacheId: primary.cache.cacheId,
+            parsedCount: primary.input.parsedCount ?? primary.cache.parsedCount,
+          }
+        : {}),
       savedTargets,
       ...(cacheResults.length ? { cacheResults } : {}),
     };
+  }
+
+  private async markCloudLoginVerified(input: {
+    accountId: string;
+    credentialSaveMode: "none" | "password_vault";
+    authStatePatch: Record<string, unknown>;
+  }) {
+    const syncedAt = new Date();
+    const account = await this.prisma.studentAccount.findUnique({
+      where: { id: input.accountId },
+    });
+
+    if (!account) {
+      throw new NotFoundException("Student account not found");
+    }
+
+    await this.prisma.studentAccount.update({
+      where: { id: input.accountId },
+      data: {
+        status: "cached_only",
+        credentialSaveMode: input.credentialSaveMode,
+        authState: this.toJson({
+          ...this.asRecord(account.authState),
+          ...input.authStatePatch,
+          syncedBy: "cloud_worker",
+          syncedAt: syncedAt.toISOString(),
+        }),
+        lastCachedAt: syncedAt,
+        lastAuthErrorCode: null,
+        lastAuthErrorAt: null,
+      },
+    });
   }
 
   private normalizeOpenid(value: unknown) {
@@ -600,6 +646,10 @@ export class AuthService {
     ];
 
     if (userErrorCodes.some((code) => upper.includes(code))) {
+      return false;
+    }
+
+    if (upper.includes("SCHEDULE_EMPTY")) {
       return false;
     }
 

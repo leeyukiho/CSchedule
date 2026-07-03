@@ -46,10 +46,62 @@ export interface LoginSubmitResponse {
   }>
 }
 
+export type QrcodeLoginStatus =
+  | 'pending'
+  | 'scanned'
+  | 'confirmed'
+  | 'expired'
+  | 'failed'
+  | 'cancelled'
+
+export interface QrcodeLoginCreateResponse {
+  sessionId: string
+  status: QrcodeLoginStatus
+  qrcodeImage?: string
+  qrcodeUrl?: string
+  expiresAt: string
+  pollIntervalMs: number
+  title?: string
+  notice?: string
+}
+
+export interface QrcodeLoginStatusResponse {
+  sessionId: string
+  status: QrcodeLoginStatus
+  expiresAt: string
+  message?: string
+  confirmedAt?: string
+}
+
 export function submitLogin(schoolId: string, data: LoginSubmitRequest) {
   return requestApi<LoginSubmitResponse, LoginSubmitRequest>({
     method: 'POST',
     path: `/schools/${encodeURIComponent(schoolId)}/login`,
     data,
+  })
+}
+
+export function createQrcodeLoginSession(schoolId: string) {
+  return requestApi<QrcodeLoginCreateResponse>({
+    method: 'POST',
+    path: `/schools/${encodeURIComponent(schoolId)}/qrcode-login`,
+  })
+}
+
+export function getQrcodeLoginStatus(schoolId: string, sessionId: string) {
+  return requestApi<QrcodeLoginStatusResponse>({
+    method: 'POST',
+    path:
+      `/schools/${encodeURIComponent(schoolId)}/qrcode-login/` +
+      `${encodeURIComponent(sessionId)}/status`,
+  })
+}
+
+export function cancelQrcodeLoginSession(schoolId: string, sessionId: string) {
+  return requestApi<QrcodeLoginStatusResponse>({
+    method: 'POST',
+    path:
+      `/schools/${encodeURIComponent(schoolId)}/qrcode-login/` +
+      `${encodeURIComponent(sessionId)}/cancel`,
   })
 }
