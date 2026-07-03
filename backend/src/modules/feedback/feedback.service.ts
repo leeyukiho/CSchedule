@@ -278,6 +278,10 @@ export class FeedbackService {
       return false
     }
 
+    if (code.includes('SCHEDULE_EMPTY') || message.includes('schedule_empty')) {
+      return false
+    }
+
     return (
       code.includes('CLOUD_SYNC_FAILED') ||
       code.includes('CLOUD_SYNC_EMPTY_RESULT') ||
