@@ -429,7 +429,7 @@ function getArrangementStatus(startAt: number, endAt: number, now: number, finis
   return 'next'
 }
 
-function getMinuteDistanceLabel(targetAt: number, now: number, prefix = '', suffix = '') {
+function getMinuteDistanceLabel(targetAt: number, now: number, prefix = '', suffix = '', unit = '分钟') {
   if (!targetAt) {
     return ''
   }
@@ -440,12 +440,14 @@ function getMinuteDistanceLabel(targetAt: number, now: number, prefix = '', suff
     return ''
   }
 
-  return `${prefix}${minutes}分钟${suffix}`
+  return `${prefix}${minutes}${unit}${suffix}`
 }
 
-function getCourseStatusLabel(status: ArrangementStatus, startAt = 0, endAt = 0, now = Date.now()) {
+function getCourseStatusLabel(status: ArrangementStatus, startAt = 0, endAt = 0, now = Date.now(), compact = false) {
+  const minuteUnit = compact ? '分' : '分钟'
+
   if (status === 'current') {
-    return getMinuteDistanceLabel(endAt, now, '剩余') || '当前'
+    return getMinuteDistanceLabel(endAt, now, compact ? '剩' : '剩余', '', minuteUnit) || '当前'
   }
 
   if (status === 'ended') {
@@ -453,7 +455,7 @@ function getCourseStatusLabel(status: ArrangementStatus, startAt = 0, endAt = 0,
   }
 
   return status === 'next'
-    ? getMinuteDistanceLabel(startAt, now, '', '后') || '下一节'
+    ? getMinuteDistanceLabel(startAt, now, '', '后', minuteUnit) || '下一节'
     : '待上课'
 }
 
@@ -1010,6 +1012,7 @@ export default function HomePage() {
       return {
         ...item,
         status,
+        compactStatusLabel: getCourseStatusLabel(status, item.startAt, item.endAt, nowMs, true),
         statusLabel: getCourseStatusLabel(status, item.startAt, item.endAt, nowMs),
       }
     })
@@ -1070,6 +1073,9 @@ export default function HomePage() {
     return {
       ...item,
       status,
+      compactStatusLabel: item.type === 'exam'
+        ? getExamStatusLabel(status)
+        : getCourseStatusLabel(status, item.startAt, item.endAt, nowMs, true),
       statusLabel: item.type === 'exam'
         ? getExamStatusLabel(status)
         : getCourseStatusLabel(status, item.startAt, item.endAt, nowMs),
@@ -1249,7 +1255,7 @@ export default function HomePage() {
                     : item.course.name || '未命名课程'}
                 </Text>
                 <Text className={`home-current-course-status${item.type === 'exam' ? ' home-current-exam-status' : ''}`}>
-                  {item.statusLabel}
+                  {item.compactStatusLabel}
                 </Text>
               </View>
             ))}
