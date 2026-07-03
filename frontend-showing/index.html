@@ -441,6 +441,7 @@
     .hero-copy {
       display: grid;
       gap: var(--space-5);
+      min-width: 0;
     }
 
     .hero-badge {
@@ -512,6 +513,7 @@
       display: grid;
       gap: 18px;
       justify-items: center;
+      min-width: 0;
     }
 
     .hero-visual-wrap::before,
@@ -565,8 +567,8 @@
       width: min(100%, 304px);
       aspect-ratio: 304 / 630;
       border-radius: 38px;
-      padding: 14px;
-      background: linear-gradient(180deg, #10203C 0%, #1E4074 28%, #EAF2FF 28%, #F9FBFF 100%);
+      padding: 10px;
+      background: #101828;
       box-shadow:
         inset 0 0 0 1px rgba(255, 255, 255, 0.18),
         0 28px 58px rgba(20, 67, 145, 0.28);
@@ -590,18 +592,31 @@
       height: 100%;
       border-radius: 28px;
       overflow: hidden;
-      background:
-        radial-gradient(circle at top right, rgba(125, 211, 252, 0.35), transparent 28%),
-        linear-gradient(180deg, #E7F1FF 0%, #F9FBFF 28%, #F8FAFF 100%);
+      background: #F5F7FB;
+      color: #111827;
+    }
+
+    .phone-screen::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 190px;
+      background: linear-gradient(180deg, #2575F6 0%, #4BA3FF 100%);
+      z-index: 0;
+    }
+
+    .phone-screen > * {
+      position: relative;
+      z-index: 1;
     }
 
     .mini-status {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 18px 20px 12px;
+      padding: 16px 18px 8px;
       color: #FFFFFF;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
     }
 
@@ -620,7 +635,7 @@
     }
 
     .mini-header {
-      padding: 18px 20px 0;
+      padding: 8px 18px 14px;
       display: grid;
       gap: 6px;
       color: #FFFFFF;
@@ -633,6 +648,41 @@
       gap: 16px;
     }
 
+    .mini-nav-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .mini-capsule {
+      width: 68px;
+      height: 30px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.30);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex: none;
+      backdrop-filter: blur(10px);
+    }
+
+    .mini-capsule span:first-child {
+      width: 18px;
+      height: 4px;
+      border-radius: 999px;
+      background:
+        radial-gradient(circle, #FFFFFF 0 2px, transparent 2.5px) 0 0 / 7px 4px repeat-x;
+    }
+
+    .mini-capsule span:last-child {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      border: 1.5px solid rgba(255, 255, 255, 0.92);
+    }
+
     .mini-date {
       font-size: 13px;
       opacity: 0.88;
@@ -642,7 +692,7 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 8px 10px;
+      padding: 6px 8px;
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.18);
       backdrop-filter: blur(10px);
@@ -671,7 +721,7 @@
     }
 
     .mini-title {
-      font-size: 28px;
+      font-size: 24px;
       line-height: 1.1;
       font-weight: 800;
       letter-spacing: -0.04em;
@@ -683,23 +733,92 @@
     }
 
     .mini-body {
-      padding: 20px 16px 96px;
+      padding: 0 14px 88px;
       display: grid;
-      gap: 14px;
+      gap: 12px;
     }
 
     .glass-card {
-      background: rgba(255, 255, 255, 0.80);
-      border: 1px solid rgba(255, 255, 255, 0.70);
-      box-shadow: 0 18px 34px rgba(44, 94, 190, 0.12);
-      backdrop-filter: blur(14px);
+      background: #FFFFFF;
+      border: 1px solid rgba(226, 232, 240, 0.86);
+      box-shadow: 0 12px 24px rgba(28, 61, 121, 0.08);
+    }
+
+    .mini-dashboard-card {
+      padding: 13px;
+      border-radius: 18px;
+      background: linear-gradient(160deg, #2F7BFF 0%, #61B6FF 100%);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      color: #FFFFFF;
+      display: grid;
+      gap: 7px;
+      box-shadow: 0 14px 24px rgba(15, 70, 160, 0.16);
+    }
+
+    .mini-dashboard-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .mini-quick-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .mini-quick-item {
+      min-height: 50px;
+      border-radius: 14px;
+      background: #FFFFFF;
+      border: 1px solid rgba(226, 232, 240, 0.86);
+      display: grid;
+      place-items: center;
+      gap: 4px;
+      color: #334155;
+      font-size: 11px;
+      font-weight: 700;
+      box-shadow: 0 8px 18px rgba(28, 61, 121, 0.06);
+    }
+
+    .mini-quick-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 8px;
+      background: rgba(47, 123, 255, 0.10);
+      position: relative;
+    }
+
+    .mini-quick-icon::before,
+    .mini-quick-icon::after {
+      content: "";
+      position: absolute;
+      background: var(--color-primary);
+      border-radius: 999px;
+    }
+
+    .mini-quick-icon::before {
+      width: 12px;
+      height: 2px;
+      left: 5px;
+      top: 7px;
+      box-shadow: 0 4px 0 var(--color-primary), 0 8px 0 var(--color-primary);
+    }
+
+    .mini-quick-icon::after {
+      width: 4px;
+      height: 4px;
+      left: 4px;
+      top: 6px;
+      background: #FFFFFF;
     }
 
     .schedule-card {
-      border-radius: 26px;
-      padding: 18px;
+      border-radius: 18px;
+      padding: 12px;
       display: grid;
-      gap: 14px;
+      gap: 10px;
     }
 
     .card-topline,
@@ -723,10 +842,10 @@
 
     .today-course {
       display: grid;
-      gap: 10px;
-      padding: 14px;
-      border-radius: 22px;
-      background: linear-gradient(145deg, rgba(47, 123, 255, 0.12), rgba(125, 211, 252, 0.18));
+      gap: 8px;
+      padding: 11px;
+      border-radius: 16px;
+      background: #F0F7FF;
       border: 1px solid rgba(47, 123, 255, 0.12);
     }
 
@@ -765,7 +884,7 @@
 
     .course-name {
       margin: 0;
-      font-size: 20px;
+      font-size: 18px;
       line-height: 1.2;
       font-weight: 800;
     }
@@ -801,26 +920,26 @@
     }
 
     .mini-stat {
-      padding: 14px 12px;
-      border-radius: 20px;
-      background: rgba(255, 255, 255, 0.82);
-      border: 1px solid rgba(255, 255, 255, 0.68);
+      padding: 8px 6px;
+      border-radius: 14px;
+      background: #F8FAFC;
+      border: 1px solid rgba(226, 232, 240, 0.86);
       text-align: center;
     }
 
     .mini-stat strong {
       display: block;
-      font-size: 18px;
+      font-size: 16px;
       line-height: 1.2;
     }
 
     .mini-stat span {
       color: var(--color-text-soft);
-      font-size: 12px;
+      font-size: 11px;
     }
 
     .reminder-card {
-      border-radius: 24px;
+      border-radius: 18px;
       padding: 16px;
       display: grid;
       gap: 12px;
@@ -858,18 +977,17 @@
 
     .mini-tabbar {
       position: absolute;
-      left: 14px;
-      right: 14px;
-      bottom: 14px;
+      left: 0;
+      right: 0;
+      bottom: 0;
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
-      padding: 12px 10px 14px;
-      border-radius: 22px;
-      background: rgba(255, 255, 255, 0.88);
-      border: 1px solid rgba(255, 255, 255, 0.72);
-      box-shadow: 0 18px 34px rgba(44, 94, 190, 0.12);
-      backdrop-filter: blur(18px);
+      padding: 8px 10px 12px;
+      border-radius: 0 0 28px 28px;
+      background: #FFFFFF;
+      border-top: 1px solid rgba(226, 232, 240, 0.92);
+      box-shadow: 0 -8px 24px rgba(28, 61, 121, 0.08);
     }
 
     .mini-tab {
@@ -990,37 +1108,15 @@
       backdrop-filter: blur(18px);
     }
 
-    .qr-placeholder {
+    .qr-image {
       width: 100%;
       aspect-ratio: 1;
       border-radius: 20px;
-      background:
-        linear-gradient(135deg, rgba(226, 232, 240, 0.88), rgba(203, 213, 225, 0.76));
-      border: 1px dashed rgba(102, 112, 133, 0.26);
-      position: relative;
+      background: #FFFFFF;
+      border: 1px solid rgba(47, 123, 255, 0.12);
+      box-shadow: inset 0 0 0 8px rgba(255, 255, 255, 0.72);
       overflow: hidden;
-      display: grid;
-      place-items: center;
-      color: #475569;
-      font-size: 14px;
-      font-weight: 700;
-      text-align: center;
-      letter-spacing: 0.08em;
-    }
-
-    .qr-placeholder::before,
-    .qr-placeholder::after {
-      content: "";
-      position: absolute;
-      inset: 16px;
-      border-radius: 14px;
-      border: 2px solid rgba(148, 163, 184, 0.42);
-    }
-
-    .qr-placeholder::after {
-      inset: 30px;
-      border-style: dashed;
-      opacity: 0.8;
+      object-fit: contain;
     }
 
     .qr-copy strong {
@@ -1250,25 +1346,27 @@
     }
 
     .preview-card-frame {
-      border-radius: 30px;
-      padding: 16px;
-      background: linear-gradient(180deg, rgba(244, 248, 255, 0.92), rgba(228, 238, 255, 0.84));
+      width: min(100%, 376px);
+      margin: 0 auto;
+      border-radius: 36px;
+      padding: 10px;
+      background: #101828;
       border: 1px solid rgba(255, 255, 255, 0.72);
       box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
         0 24px 42px rgba(35, 77, 150, 0.14);
     }
 
     .preview-screen {
-      min-height: 420px;
-      border-radius: 24px;
-      padding: 18px;
-      background:
-        radial-gradient(circle at top right, rgba(125, 211, 252, 0.26), transparent 26%),
-        linear-gradient(180deg, #F7FAFF 0%, #FFFFFF 100%);
-      border: 1px solid rgba(212, 223, 242, 0.72);
+      min-height: 620px;
+      border-radius: 28px;
+      padding: 0 14px 18px;
+      background: #F5F7FB;
+      border: 0;
       display: grid;
-      gap: 14px;
+      align-content: start;
+      gap: 12px;
+      overflow: hidden;
     }
 
     .mock-topbar {
@@ -1276,21 +1374,31 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      color: var(--color-text-soft);
-      font-size: 13px;
-      font-weight: 600;
+      min-height: 72px;
+      margin: 0 -14px;
+      padding: 28px 14px 12px;
+      background: #FFFFFF;
+      border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+      color: #111827;
+      font-size: 15px;
+      font-weight: 700;
     }
 
     .mock-pill {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
+      justify-content: center;
+      gap: 7px;
+      min-width: 68px;
+      height: 30px;
+      padding: 0 10px;
       border-radius: 999px;
-      background: rgba(47, 123, 255, 0.08);
-      color: var(--color-primary);
-      font-size: 12px;
+      background: #FFFFFF;
+      border: 1px solid rgba(203, 213, 225, 0.88);
+      color: #64748B;
+      font-size: 13px;
       font-weight: 700;
+      letter-spacing: 0.08em;
     }
 
     .home-hero-card,
@@ -1298,10 +1406,10 @@
     .profile-main-card,
     .schedule-main-card {
       padding: 18px;
-      border-radius: 24px;
-      background: linear-gradient(160deg, rgba(47, 123, 255, 0.92), rgba(125, 211, 252, 0.80));
+      border-radius: 18px;
+      background: linear-gradient(160deg, rgba(47, 123, 255, 0.94), rgba(79, 163, 255, 0.86));
       color: #FFFFFF;
-      box-shadow: 0 18px 34px rgba(47, 123, 255, 0.22);
+      box-shadow: 0 14px 28px rgba(47, 123, 255, 0.18);
     }
 
     .home-hero-card h4,
@@ -1338,11 +1446,11 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 14px 16px;
-      border-radius: 20px;
-      background: rgba(255, 255, 255, 0.88);
+      padding: 13px 14px;
+      border-radius: 16px;
+      background: #FFFFFF;
       border: 1px solid rgba(226, 232, 240, 0.82);
-      box-shadow: 0 12px 24px rgba(28, 61, 121, 0.06);
+      box-shadow: 0 8px 18px rgba(28, 61, 121, 0.05);
     }
 
     .mock-row strong {
@@ -1394,10 +1502,10 @@
 
     .metric-card {
       padding: 14px;
-      border-radius: 20px;
-      background: rgba(255, 255, 255, 0.92);
+      border-radius: 16px;
+      background: #FFFFFF;
       border: 1px solid rgba(226, 232, 240, 0.82);
-      box-shadow: 0 12px 24px rgba(28, 61, 121, 0.06);
+      box-shadow: 0 8px 18px rgba(28, 61, 121, 0.05);
     }
 
     .metric-card strong {
@@ -1440,12 +1548,15 @@
     }
 
     .week-grid {
-      grid-template-columns: repeat(7, minmax(0, 1fr));
+      grid-template-columns: repeat(7, minmax(78px, 1fr));
       gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 4px;
     }
 
     .schedule-preview-screen .week-grid {
       align-items: stretch;
+      -webkit-overflow-scrolling: touch;
     }
 
     .week-day,
@@ -1453,7 +1564,7 @@
       border-radius: 18px;
       padding: 12px 8px;
       text-align: center;
-      background: rgba(255, 255, 255, 0.92);
+      background: #FFFFFF;
       border: 1px solid rgba(226, 232, 240, 0.82);
       box-shadow: 0 10px 20px rgba(28, 61, 121, 0.05);
     }
@@ -1886,10 +1997,9 @@
       box-shadow: 0 20px 40px rgba(8, 21, 54, 0.16);
     }
 
-    .usage-qr-frame .qr-placeholder {
+    .usage-qr-frame .qr-image {
       width: 100%;
-      background: linear-gradient(135deg, rgba(235, 241, 249, 0.94), rgba(214, 223, 235, 0.90));
-      color: #425466;
+      padding: 8px;
     }
 
     .usage-qr-tip {
@@ -1980,9 +2090,10 @@
       }
 
       .preview-card {
-        grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
+        grid-template-columns: minmax(300px, 390px) minmax(280px, 0.58fr);
         align-items: center;
         gap: 28px;
+        justify-content: center;
       }
 
       .preview-copy {
@@ -2117,7 +2228,7 @@
 
     @media (max-width: 540px) {
       .container {
-        width: min(100% - 24px, var(--container));
+        width: min(calc(100vw - 24px), var(--container));
       }
 
       .section {
@@ -2129,6 +2240,37 @@
         line-height: 1.1;
         letter-spacing: -0.04em;
         max-width: none;
+        overflow-wrap: anywhere;
+        word-break: normal;
+      }
+
+      .hero-grid,
+      .hero-copy,
+      .hero-visual-wrap {
+        width: 100%;
+        max-width: calc(100vw - 24px);
+      }
+
+      .hero-badge {
+        max-width: 100%;
+      }
+
+      .hero-tags {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        max-width: 100%;
+        width: 100%;
+      }
+
+      .hero-tag {
+        padding: 10px 8px;
+        text-align: center;
+      }
+
+      .hero-desc,
+      .hero-note {
+        max-width: 100%;
+        overflow-wrap: anywhere;
       }
 
       .button-row {
@@ -2262,9 +2404,9 @@
                 立即扫码体验
                 <span class="button-icon" aria-hidden="true"></span>
               </a>
-              <a class="button button-secondary" href="#features">查看功能亮点</a>
+              <a class="button button-secondary" href="#preview">查看界面预览</a>
             </div>
-            <p class="hero-note" data-reveal>支持学校账号绑定与手动同步，学校接入申请也能在小程序内提交。</p>
+            <p class="hero-note" data-reveal>扫码即可进入微信小程序，支持日常查看课表、成绩、考试与提醒。</p>
           </div>
 
           <div class="hero-visual-wrap" data-reveal>
@@ -2281,19 +2423,36 @@
                   </div>
                   <div class="mini-header">
                     <div class="mini-header-top">
-                      <div>
-                        <div class="mini-date">6 月 26 日 星期五</div>
-                        <div class="mini-title">今天也别漏课</div>
-                      </div>
-                      <div class="mini-temp">
-                        <span class="mini-weather" aria-hidden="true"></span>
-                        <span>27°C 多云</span>
+                      <strong class="mini-nav-title">UniLink校园</strong>
+                      <div class="mini-capsule" aria-hidden="true">
+                        <span></span>
+                        <span></span>
                       </div>
                     </div>
-                    <div class="mini-subtitle">已同步本周课表、考试安排与提醒状态</div>
                   </div>
 
                   <div class="mini-body">
+                    <section class="mini-dashboard-card">
+                      <div class="mini-dashboard-row">
+                        <div>
+                          <div class="mini-date">6 月 26 日 星期五</div>
+                          <div class="mini-title">今天也别漏课</div>
+                        </div>
+                        <div class="mini-temp">
+                          <span class="mini-weather" aria-hidden="true"></span>
+                          <span>27°C 多云</span>
+                        </div>
+                      </div>
+                      <div class="mini-subtitle">已同步本周课表、考试安排与提醒状态</div>
+                    </section>
+
+                    <div class="mini-quick-grid" aria-hidden="true">
+                      <div class="mini-quick-item"><span class="mini-quick-icon"></span><span>课表</span></div>
+                      <div class="mini-quick-item"><span class="mini-quick-icon"></span><span>成绩</span></div>
+                      <div class="mini-quick-item"><span class="mini-quick-icon"></span><span>考试</span></div>
+                      <div class="mini-quick-item"><span class="mini-quick-icon"></span><span>提醒</span></div>
+                    </div>
+
                     <article class="schedule-card glass-card">
                       <div class="card-topline">
                         <span class="card-title">今日安排</span>
@@ -2364,8 +2523,7 @@
             </div>
 
             <div class="qr-hint">
-              <!-- 后续请将这里的灰色占位块替换为真实微信小程序码图片 -->
-              <div class="qr-placeholder" aria-label="二维码占位图">二维码</div>
+              <img class="qr-image" src="admin-frontend/xcxewm.jpg" alt="UniLink校园微信小程序码" decoding="async">
               <div class="qr-copy">
                 <strong>微信扫码即可使用，无需下载</strong>
                 <span>打开微信扫一扫，就能直接进入 UniLink校园 小程序。</span>
@@ -2446,12 +2604,12 @@
                   <div class="preview-card-frame">
                     <div class="preview-screen">
                       <div class="mock-topbar">
-                        <span>6 月 26 日 · 星期五</span>
-                        <span class="mock-pill">武汉 · 27°C 多云</span>
+                        <span>UniLink校园</span>
+                        <span class="mock-pill">··· ○</span>
                       </div>
                       <div class="home-hero-card">
                         <h4>今天先看哪一项？</h4>
-                        <p>本周第 14 周 · 已同步 11:20</p>
+                        <p>6 月 26 日 星期五 · 武汉 27°C 多云 · 已同步 11:20</p>
                       </div>
                       <div class="home-course-list">
                         <div class="mock-row">
@@ -2491,8 +2649,8 @@
                   <div class="preview-card-frame">
                     <div class="preview-screen schedule-preview-screen">
                       <div class="mock-topbar">
-                        <span>第 14 周课表</span>
-                        <span class="mock-pill">回到今天</span>
+                        <span>课表</span>
+                        <span class="mock-pill">··· ○</span>
                       </div>
                       <div class="schedule-main-card">
                         <h4>本周课程一览</h4>
@@ -2536,8 +2694,8 @@
                   <div class="preview-card-frame">
                     <div class="preview-screen">
                       <div class="mock-topbar">
-                        <span>2025-2026 学年</span>
-                        <span class="mock-pill">第 2 学期</span>
+                        <span>成绩</span>
+                        <span class="mock-pill">··· ○</span>
                       </div>
                       <div class="grade-summary">
                         <h4>学业总览</h4>
@@ -2597,7 +2755,7 @@
                     <div class="preview-screen">
                       <div class="mock-topbar">
                         <span>我的</span>
-                        <span class="mock-pill">账号已绑定</span>
+                        <span class="mock-pill">··· ○</span>
                       </div>
                       <div class="profile-main-card">
                         <h4>学校绑定与同步</h4>
@@ -2764,8 +2922,7 @@
 
               <div class="usage-qr-box">
                 <div class="usage-qr-frame">
-                  <!-- 后续请将这里的灰色占位块替换为真实微信小程序码图片 -->
-                  <div class="qr-placeholder" aria-label="二维码占位图">二维码</div>
+                  <img class="qr-image" src="admin-frontend/xcxewm.jpg" alt="UniLink校园微信小程序码" loading="lazy" decoding="async">
                 </div>
                 <p class="usage-qr-tip">微信扫码即可使用，无需下载，适合日常随手查看校园信息。</p>
               </div>

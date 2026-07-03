@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UniLink</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      background: #050608;
+      font-family: Inter, "SF Pro Display", "Segoe UI", Arial, sans-serif;
+    }
+
+    .banner {
+      width: min(96vw, 1600px);
+      aspect-ratio: 16 / 6;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: #050608;
+      box-shadow: 0 34px 80px rgba(0, 0, 0, 0.42);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(92px, 14vw, 220px);
+      line-height: 0.9;
+      letter-spacing: 0;
+      font-weight: 900;
+      color: #f7f8fb;
+      text-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.16),
+        0 18px 48px rgba(79, 188, 160, 0.28);
+    }
+
+    h1::first-letter {
+      color: #2f8d78;
+    }
+
+    @media (max-width: 720px) {
+      .banner {
+        width: 100vw;
+        aspect-ratio: 16 / 9;
+      }
+
+      h1 {
+        font-size: clamp(64px, 19vw, 136px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="banner" aria-label="UniLink">
+    <h1>UniLink</h1>
+  </main>
+</body>
+</html>
