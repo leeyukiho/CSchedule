@@ -1255,7 +1255,7 @@ export default function HomePage() {
                     : item.course.name || '未命名课程'}
                 </Text>
                 <Text className={`home-current-course-status${item.type === 'exam' ? ' home-current-exam-status' : ''}`}>
-                  {item.compactStatusLabel}
+                  {item.statusLabel}
                 </Text>
               </View>
             ))}
@@ -1263,7 +1263,7 @@ export default function HomePage() {
               const shouldMarkItemOverlap = item.status !== 'ended' && overlappingTodayArrangementKeys.has(item.key)
 
               if (item.type === 'exam') {
-                const { exam, status, statusLabel } = item
+                const { exam, status } = item
 
                 return (
                   <View
@@ -1292,13 +1292,13 @@ export default function HomePage() {
                       <Text className='home-info-value home-info-secondary'>座位：{exam.seatNo || '待安排'}</Text>
                     </View>
                     <View className='home-card-icon-side'>
-                      <Text className={`home-status-badge home-status-badge-${status}`}>{statusLabel}</Text>
+                      <Text className={`home-status-badge home-status-badge-${status}`}>{item.compactStatusLabel}</Text>
                     </View>
                   </View>
                 )
               }
 
-              const { course, index, location, sectionText, status, statusLabel, teacher, timeText } = item
+              const { course, index, location, sectionText, status, teacher, timeText } = item
 
               return (
                 <View
@@ -1330,7 +1330,7 @@ export default function HomePage() {
                     <Text className='home-info-value home-info-secondary'>{location}</Text>
                   </View>
                   <View className='home-card-icon-side'>
-                    <Text className={`home-status-badge home-status-badge-${status}`}>{statusLabel}</Text>
+                    <Text className={`home-status-badge home-status-badge-${status}`}>{item.compactStatusLabel}</Text>
                   </View>
                 </View>
               )
