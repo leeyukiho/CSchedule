@@ -8,7 +8,6 @@ export default defineAppConfig({
     'pages/buddy-space/index',
     'pages/bind/index',
     'pages/query/index',
-    'pages/query-webview/index',
     'pages/webview-sync/index',
     'pages/messages/index',
     'pages/feedback/index',

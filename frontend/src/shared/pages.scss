@@ -2636,45 +2636,6 @@
   transform: rotate(-45deg);
 }
 
-.query-webview-toolbar {
-  min-height: 72rpx;
-  margin-bottom: 14rpx;
-  padding: 0 18rpx;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
-  border: 1rpx solid #e5e7eb;
-  border-radius: 16rpx;
-  background: #ffffff;
-}
-
-.query-webview-url {
-  flex: 1;
-  min-width: 0;
-  color: #667085;
-  font-size: 22rpx;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.query-webview-copy {
-  flex: 0 0 auto;
-  min-width: 104rpx;
-  height: 44rpx;
-  padding: 0 14rpx;
-  box-sizing: border-box;
-  border-radius: 999rpx;
-  background: #e0efff;
-  color: #1d4ed8;
-  font-size: 22rpx;
-  font-weight: 900;
-  line-height: 44rpx;
-  text-align: center;
-}
-
 .messages-list {
   display: flex;
   flex-direction: column;
