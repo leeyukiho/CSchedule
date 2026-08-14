@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { ProviderDisplayService } from '../providers/provider-display.service'
+import { mergeProviderTerms } from '../providers/provider-term'
 import { SectionTimeProfileConfig } from '../providers/provider.types'
 import { TimetableCacheResponse } from './timetable.types'
 
@@ -111,7 +112,10 @@ export class TimetableService {
       },
       orderBy: { syncedAt: 'desc' },
     })
-    const terms = this.mergeTerms(termCaches, cache?.termsJson)
+    const terms = mergeProviderTerms(
+      account.providerId,
+      [this.mergeTerms(termCaches, cache?.termsJson)],
+    )
     const canonicalTermId = this.getCanonicalTermId(cache?.termId ?? termId, terms)
 
     return {

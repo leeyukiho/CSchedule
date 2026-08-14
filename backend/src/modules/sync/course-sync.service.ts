@@ -9,6 +9,7 @@ import {
   DataTarget,
   SectionTimeProfileConfig,
 } from "../providers/provider.types";
+import { mergeProviderTerms } from "../providers/provider-term";
 
 interface CloudFeatureResult {
   data: unknown;
@@ -57,6 +58,11 @@ export class CourseSyncService {
             this.normalizeCourse(course, index),
           )
         : [];
+      const terms = mergeProviderTerms(
+        account.providerId,
+        [this.asArray(input.cacheData.terms)],
+        [termId],
+      );
       const sourceHash = this.createCloudSourceHash({
         accountId: account.id,
         providerId: account.providerId,
@@ -74,7 +80,7 @@ export class CourseSyncService {
         update: {
           termId,
           coursesJson: this.toJson(courses),
-          termsJson: this.toJson(input.cacheData.terms ?? []),
+          termsJson: this.toJson(terms),
           sectionTimesJson: this.toJson(input.cacheData.sectionTimes ?? []),
           syncedAt,
         },
@@ -84,7 +90,7 @@ export class CourseSyncService {
           providerId: account.providerId,
           termId,
           coursesJson: this.toJson(courses),
-          termsJson: this.toJson(input.cacheData.terms ?? []),
+          termsJson: this.toJson(terms),
           sectionTimesJson: this.toJson(input.cacheData.sectionTimes ?? []),
           sourceHash,
           syncedAt,
@@ -158,9 +164,17 @@ export class CourseSyncService {
       return [];
     }
 
-    const [courseCache, featureCaches] = await Promise.all([
+    const [courseCache, courseTermCaches, featureCaches] = await Promise.all([
       this.prisma.courseCache.findFirst({
         where: { accountId },
+        orderBy: { syncedAt: "desc" },
+      }),
+      this.prisma.courseCache.findMany({
+        where: { accountId },
+        select: {
+          termId: true,
+          termsJson: true,
+        },
         orderBy: { syncedAt: "desc" },
       }),
       this.prisma.featureCache.findMany({
@@ -168,6 +182,11 @@ export class CourseSyncService {
         orderBy: [{ target: "asc" }, { syncedAt: "desc" }],
       }),
     ]);
+    const courseTerms = mergeProviderTerms(
+      account.providerId,
+      courseTermCaches.map((cache) => this.asArray(cache.termsJson)),
+      courseTermCaches.map((cache) => cache.termId),
+    );
     const latestFeatureCacheByTarget = new Map<
       DataTarget,
       (typeof featureCaches)[number]
@@ -182,7 +201,12 @@ export class CourseSyncService {
     const cacheResults = [
       {
         target: "course" as DataTarget,
-        cacheData: this.getLatestCacheData(account, "course", courseCache),
+        cacheData: this.getLatestCacheData(
+          account,
+          "course",
+          courseCache,
+          courseTerms,
+        ),
       },
       ...(["profile", "score", "exam"] as DataTarget[]).map((target) => ({
         target,
@@ -229,6 +253,7 @@ export class CourseSyncService {
       sourceHash: string;
       syncedAt: Date;
     } | null,
+    courseTerms: unknown[] = [],
   ): Record<string, unknown> | null {
     if (!cache) {
       return null;
@@ -261,7 +286,13 @@ export class CourseSyncService {
           this.asArray(cache.coursesJson),
           sectionTimeProfiles,
         ),
-        terms: this.asArray(cache.termsJson),
+        terms: courseTerms.length
+          ? courseTerms
+          : mergeProviderTerms(
+              account.providerId,
+              [this.asArray(cache.termsJson)],
+              [cache.termId],
+            ),
         termStarts: this.getTermStarts(account.school.config),
         sectionTimes: cacheSectionTimes.length
           ? cacheSectionTimes
