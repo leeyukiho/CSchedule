@@ -19,6 +19,7 @@ import {
   buildTermOptions,
   courseRunsInWeek,
   dedupeAndSortTerms,
+  findTermOptionByValue,
   getAcademicYear,
   getCurrentTeachingWeek,
   getTodayTermOption,
@@ -697,12 +698,13 @@ export default function SchedulePage() {
     [],
   )
 
+  const requestedTermValue = selectedTermId || timetable?.termId || ''
+  const selectedTerm = findTermOptionByValue(termOptions, requestedTermValue)
   const selectedTermIndex = Math.max(
-    termOptions.findIndex((term) => term.id === (selectedTermId || timetable?.termId || '')),
+    termOptions.findIndex((term) => term === selectedTerm),
     0,
   )
-  const selectedTerm = termOptions[selectedTermIndex] || null
-  const activeTermId = timetable?.termId || selectedTermId || ''
+  const activeTermId = selectedTerm?.id || requestedTermValue
   const activeTerm = useMemo(
     () => resolveTermOptionId(
       termOptions.find((term) => term.id === activeTermId) || selectedTerm,
@@ -715,7 +717,8 @@ export default function SchedulePage() {
     weekOptions.findIndex((week) => week.value === selectedWeek),
     0,
   )
-  const selectedTermLabel = termOptions[selectedTermIndex]?.label || timetable?.termId || '当前学期'
+  const selectedTermLabel =
+    selectedTerm?.label || termOptions[selectedTermIndex]?.label || timetable?.termId || '当前学期'
   const selectedWeekLabel = weekOptions[selectedWeekIndex]?.label || '第1周'
   const termPickerRange = useMemo(
     () => (termOptions.length > 0 ? termOptions.map((term) => term.label) : [selectedTermLabel]),
@@ -943,7 +946,7 @@ export default function SchedulePage() {
 
     setSelectedItem(null)
 
-    if (term.id === selectedTermId) {
+    if (term.id === (selectedTerm?.id || selectedTermId)) {
       return
     }
 

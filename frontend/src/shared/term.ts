@@ -92,6 +92,41 @@ export function dedupeAndSortTerms(terms: TermOption[]) {
   return [...termMap.values()].sort((left, right) => getTermSortKey(right) - getTermSortKey(left))
 }
 
+/**
+ * 按「学期标识」在选项里找到对应学期。
+ *
+ * 历史原因，后端/本地缓存里的 `termId` 可能是编码 id（如 "262"），也可能是展示用标签
+ * （如 "2026-2027学年第1学期"）。这里同时兼容 id、label 和学年学期键，避免只按 id 匹配
+ * 时匹配失败、把课表错位到列表第一项。
+ */
+export function findTermOptionByValue(terms: TermOption[], value: string) {
+  const target = String(value || '').trim()
+
+  if (!target) {
+    return null
+  }
+
+  const byId = terms.find((term) => term.id === target)
+
+  if (byId) {
+    return byId
+  }
+
+  const byLabel = terms.find((term) => term.label === target)
+
+  if (byLabel) {
+    return byLabel
+  }
+
+  const key = getTermKey({ id: target, label: target })
+
+  if (!key) {
+    return null
+  }
+
+  return terms.find((term) => getTermKey(term) === key) || null
+}
+
 export function getAcademicYear(term: TermOption | null, fallbackTermId?: string) {
   const parsed = parseTermDescriptor(term, fallbackTermId)
   return parsed.yearStart
